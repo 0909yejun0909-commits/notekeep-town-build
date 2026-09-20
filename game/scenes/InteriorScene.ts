@@ -179,7 +179,11 @@ export default class InteriorScene extends Phaser.Scene {
 
     const occupied = new Set<string>();
     occupied.add(`${this.doorGx},${this.doorGy}`);
-    for (const d of this.roomDoors) occupied.add(`${d.gx},${d.gy}`);
+    occupied.add(`${this.doorGx},${this.doorGy - 1}`); // must stay clear or the player spawns boxed in
+    for (const d of this.roomDoors) {
+      occupied.add(`${d.gx},${d.gy}`);
+      occupied.add(`${d.gx},${d.gy + 1}`); // approach tile below each room doorway
+    }
 
     for (const note of room.notes) {
       const [fw, fh] = FOOTPRINT[note.furniture];
@@ -224,7 +228,9 @@ export default class InteriorScene extends Phaser.Scene {
 
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
+      if (gx === this.doorGx && gy === this.doorGy - 1) return true; // never trap the player at spawn
       if (this.roomDoors.some((d) => d.gx === gx && d.gy === gy)) return true;
+      if (this.roomDoors.some((d) => d.gx === gx && d.gy === gy + 1)) return true;
       if (gx <= 0 || gy <= 0 || gx >= w - 1 || gy >= h - 1) return false;
       if (this.blocked.has(`${gx},${gy}`)) return false;
       return true;
