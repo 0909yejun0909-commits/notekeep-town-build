@@ -11,8 +11,20 @@ const DIALOGUE: Record<string, string> = {
 
 const NPC_IDS = ['farmer_bob', 'bartender_katy'] as const;
 const TILE = 16;
+const TALK_RANGE = TILE * 1.5;
 type Dir = 'down' | 'right' | 'up' | 'left';
 const DIRS: Dir[] = ['down', 'right', 'up', 'left'];
+const DELTA: Record<Dir, [number, number]> = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] };
+
+/** The rectangle of world tiles a region occupies. NPCs spawn inside it and never leave it. */
+export type NpcSpawnArea = { originGx: number; originGy: number; width: number; height: number };
+
+type LiveNpc = { npcId: string; sprite: Phaser.GameObjects.Sprite; gx: number; gy: number };
+
+// One list of live NPCs per scene, so a single Space handler can pick the nearest one.
+// Per-NPC listeners each calling JustDown() on the shared Space key meant the first
+// listener consumed the press and no other NPC could ever talk.
+const liveNpcs = new WeakMap<Phaser.Scene, LiveNpc[]>();
 
 function ensureNpcAnimations(scene: Phaser.Scene, npcId: string) {
   if (scene.anims.exists(`${npcId}-idle-down`)) return;
@@ -30,19 +42,93 @@ function ensureNpcAnimations(scene: Phaser.Scene, npcId: string) {
   }
 }
 
-export function spawnNpcs(scene: Phaser.Scene, region: Region) {
-  const isWalkable: (gx: number, gy: number) => boolean =
-    scene.game.registry.get('isWalkable') ?? (() => true);
+// Read the registry at call time, not spawn time: Overworld publishes isWalkable
+// in create() and the order of those two calls must not matter.
+function isWalkable(scene: Phaser.Scene, gx: number, gy: number): boolean {
+  const fn = scene.game.registry.get('isWalkable') as ((gx: number, gy: number) => boolean) | undefined;
+  return fn ? fn(gx, gy) : true;
+}
+
+function ensureTalkHandler(scene: Phaser.Scene): LiveNpc[] {
+  const existing = liveNpcs.get(scene);
+  if (existing) return existing;
+
+  const list: LiveNpc[] = [];
+  liveNpcs.set(scene, list);
+
+  const keyboard = scene.input.keyboard;
+  const onSpace = () => {
+    const player = scene.game.registry.get('player') as Phaser.GameObjects.Sprite | undefined;
+    if (!player) return;
+    let nearest: LiveNpc | null = null;
+    let best = TALK_RANGE;
+    for (const npc of list) {
+      const d = Phaser.Math.Distance.Between(player.x, player.y, npc.sprite.x, npc.sprite.y);
+      if (d < best) {
+        best = d;
+        nearest = npc;
+      }
+    }
+    if (nearest) bus.emit('talk-npc', { npcId: nearest.npcId, line: DIALOGUE[nearest.npcId] });
+  };
+  keyboard?.on('keydown-SPACE', onSpace);
+
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    keyboard?.off('keydown-SPACE', onSpace);
+    liveNpcs.delete(scene);
+  });
+  return list;
+}
+
+function inArea(area: NpcSpawnArea, gx: number, gy: number): boolean {
+  return (
+    gx >= area.originGx && gx < area.originGx + area.width &&
+    gy >= area.originGy && gy < area.originGy + area.height
+  );
+}
+
+/** First free, walkable tile in the area, scanning row-major from a preferred tile. */
+function findSpawnTile(
+  scene: Phaser.Scene, area: NpcSpawnArea, taken: LiveNpc[], preferGx: number, preferGy: number,
+): { gx: number; gy: number } | null {
+  const total = area.width * area.height;
+  const startIdx =
+    (Phaser.Math.Clamp(preferGy, area.originGy, area.originGy + area.height - 1) - area.originGy) * area.width +
+    (Phaser.Math.Clamp(preferGx, area.originGx, area.originGx + area.width - 1) - area.originGx);
+  for (let n = 0; n < total; n++) {
+    const idx = (startIdx + n) % total;
+    const gx = area.originGx + (idx % area.width);
+    const gy = area.originGy + Math.floor(idx / area.width);
+    if (!isWalkable(scene, gx, gy)) continue;
+    if (taken.some((t) => t.gx === gx && t.gy === gy)) continue;
+    return { gx, gy };
+  }
+  return null;
+}
+
+/**
+ * Spawn the demo pair inside `area` (the region's tile rectangle in world grid coordinates).
+ * Call after OverworldScene has published `isWalkable` to the registry so NPCs neither spawn
+ * inside a house nor walk through one. Without an area, the region is assumed to start at 0,0.
+ */
+export function spawnNpcs(scene: Phaser.Scene, _region: Region, area?: NpcSpawnArea) {
+  const rect: NpcSpawnArea = area ?? { originGx: 0, originGy: 0, width: 10, height: 10 };
+  const list = ensureTalkHandler(scene);
 
   NPC_IDS.forEach((npcId, i) => {
     ensureNpcAnimations(scene, npcId);
 
-    let gx = 3 + i * 3;
-    let gy = 3;
-    const spawnPos = tileToWorld(gx, gy);
+    const tile = findSpawnTile(scene, rect, list, rect.originGx + 3 + i * 3, rect.originGy + 3);
+    if (!tile) return; // region is solid; nowhere to stand
+
+    const spawnPos = tileToWorld(tile.gx, tile.gy);
     const sprite = scene.add.sprite(spawnPos.x, spawnPos.y, npcId);
     sprite.setOrigin(0.5, 0.64);
+    sprite.setDepth(sprite.y);
     sprite.play(`${npcId}-idle-down`);
+
+    const npc: LiveNpc = { npcId, sprite, gx: tile.gx, gy: tile.gy };
+    list.push(npc);
 
     let moving = false;
 
@@ -52,13 +138,15 @@ export function spawnNpcs(scene: Phaser.Scene, region: Region) {
       callback: () => {
         if (moving) return;
         const dir = DIRS[Phaser.Math.Between(0, 3)];
-        const [dx, dy] =
-          dir === 'down' ? [0, 1] : dir === 'up' ? [0, -1] : dir === 'left' ? [-1, 0] : [1, 0];
-        const nx = gx + dx;
-        const ny = gy + dy;
-        if (!isWalkable(nx, ny)) return;
+        const [dx, dy] = DELTA[dir];
+        const nx = npc.gx + dx;
+        const ny = npc.gy + dy;
+        if (!inArea(rect, nx, ny) || !isWalkable(scene, nx, ny)) return;
+        if (list.some((o) => o !== npc && o.gx === nx && o.gy === ny)) return;
 
         moving = true;
+        npc.gx = nx; // claim the tile immediately so two NPCs never target the same one
+        npc.gy = ny;
         sprite.flipX = dir === 'left';
         const animDir = dir === 'left' ? 'right' : dir;
         sprite.play(`${npcId}-walk-${animDir}`);
@@ -69,25 +157,14 @@ export function spawnNpcs(scene: Phaser.Scene, region: Region) {
           x: target.x,
           y: target.y,
           duration: 400,
+          onUpdate: () => sprite.setDepth(sprite.y),
           onComplete: () => {
-            gx = nx;
-            gy = ny;
             moving = false;
+            sprite.setDepth(sprite.y);
             sprite.play(`${npcId}-idle-${animDir}`);
           },
         });
       },
-    });
-
-    const spaceKey = scene.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    scene.events.on('update', () => {
-      if (!spaceKey || !Phaser.Input.Keyboard.JustDown(spaceKey)) return;
-      const player: Phaser.GameObjects.Sprite | undefined = scene.game.registry.get('player');
-      if (!player) return;
-      const dist = Phaser.Math.Distance.Between(player.x, player.y, sprite.x, sprite.y);
-      if (dist < TILE * 1.5) {
-        bus.emit('talk-npc', { npcId, line: DIALOGUE[npcId] });
-      }
     });
   });
 }

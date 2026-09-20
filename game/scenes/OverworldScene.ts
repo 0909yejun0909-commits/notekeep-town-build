@@ -4,7 +4,7 @@ import { regionSize } from '@/lib/vault/parse';
 import { buildTilemap } from '@/game/tilemap';
 import { GridMovement, tileToWorld } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
-import { spawnNpcs } from '@/game/npc';
+import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { bus } from '@/game/bus';
 
 const TILE = 16;
@@ -35,6 +35,7 @@ export default class OverworldScene extends Phaser.Scene {
     const cellH = maxH + pad;
 
     const blocked = new Set<string>();
+    const areas: NpcSpawnArea[] = [];
 
     world.regions.forEach((region, i) => {
       const [w, h] = sizes[i];
@@ -43,7 +44,7 @@ export default class OverworldScene extends Phaser.Scene {
       const result = buildTilemap(this, region, originGx, originGy, w, h);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
-      spawnNpcs(this, region);
+      areas.push({ originGx, originGy, width: w, height: h });
     });
 
     const worldWidthPx = cols * cellW * TILE;
@@ -72,6 +73,10 @@ export default class OverworldScene extends Phaser.Scene {
 
     this.game.registry.set('player', player);
     this.game.registry.set('isWalkable', isWalkable);
+
+    // NPCs read isWalkable from the registry, so they spawn only after it is published:
+    // otherwise they land on roofs and wander through walls.
+    world.regions.forEach((region, i) => spawnNpcs(this, region, areas[i]));
 
     this.cameras.main.setBounds(0, 0, worldWidthPx, worldHeightPx);
     this.cameras.main.startFollow(player, true);

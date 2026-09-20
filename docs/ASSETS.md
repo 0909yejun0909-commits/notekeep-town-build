@@ -37,7 +37,7 @@ argument:
 ~/"Projects/Claude Build Day"/scripts/install-assets.sh public/assets
 ```
 
-It copies 97 files, 1.6 MB, and is the only step that touches the art. Set `KENMI=` if the
+It copies 100 files, 1.6 MB, and is the only step that touches the art. Set `KENMI=` if the
 packs live somewhere else. Tested as written — if a `cp` fails it stops immediately rather
 than half-copying. The copy below is what that file contains, kept here because this manifest
 gets pasted into Prompt 0 whole.
@@ -61,6 +61,9 @@ cp "$CF/Tiles/Water/Water_Middle.png"           "$DEST/terrain/fill_water.png"
 cp "$CF/Tiles/Water/Water_Tile_1.png"           "$DEST/terrain/water.png"
 cp "$CF/Tiles/Cobble_Road/Cobble_Road_1.png"    "$DEST/terrain/cobble.png"
 cp "$CF/Tiles/Cliff/Stone_Cliff_1_Tile.png"     "$DEST/terrain/cliff.png"
+cp "$CF/Trees/Medium_Oak_Tree.png"              "$DEST/terrain/tree_oak.png"      # 96x48, 3 frames of 32x48
+cp "$CF/Trees/Medium_Spruce_Tree.png"           "$DEST/terrain/tree_spruce.png"   # 96x48, 3 frames of 32x48
+cp "$CF/Outdoor decoration/Flowers.png"         "$DEST/terrain/flowers.png"       # 160x160, 100 frames of 16x16
 cp "$KENMI/Cute_Fantasy_Desert/Tiles/Desert_Grass.png"               "$DEST/terrain/desert.png"
 cp "$KENMI/Cute_Fantasy_Desert/Tiles/Desert_Beach_Tiles_1.png"       "$DEST/terrain/desert_sand.png"
 cp "$KENMI/Cute_Fantasy_Volcano/Tiles/Volcano_Tiles.png"             "$DEST/terrain/volcano.png"
