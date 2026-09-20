@@ -1,0 +1,60 @@
+.wrapper {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 20, 0.9);
+  z-index: 10;
+}
+
+.preview {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  transform: scale(4);
+  animation: bob 0.6s steps(2) infinite;
+}
+
+.layer {
+  position: absolute;
+  left: 20px;
+  border-radius: 2px;
+}
+
+.hair {
+  top: 10px;
+  width: 24px;
+  height: 10px;
+  background: #4a2e1f;
+}
+
+.shirt {
+  top: 20px;
+  width: 24px;
+  height: 16px;
+  background: #b0281f;
+}
+
+.pants {
+  top: 36px;
+  width: 24px;
+  height: 12px;
+  background: #3b2a1f;
+}
+
+.shoes {
+  top: 46px;
+  width: 24px;
+  height: 6px;
+  background: #1a1a1a;
+}
+
+@keyframes bob {
+  0%, 100% {
+    transform: scale(4) translateY(0);
+  }
+  50% {
+    transform: scale(4) translateY(-2px);
+  }
+}
