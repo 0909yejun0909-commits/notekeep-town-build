@@ -36,7 +36,7 @@ function Game() {
       <PhaserCanvas />
 
       {!vault && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/40">
           <button
             className="rounded bg-white px-6 py-3 font-medium text-black"
             onClick={async () => setVault(await openVault())}

@@ -187,7 +187,7 @@ export default class InteriorScene extends Phaser.Scene {
 
     for (const note of room.notes) {
       const [fw, fh] = FOOTPRINT[note.furniture];
-      this.renderFurniture(note.furniture, note.gx, note.gy);
+      this.renderFurniture(note.furniture, note.gx, note.gy, note);
 
       for (let dx = 0; dx < fw; dx++) {
         for (let dy = 0; dy < fh; dy++) {
@@ -247,8 +247,9 @@ export default class InteriorScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
-    this.cameras.main.setBounds(0, 0, w * TILE, h * TILE);
-    this.cameras.main.startFollow(this.player, true);
+    this.fitCamera();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.fitCamera, this);
+    this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, this.fitCamera, this));
 
     this.prevGx = this.doorGx;
     this.prevGy = this.doorGy;
@@ -257,12 +258,39 @@ export default class InteriorScene extends Phaser.Scene {
     this.events.once('shutdown', () => bus.off('close-note', this.onCloseNote));
   }
 
-  private renderFurniture(type: FurnitureId, gx: number, gy: number) {
+  private renderFurniture(type: FurnitureId, gx: number, gy: number, note?: NoteRef) {
     const key = `furn_${type}`;
     const [rx, ry, rw, rh] = FURNITURE_RECTS[type];
     const texture = this.textures.get(key);
     if (!texture.has(type)) texture.add(type, 0, rx, ry, rw, rh);
-    this.add.image(gx * TILE, gy * TILE, key, type).setOrigin(0, 0).setDepth(5);
+    const img = this.add.image(gx * TILE, gy * TILE, key, type).setOrigin(0, 0).setDepth(5);
+    if (note) {
+      img.setInteractive({ useHandCursor: true });
+      img.on('pointerdown', () => this.openNote(note));
+    }
+  }
+
+  private openNote(note: NoteRef) {
+    if (this.noteOpen || this.exiting) return;
+    this.noteOpen = true;
+    bus.emit('open-note', { note });
+  }
+
+  // 2x camera so a room fills the screen; a room smaller than the view is centred,
+  // a larger one scrolls with the player. Outside the room is dark, not black.
+  private fitCamera() {
+    if (!this.player) return;
+    const cam = this.cameras.main;
+    cam.setBackgroundColor('#141018');
+    cam.setZoom(2);
+    const roomW = this.width * TILE;
+    const roomH = this.height * TILE;
+    const viewW = cam.width / 2;
+    const viewH = cam.height / 2;
+    const bx = Math.min(0, Math.floor((roomW - viewW) / 2));
+    const by = Math.min(0, Math.floor((roomH - viewH) / 2));
+    cam.setBounds(bx, by, Math.max(roomW, viewW), Math.max(roomH, viewH));
+    cam.startFollow(this.player, true);
   }
 
   update() {
@@ -279,6 +307,7 @@ export default class InteriorScene extends Phaser.Scene {
         this.prevGx = gx;
         this.prevGy = gy;
         bus.emit('exit-house', undefined);
+        this.scene.stop();
         return;
       }
 
@@ -296,8 +325,7 @@ export default class InteriorScene extends Phaser.Scene {
     if (note) {
       this.indicator.setPosition(this.player.x, this.player.y - 34).setVisible(true);
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-        this.noteOpen = true;
-        bus.emit('open-note', { note });
+        this.openNote(note);
       }
     } else {
       this.indicator.setVisible(false);
