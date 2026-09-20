@@ -6,6 +6,9 @@
   justify-content: center;
   background: rgba(10, 10, 20, 0.9);
   z-index: 10;
+  /* Purely decorative: the vault buttons in app/page.tsx sit underneath this
+     overlay and must stay clickable. */
+  pointer-events: none;
 }
 
 .preview {
