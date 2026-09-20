@@ -1,4 +1,18 @@
 import Phaser from 'phaser';
+import type { FurnitureId } from '@/lib/types';
+
+// Pixel rects from the asset manifest, added as a frame named by FurnitureId:
+//   this.add.image(px, py, 'furn_bed', 'bed')
+const FURNITURE_RECT: Record<FurnitureId, [number, number, number, number]> = {
+  desk: [72, 8, 32, 48],
+  shelf: [16, 0, 32, 32],
+  bed: [0, 0, 32, 32],
+  chest: [0, 0, 16, 16],
+  plant: [32, 0, 16, 32],
+  painting: [48, 32, 16, 16],
+  lamp: [0, 0, 16, 32],
+  rug: [0, 0, 48, 48],
+};
 
 export default class BootScene extends Phaser.Scene {
   constructor() {
@@ -48,6 +62,11 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
+    for (const [id, [x, y, w, h]] of Object.entries(FURNITURE_RECT)) {
+      const key = `furn_${id}`;
+      if (this.textures.exists(key)) this.textures.get(key).add(id, 0, x, y, w, h);
+    }
+
     const facings: Array<['down' | 'right' | 'up', number]> = [
       ['down', 0],
       ['right', 1],
