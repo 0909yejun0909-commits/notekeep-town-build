@@ -9,11 +9,15 @@ export const HOUSE_DOOR: Record<number, [number, number]> = {
   0: [2, 6], 1: [2, 6], 2: [5, 6], 3: [2, 4], 4: [5, 6],
 };
 
+export const MAX_NOTES_PER_ROOM = 30;
+
 const ROOT_ID = '.';
 const MAIN = 'Main';
 const ROOM_CLEAR_ROWS = 3;
 const REGION_MARGIN = 2;
 const HOUSE_GAP = 3;
+const NOTE_EXT = /\.md$/i;
+const SKIP_NOTE = /\.excalidraw\.md$/i;
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
@@ -24,23 +28,53 @@ function baseName(path: string) {
 }
 
 function titleOf(path: string) {
-  return baseName(path).replace(/\.md$/i, '');
+  return baseName(path).replace(NOTE_EXT, '');
 }
 
+// Locale-independent so the same vault builds the same town on every machine.
+function comparePaths(a: string, b: string) {
+  const al = a.toLowerCase(), bl = b.toLowerCase();
+  if (al !== bl) return al < bl ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function isNotePath(path: string): boolean {
+  if (!NOTE_EXT.test(path) || SKIP_NOTE.test(path)) return false;
+  return !path.split('/').some((seg) => seg.startsWith('.'));
+}
+
+const ENTITIES: Record<string, string> = {
+  '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'",
+};
+
 export function plainPreview(md: string): string {
-  let s = md.replace(/^﻿/, '');
-  s = s.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
-  s = s.replace(/```[\s\S]*?(```|$)/g, ' ');
+  let s = md.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  s = s.replace(/\\([\\`*_{}[\]()#+\-.!|>~=$%])/g, (_m, c: string) => `\uE000${String.fromCharCode(0xe100 + c.charCodeAt(0))}`);
+  s = s.replace(/^---\n[\s\S]*?\n(---|\.\.\.)\n?/, '');
+  s = s.replace(/%%[\s\S]*?(%%|$)/g, ' ');
+  s = s.replace(/<!--[\s\S]*?(-->|$)/g, ' ');
+  s = s.replace(/^(```|~~~)[^\n]*\n[\s\S]*?(^\1[^\n]*$|$(?![\s\S]))/gm, ' ');
+  s = s.replace(/\$\$[\s\S]*?\$\$/g, ' ');
+  s = s.replace(/(^|[^\\$])\$(?!\s)[^$\n]*?[^\s\\$]\$(?!\d)/g, '$1 ');
   s = s.replace(/!\[\[[^\]]*\]\]/g, ' ');
   s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
-  s = s.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, '$2');
-  s = s.replace(/\[\[([^\]]*)\]\]/g, '$1');
+  s = s.replace(/\[\[([^\]|#]*)(#[^\]|]*)?(\|([^\]]*))?\]\]/g, (_m, target: string, _h, _p, alias?: string) =>
+    (alias ?? target).trim() || target.trim());
   s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
-  s = s.replace(/<[^>]+>/g, ' ');
-  s = s.replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s*)?|\d+[.)]\s+|[-*_]{3,}\s*$)/gm, '');
+  s = s.replace(/\[\^[^\]]*\]:?/g, '');
+  s = s.replace(/<[^>\n]+>/g, ' ');
+  s = s.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (m) => ENTITIES[m] ?? ' ');
+  s = s.replace(/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/gm, ' ');
+  s = s.replace(/^\s{0,3}>\s*\[![\w-]+\][+-]?\s*/gm, '');
+  s = s.replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX/-]\]\s*)?|\d+[.)]\s+|[-*_]{3,}\s*$)/gm, '');
+  s = s.replace(/\s\^[\w-]+$/gm, '');
+  s = s.replace(/==([^=\n]+)==/g, '$1');
+  s = s.replace(/[|]/g, ' ');
+  s = s.replace(/(\*{1,3}|_{1,3}|~~|`{1,3})(?=\S)([^*_~`\n]*?)(?<=\S)\1/g, '$2');
   s = s.replace(/[*_~`]+/g, '');
+  s = s.replace(/\uE000([\uE100-\uE1FF])/g, (_m, c: string) => String.fromCharCode(c.charCodeAt(0) - 0xe100));
   s = s.replace(/\s+/g, ' ').trim();
-  return s.slice(0, 200).replace(/�+$/, '');
+  return s.slice(0, 200).replace(/\uFFFD+$/, '').trimEnd();
 }
 
 // Layout contract shared with Track C:
@@ -134,20 +168,71 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
   return out;
 }
 
-export function isNotePath(path: string): boolean {
-  if (!/\.md$/i.test(path)) return false;
-  return !path.split('/').some((seg) => seg.startsWith('.'));
+// Obsidian-style link resolution: exact vault path first, then by file name
+// (with or without .md), preferring the candidate whose path ends with the link
+// and, among ties, the shortest path — the same rule Obsidian uses.
+export type LinkResolver = (link: string) => string | null;
+
+export function makeLinkResolver(paths: string[]): LinkResolver {
+  const exact = new Set(paths);
+  const byBase = new Map<string, string[]>();
+  const byStem = new Map<string, string[]>();
+  const push = (m: Map<string, string[]>, k: string, p: string) => {
+    const arr = m.get(k);
+    if (arr) arr.push(p); else m.set(k, [p]);
+  };
+  for (const p of paths) {
+    const base = baseName(p).toLowerCase();
+    push(byBase, base, p);
+    if (NOTE_EXT.test(base)) push(byStem, base.replace(NOTE_EXT, ''), p);
+  }
+  const shortest = (arr: string[]) =>
+    arr.slice().sort((a, b) => a.length - b.length || comparePaths(a, b))[0];
+
+  return (link) => {
+    let target = link.split('|')[0].split('#')[0].trim();
+    try { target = decodeURIComponent(target); } catch { /* keep raw */ }
+    target = target.replace(/\\/g, '/').replace(/^\.?\//, '').replace(/\/+$/, '');
+    if (!target) return null;
+    if (exact.has(target)) return target;
+    if (exact.has(`${target}.md`)) return `${target}.md`;
+    const lower = target.toLowerCase();
+    const base = lower.slice(lower.lastIndexOf('/') + 1);
+    const cands = byBase.get(base) ?? byStem.get(base) ?? [];
+    if (cands.length === 0) return null;
+    const suffix = cands.filter((p) => {
+      const pl = p.toLowerCase();
+      return pl === lower || pl.endsWith(`/${lower}`) || pl === `${lower}.md` || pl.endsWith(`/${lower}.md`);
+    });
+    return shortest(suffix.length ? suffix : cands);
+  };
+}
+
+function splitRoom(id: string, name: string, notes: NoteRef[]): Room[] {
+  if (notes.length <= MAX_NOTES_PER_ROOM) return [{ id, name, notes }];
+  const parts = Math.ceil(notes.length / MAX_NOTES_PER_ROOM);
+  const size = Math.ceil(notes.length / parts);
+  const rooms: Room[] = [];
+  for (let i = 0; i < parts; i++) {
+    rooms.push({
+      id: `${id}#${i + 1}`,
+      name: `${name} (${i + 1} of ${parts})`,
+      notes: notes.slice(i * size, (i + 1) * size),
+    });
+  }
+  return rooms;
 }
 
 // Folder → world mapping:
 //   depth 1 folder -> Region, depth 2 -> House, depth 3+ -> Room (deeper flattens),
 //   loose .md at depth 2 -> room "Main"; loose .md above that -> house/region "Main".
+//   Rooms holding more than MAX_NOTES_PER_ROOM notes split into numbered rooms.
 export async function parseVault(
   name: string,
   paths: string[],
   readHead: (path: string) => Promise<string>,
 ): Promise<WorldModel> {
-  const notePaths = paths.filter(isNotePath).sort((a, b) => a.localeCompare(b));
+  const notePaths = paths.filter(isNotePath).sort(comparePaths);
   const heads = await mapLimit(notePaths, 16, async (p) => {
     try { return await readHead(p); } catch { return ''; }
   });
@@ -188,9 +273,11 @@ export async function parseVault(
     for (const h of r.houses.values()) {
       const rooms: Room[] = [];
       for (const rm of h.rooms.values()) {
-        const { pos } = layoutRoom(rm.notes);
-        rm.notes.forEach((n, i) => { n.gx = pos[i][0]; n.gy = pos[i][1]; });
-        rooms.push({ id: rm.id, name: rm.name, notes: rm.notes });
+        for (const part of splitRoom(rm.id, rm.name, rm.notes)) {
+          const { pos } = layoutRoom(part.notes);
+          part.notes.forEach((n, i) => { n.gx = pos[i][0]; n.gy = pos[i][1]; });
+          rooms.push(part);
+        }
       }
       houses.push({ id: h.id, name: h.name, gx: 0, gy: 0, variant: hash(h.name) % 5, rooms });
     }
