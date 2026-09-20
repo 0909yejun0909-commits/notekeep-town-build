@@ -32,6 +32,8 @@ export type VaultHandle = {
   world: WorldModel;
   readNote: (id: string) => Promise<string>;
   readBinary: (path: string) => Promise<Blob>;
+  // Optional: absent means the vault is read-only.
+  writeNote?: (id: string, content: string) => Promise<void>;
 };
 
 // Every piece's footprint in tiles: [cols, rows]. Both the track that PLACES

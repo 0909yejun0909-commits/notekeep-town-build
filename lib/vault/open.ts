@@ -46,9 +46,15 @@ export async function openVault(): Promise<VaultHandle | null> {
 
   let dir: FileSystemDirectoryHandle;
   try {
-    dir = await picker.call(window, { mode: 'read' });
-  } catch {
-    return null;
+    // readwrite so notes can be edited in the book; fall back to read-only if the browser refuses.
+    dir = await picker.call(window, { mode: 'readwrite' });
+  } catch (err) {
+    if ((err as DOMException)?.name === 'AbortError') return null;
+    try {
+      dir = await picker.call(window, { mode: 'read' });
+    } catch {
+      return null;
+    }
   }
 
   const files = new Map<string, FileSystemFileHandle>();
@@ -57,12 +63,13 @@ export async function openVault(): Promise<VaultHandle | null> {
   const resolve = makeLinkResolver(paths);
 
   // Accepts a vault path or an Obsidian link target ("Note", "Note#Heading|alias", "img.png").
-  const getFile = async (link: string) => {
+  const getHandle = (link: string) => {
     const path = resolve(link);
     const handle = path ? files.get(path) : undefined;
     if (!handle) throw new Error(`No such file in vault: ${link}`);
-    return handle.getFile();
+    return handle;
   };
+  const getFile = (link: string) => getHandle(link).getFile();
 
   const world = await parseVault(dir.name, paths, async (p) =>
     (await getFile(p)).slice(0, HEAD_BYTES).text(),
@@ -73,18 +80,33 @@ export async function openVault(): Promise<VaultHandle | null> {
     world,
     readNote: async (id) => (await getFile(id)).text(),
     readBinary: (path) => getFile(path),
+    writeNote: async (id, content) => {
+      const handle = getHandle(id) as FileSystemFileHandle & {
+        queryPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>;
+        requestPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>;
+      };
+      if (handle.queryPermission && (await handle.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+        const state = await handle.requestPermission?.({ mode: 'readwrite' });
+        if (state !== 'granted') throw new Error('Write permission denied');
+      }
+      const writable = await handle.createWritable();
+      await writable.write(content);
+      await writable.close();
+    },
   };
 }
 
 export async function openDemoVault(): Promise<VaultHandle | null> {
-  const paths = Object.keys(DEMO_FILES);
+  // Own copy so edits made in the book stick for this session without touching the module constant.
+  const files: Record<string, string> = { ...DEMO_FILES };
+  const paths = Object.keys(files);
   const resolve = makeLinkResolver(paths);
-  const getText = (link: string) => {
+  const getPath = (link: string) => {
     const path = resolve(link);
-    const text = path ? DEMO_FILES[path] : undefined;
-    if (text === undefined) throw new Error(`No such file in vault: ${link}`);
-    return text;
+    if (!path || files[path] === undefined) throw new Error(`No such file in vault: ${link}`);
+    return path;
   };
+  const getText = (link: string) => files[getPath(link)];
 
   const world = await parseVault(DEMO_VAULT_NAME, paths, async (p) => getText(p).slice(0, HEAD_BYTES));
   publishWorld(world);
@@ -93,6 +115,9 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
     world,
     readNote: async (id) => getText(id),
     readBinary: async (path) => new Blob([getText(path)], { type: 'text/markdown' }),
+    writeNote: async (id, content) => {
+      files[getPath(id)] = content;
+    },
   };
 }
 
