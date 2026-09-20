@@ -12,12 +12,19 @@ export function dressPlayer(scene: Phaser.Scene, sprite: Phaser.GameObjects.Spri
     return layer;
   });
 
-  scene.events.on('update', () => {
-    for (const layer of layers) {
+  // Scenes that y-sort the player change its depth every frame; the layers must track it
+  // or the base body renders over its own clothes as soon as the player walks down.
+  const follow = () => {
+    if (!sprite.active) return;
+    layers.forEach((layer, i) => {
       layer.x = sprite.x;
       layer.y = sprite.y;
       layer.flipX = sprite.flipX;
       layer.setFrame(sprite.frame.name);
-    }
-  });
+      layer.setDepth(sprite.depth + (i + 1) * 0.01);
+    });
+  };
+
+  scene.events.on('update', follow);
+  scene.events.once('shutdown', () => scene.events.off('update', follow));
 }

@@ -32,10 +32,14 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
     callbacks: {
       postBoot: (game) => {
         window.addEventListener('resize', () => game.scale.setZoom(fitZoom()));
+        // SceneManager.start() does not stop the caller the way Scene.scene.start() does,
+        // so stop the scene we are leaving or both keep updating and rendering.
         bus.on('enter-house', ({ houseId }) => {
+          game.scene.stop('OverworldScene');
           game.scene.start('InteriorScene', { houseId });
         });
         bus.on('exit-house', () => {
+          game.scene.stop('InteriorScene');
           game.scene.start('OverworldScene');
         });
       },

@@ -64,9 +64,12 @@ export default class OverworldScene extends Phaser.Scene {
       spawnNpcs(this, region);
     });
 
+    // Coming back out of a house puts the player on the road in front of that door.
+    const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
+    this.game.registry.remove('returnTile');
     const first = entries[0];
-    let spawnGx = first ? first.gx : Math.floor(worldW / 2);
-    let spawnGy = first ? first.gy + 2 : Math.floor(worldH / 2);
+    let spawnGx = returnTile ? returnTile.gx : first ? first.gx : Math.floor(worldW / 2);
+    let spawnGy = returnTile ? returnTile.gy : first ? first.gy + 2 : Math.floor(worldH / 2);
     let guard = 0;
     while ((blocked.has(`${spawnGx},${spawnGy}`) || this.doors.has(`${spawnGx},${spawnGy}`)) && guard < worldH) {
       spawnGy += 1;
@@ -107,6 +110,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (this.doors.has(key) && !this.movement.isMoving()) {
       if (this.lastDoorKey !== key) {
         this.lastDoorKey = key;
+        this.game.registry.set('returnTile', { gx, gy: gy + 1 });
         bus.emit('enter-house', { houseId: this.doors.get(key)! });
       }
     } else if (!this.doors.has(key)) {
