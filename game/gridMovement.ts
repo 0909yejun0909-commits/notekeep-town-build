@@ -6,10 +6,10 @@ export type Direction = 'down' | 'right' | 'up' | 'left';
 
 export type Walkable = (gx: number, gy: number) => boolean;
 
-// Recommended sprite position: the bottom-centre of its tile, so with
-// setOrigin(0.5, 0.64) the feet stand on the tile. GridMovement itself keeps
-// whatever pixel offset the sprite was spawned with, so a sprite placed at
-// (gx*16, gy*16) keeps moving in exact multiples of 16 too.
+// Sprite position convention for every grid-walking sprite (player, NPCs):
+// (x, y) is the bottom-centre of its tile, so with setOrigin(0.5, 0.64) the feet
+// stand on the tile. Spawn with tileToWorld() and read tiles with getTile() or
+// worldToTile(); never derive a tile from x / 16 directly.
 export function tileToWorld(gx: number, gy: number): { x: number; y: number } {
   return { x: gx * TILE + TILE / 2, y: gy * TILE + TILE };
 }
@@ -32,15 +32,11 @@ export class GridMovement {
   private wasd: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private moving = false;
   private facing: Direction = 'down';
-  private offX: number;
-  private offY: number;
 
   constructor(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite, isWalkable: Walkable) {
     this.scene = scene;
     this.sprite = sprite;
     this.isWalkable = isWalkable;
-    this.offX = ((sprite.x % TILE) + TILE) % TILE;
-    this.offY = ((sprite.y % TILE) + TILE) % TILE;
 
     this.cursors = scene.input.keyboard!.createCursorKeys();
     this.wasd = scene.input.keyboard!.addKeys('W,A,S,D') as any;
@@ -48,20 +44,13 @@ export class GridMovement {
     sprite.play('idle-down');
   }
 
-  private toWorld(gx: number, gy: number) {
-    return { x: gx * TILE + this.offX, y: gy * TILE + this.offY };
-  }
-
   snapTo(gx: number, gy: number) {
-    const { x, y } = this.toWorld(gx, gy);
+    const { x, y } = tileToWorld(gx, gy);
     this.sprite.setPosition(x, y);
   }
 
   getTile(): { gx: number; gy: number } {
-    return {
-      gx: Math.round((this.sprite.x - this.offX) / TILE),
-      gy: Math.round((this.sprite.y - this.offY) / TILE),
-    };
+    return worldToTile(this.sprite.x, this.sprite.y);
   }
 
   getFacing(): Direction {
@@ -106,7 +95,7 @@ export class GridMovement {
     this.moving = true;
     this.sprite.play(`walk-${animDir}`, true);
 
-    const target = this.toWorld(targetGx, targetGy);
+    const target = tileToWorld(targetGx, targetGy);
     this.scene.tweens.add({
       targets: this.sprite,
       x: target.x,
