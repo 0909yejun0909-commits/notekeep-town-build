@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { VaultProvider, useVault, openVault, openDemoVault } from '@/lib/vault/open';
 import NoteReader from '@/components/NoteReader';
+import Bookshelf from '@/components/Bookshelf';
 import CharacterCreator from '@/components/CharacterCreator';
 import { bus } from '@/game/bus';
 import type { NoteRef } from '@/lib/types';
@@ -53,6 +54,7 @@ function Game() {
       )}
 
       <CharacterCreator visible={!vault} />
+      <Bookshelf />
       <NoteReader note={openNote} />
 
       {npcLine && (

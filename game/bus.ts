@@ -5,6 +5,8 @@ type BusEvents = {
   'exit-house': undefined;
   'open-note': { note: NoteRef };
   'close-note': undefined;
+  'open-shelf': { houseId: string };
+  'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
 };
 
