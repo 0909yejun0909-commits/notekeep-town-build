@@ -1,4 +1,10 @@
 import Phaser from 'phaser';
+import { hash } from '@/lib/types';
+
+const TILE = 16;
+const HOUSE_W: Record<number, number> = { 0: 6, 1: 9, 2: 9, 3: 7, 4: 12 };
+const HOUSE_H: Record<number, number> = { 0: 8, 1: 8, 2: 8, 3: 6, 4: 8 };
+const STREET = [0, 3, 1, 2, 4];
 
 export default class TitleScene extends Phaser.Scene {
   constructor() {
@@ -6,18 +12,69 @@ export default class TitleScene extends Phaser.Scene {
   }
 
   create() {
+    const draw = () => this.drawBackdrop();
+    draw();
+    this.scale.on(Phaser.Scale.Events.RESIZE, draw);
+    this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, draw));
+  }
+
+  // A little meadow with a street of houses, so the vault picker sits over the
+  // game instead of a black void. Redrawn on resize.
+  private drawBackdrop() {
+    this.children.removeAll(true);
     const { width, height } = this.scale;
+    const cols = Math.ceil(width / TILE);
+    const rows = Math.ceil(height / TILE);
+
+    this.add.tileSprite(0, 0, cols * TILE, rows * TILE, 'terrain-grass').setOrigin(0, 0);
+
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        if (hash(`title:flower:${gx}:${gy}`) % 19 !== 0) continue;
+        const frame = hash(`title:frame:${gx}:${gy}`) % 100;
+        this.add.image(gx * TILE + TILE / 2, gy * TILE + TILE / 2, 'flowers', frame);
+      }
+    }
+
+    const baseY = Math.floor(height * 0.78);
+    const gap = 3 * TILE;
+    const street: number[] = [];
+    let total = -gap;
+    for (const v of STREET) {
+      const w = HOUSE_W[v] * TILE + gap;
+      if (total + w > width - 4 * TILE) break;
+      street.push(v);
+      total += w;
+    }
+    let x = Math.floor((width - total) / 2);
+    for (const v of street) {
+      this.add.image(x, baseY - HOUSE_H[v] * TILE, `house-${v}`).setOrigin(0, 0);
+      x += HOUSE_W[v] * TILE + gap;
+    }
+
+    const treeY = baseY + TILE;
+    this.add.image(TILE, treeY, 'tree-oak', 1).setOrigin(0, 1);
+    this.add.image(width - 3 * TILE, treeY, 'tree-spruce', 2).setOrigin(0, 1);
+    this.add.image(Math.floor(width / 2) - TILE, height - TILE, 'tree-oak', 2).setOrigin(0, 1);
+
     this.add
-      .text(width / 2, height / 2 - 40, 'Notekeep Town', {
-        fontSize: '32px',
-        color: '#ffffff',
+      .text(Math.floor(width / 2), Math.floor(height * 0.28), 'Notekeep Town', {
+        fontFamily: 'monospace',
+        fontSize: '28px',
+        fontStyle: 'bold',
+        color: '#fff7e6',
+        stroke: '#3f2832',
+        strokeThickness: 6,
       })
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, height / 2 + 10, 'Open your vault to begin', {
-        fontSize: '16px',
-        color: '#cccccc',
+      .text(Math.floor(width / 2), Math.floor(height * 0.28) + 30, 'Your notes, as a town you can walk around', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: '#fff7e6',
+        stroke: '#3f2832',
+        strokeThickness: 4,
       })
       .setOrigin(0.5);
   }
