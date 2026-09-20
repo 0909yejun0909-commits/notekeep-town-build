@@ -24,5 +24,5 @@ export default function PhaserCanvas() {
     };
   }, []);
 
-  return <div ref={containerRef} />;
+  return <div ref={containerRef} className="absolute inset-0 flex items-center justify-center" />;
 }
