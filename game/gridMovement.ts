@@ -1,12 +1,29 @@
 import Phaser from 'phaser';
 
-const TILE = 16;
+export const TILE = 16;
 
-type Direction = 'down' | 'right' | 'up' | 'left';
+export type Direction = 'down' | 'right' | 'up' | 'left';
 
 export type Walkable = (gx: number, gy: number) => boolean;
 
+// Sprite position convention for every grid-walking sprite (player, NPCs):
+// the sprite's (x, y) is the bottom-centre of its tile, so with
+// setOrigin(0.5, 0.64) the feet stand on the tile.
+export function tileToWorld(gx: number, gy: number): { x: number; y: number } {
+  return { x: gx * TILE + TILE / 2, y: gy * TILE + TILE };
+}
+
+export function worldToTile(x: number, y: number): { gx: number; gy: number } {
+  return { gx: Math.round((x - TILE / 2) / TILE), gy: Math.round((y - TILE) / TILE) };
+}
+
+const DELTA: Record<Direction, [number, number]> = {
+  down: [0, 1], right: [1, 0], up: [0, -1], left: [-1, 0],
+};
+
 export class GridMovement {
+  enabled = true;
+
   private scene: Phaser.Scene;
   private sprite: Phaser.GameObjects.Sprite;
   private isWalkable: Walkable;
@@ -26,23 +43,43 @@ export class GridMovement {
     sprite.play('idle-down');
   }
 
+  snapTo(gx: number, gy: number) {
+    const { x, y } = tileToWorld(gx, gy);
+    this.sprite.setPosition(x, y);
+  }
+
+  getTile(): { gx: number; gy: number } {
+    return worldToTile(this.sprite.x, this.sprite.y);
+  }
+
+  getFacing(): Direction {
+    return this.facing;
+  }
+
+  facingTile(): { gx: number; gy: number } {
+    const { gx, gy } = this.getTile();
+    const [dx, dy] = DELTA[this.facing];
+    return { gx: gx + dx, gy: gy + dy };
+  }
+
+  isMoving(): boolean {
+    return this.moving;
+  }
+
   update() {
-    if (this.moving) return;
+    if (this.moving || !this.enabled) return;
 
-    let dx = 0, dy = 0;
     let dir: Direction | null = null;
-
-    if (this.cursors.left.isDown || this.wasd.A.isDown) { dx = -1; dir = 'left'; }
-    else if (this.cursors.right.isDown || this.wasd.D.isDown) { dx = 1; dir = 'right'; }
-    else if (this.cursors.up.isDown || this.wasd.W.isDown) { dy = -1; dir = 'up'; }
-    else if (this.cursors.down.isDown || this.wasd.S.isDown) { dy = 1; dir = 'down'; }
+    if (this.cursors.left.isDown || this.wasd.A.isDown) dir = 'left';
+    else if (this.cursors.right.isDown || this.wasd.D.isDown) dir = 'right';
+    else if (this.cursors.up.isDown || this.wasd.W.isDown) dir = 'up';
+    else if (this.cursors.down.isDown || this.wasd.S.isDown) dir = 'down';
 
     if (!dir) return;
 
     this.facing = dir;
-
-    const gx = Math.round(this.sprite.x / TILE);
-    const gy = Math.round(this.sprite.y / TILE);
+    const [dx, dy] = DELTA[dir];
+    const { gx, gy } = this.getTile();
     const targetGx = gx + dx;
     const targetGy = gy + dy;
 
@@ -57,10 +94,11 @@ export class GridMovement {
     this.moving = true;
     this.sprite.play(`walk-${animDir}`, true);
 
+    const target = tileToWorld(targetGx, targetGy);
     this.scene.tweens.add({
       targets: this.sprite,
-      x: targetGx * TILE,
-      y: targetGy * TILE,
+      x: target.x,
+      y: target.y,
       duration: 150,
       onComplete: () => {
         this.moving = false;
