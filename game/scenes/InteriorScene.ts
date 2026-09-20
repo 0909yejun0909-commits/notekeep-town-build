@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { bus } from '@/game/bus';
-import { GridMovement, type Walkable } from '@/game/gridMovement';
+import { GridMovement, tileToWorld, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { roomSize } from '@/lib/vault/parse';
 import { FOOTPRINT, hash } from '@/lib/types';
@@ -179,7 +179,11 @@ export default class InteriorScene extends Phaser.Scene {
 
     const occupied = new Set<string>();
     occupied.add(`${this.doorGx},${this.doorGy}`);
-    for (const d of this.roomDoors) occupied.add(`${d.gx},${d.gy}`);
+    occupied.add(`${this.doorGx},${this.doorGy - 1}`); // must stay clear or the player spawns boxed in
+    for (const d of this.roomDoors) {
+      occupied.add(`${d.gx},${d.gy}`);
+      occupied.add(`${d.gx},${d.gy + 1}`); // approach tile below each room doorway
+    }
 
     for (const note of room.notes) {
       const [fw, fh] = FOOTPRINT[note.furniture];
@@ -216,14 +220,17 @@ export default class InteriorScene extends Phaser.Scene {
       }
     }
 
-    this.player = this.add.sprite(this.doorGx * TILE, this.doorGy * TILE, 'player');
+    const spawnPos = tileToWorld(this.doorGx, this.doorGy);
+    this.player = this.add.sprite(spawnPos.x, spawnPos.y, 'player');
     this.player.setOrigin(0.5, 0.64);
     this.player.setDepth(10);
     dressPlayer(this, this.player);
 
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
+      if (gx === this.doorGx && gy === this.doorGy - 1) return true; // never trap the player at spawn
       if (this.roomDoors.some((d) => d.gx === gx && d.gy === gy)) return true;
+      if (this.roomDoors.some((d) => d.gx === gx && d.gy === gy + 1)) return true;
       if (gx <= 0 || gy <= 0 || gx >= w - 1 || gy >= h - 1) return false;
       if (this.blocked.has(`${gx},${gy}`)) return false;
       return true;
@@ -264,8 +271,7 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.movement.update();
 
-    const gx = Math.round(this.player.x / TILE);
-    const gy = Math.round(this.player.y / TILE);
+    const { gx, gy } = this.movement.getTile();
 
     if (gx !== this.prevGx || gy !== this.prevGy) {
       if (gx === this.doorGx && gy === this.doorGy) {
