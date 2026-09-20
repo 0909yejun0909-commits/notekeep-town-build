@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { WorldModel } from '@/lib/types';
 import { regionSize } from '@/lib/vault/parse';
 import { buildTilemap } from '@/game/tilemap';
-import { GridMovement } from '@/game/gridMovement';
+import { GridMovement, tileToWorld } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs } from '@/game/npc';
 import { bus } from '@/game/bus';
@@ -57,7 +57,8 @@ export default class OverworldScene extends Phaser.Scene {
       guard += 1;
     }
 
-    const player = this.add.sprite(spawnGx * TILE, spawnGy * TILE, 'player');
+    const spawnPos = tileToWorld(spawnGx, spawnGy);
+    const player = this.add.sprite(spawnPos.x, spawnPos.y, 'player');
     player.setOrigin(0.5, 0.64);
     player.setDepth(player.y);
     dressPlayer(this, player);
@@ -84,8 +85,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (!player) return;
     player.setDepth(player.y);
 
-    const gx = Math.round(player.x / TILE);
-    const gy = Math.round(player.y / TILE);
+    const { gx, gy } = this.movement.getTile();
     const key = `${gx},${gy}`;
 
     if (this.doors.has(key)) {

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { bus } from '@/game/bus';
-import { GridMovement, type Walkable } from '@/game/gridMovement';
+import { GridMovement, tileToWorld, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { roomSize } from '@/lib/vault/parse';
 import { FOOTPRINT, hash } from '@/lib/types';
@@ -216,7 +216,8 @@ export default class InteriorScene extends Phaser.Scene {
       }
     }
 
-    this.player = this.add.sprite(this.doorGx * TILE, this.doorGy * TILE, 'player');
+    const spawnPos = tileToWorld(this.doorGx, this.doorGy);
+    this.player = this.add.sprite(spawnPos.x, spawnPos.y, 'player');
     this.player.setOrigin(0.5, 0.64);
     this.player.setDepth(10);
     dressPlayer(this, this.player);
@@ -264,8 +265,7 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.movement.update();
 
-    const gx = Math.round(this.player.x / TILE);
-    const gy = Math.round(this.player.y / TILE);
+    const { gx, gy } = this.movement.getTile();
 
     if (gx !== this.prevGx || gy !== this.prevGy) {
       if (gx === this.doorGx && gy === this.doorGy) {

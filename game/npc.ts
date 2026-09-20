@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Region } from '@/lib/types';
 import { bus } from './bus';
+import { tileToWorld } from './gridMovement';
 
 // Hardcoded dialogue — no AI, no network call.
 const DIALOGUE: Record<string, string> = {
@@ -38,7 +39,8 @@ export function spawnNpcs(scene: Phaser.Scene, region: Region) {
 
     let gx = 3 + i * 3;
     let gy = 3;
-    const sprite = scene.add.sprite(gx * TILE + TILE / 2, gy * TILE + TILE / 2, npcId);
+    const spawnPos = tileToWorld(gx, gy);
+    const sprite = scene.add.sprite(spawnPos.x, spawnPos.y, npcId);
     sprite.setOrigin(0.5, 0.64);
     sprite.play(`${npcId}-idle-down`);
 
@@ -61,10 +63,11 @@ export function spawnNpcs(scene: Phaser.Scene, region: Region) {
         const animDir = dir === 'left' ? 'right' : dir;
         sprite.play(`${npcId}-walk-${animDir}`);
 
+        const target = tileToWorld(nx, ny);
         scene.tweens.add({
           targets: sprite,
-          x: nx * TILE + TILE / 2,
-          y: ny * TILE + TILE / 2,
+          x: target.x,
+          y: target.y,
           duration: 400,
           onComplete: () => {
             gx = nx;
