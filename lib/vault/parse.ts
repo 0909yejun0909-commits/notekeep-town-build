@@ -78,22 +78,29 @@ export function plainPreview(md: string): string {
 }
 
 // Layout contract shared with Track C:
-//   roomSize(room) = [cols, rows] of walkable floor tiles.
-//   note.gx/gy = 0-indexed top-left of the piece's FOOTPRINT on that floor.
-//   The bottom ROOM_CLEAR_ROWS rows never hold furniture (door + spawn space).
+//   roomSize(room) = [cols, rows] of the whole room. Column 0, column cols-1,
+//   row 0 and row rows-1 are the wall ring; the exit door sits on row rows-1 and
+//   doors to sibling rooms sit on row 0.
+//   note.gx/gy = 0-indexed top-left of the piece's FOOTPRINT. Furniture never
+//   touches the ring, never uses row 1 (so row-0 doors stay reachable), and the
+//   two floor rows above the exit door are always clear.
+const ROOM_LEFT = 1;
+const ROOM_TOP = 2;
+
 function layoutRoom(notes: NoteRef[]): { cols: number; rows: number; pos: [number, number][] } {
   let area = 0;
   for (const n of notes) {
     const [w, h] = FOOTPRINT[n.furniture];
     area += (w + 1) * (h + 1);
   }
-  const cols = clamp(Math.ceil(Math.sqrt(area * 1.6)), 8, 22);
+  const inner = clamp(Math.ceil(Math.sqrt(area * 1.6)), 8, 22);
+  const cols = inner + 2;
   const pos: [number, number][] = [];
-  let x = 0, y = 0, rowH = 0;
+  let x = ROOM_LEFT, y = ROOM_TOP, rowH = 0;
   for (const n of notes) {
     const [w, h] = FOOTPRINT[n.furniture];
-    if (x + w > cols && x > 0) {
-      x = 0;
+    if (x + w > cols - 1 && x > ROOM_LEFT) {
+      x = ROOM_LEFT;
       y += rowH + 1;
       rowH = 0;
     }
@@ -101,7 +108,7 @@ function layoutRoom(notes: NoteRef[]): { cols: number; rows: number; pos: [numbe
     x += w + 1;
     rowH = Math.max(rowH, h);
   }
-  const rows = Math.max(6, y + rowH + ROOM_CLEAR_ROWS);
+  const rows = Math.max(8, y + rowH + ROOM_CLEAR_ROWS);
   return { cols, rows, pos };
 }
 
@@ -110,7 +117,7 @@ export function roomSize(room: Room): [number, number] {
   let cols = l.cols, rows = l.rows;
   for (const n of room.notes) {
     const [w, h] = FOOTPRINT[n.furniture];
-    cols = Math.max(cols, n.gx + w);
+    cols = Math.max(cols, n.gx + w + 1);
     rows = Math.max(rows, n.gy + h + ROOM_CLEAR_ROWS);
   }
   return [cols, rows];
