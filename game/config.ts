@@ -31,16 +31,24 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
     },
     callbacks: {
       postBoot: (game) => {
-        window.addEventListener('resize', () => game.scale.setZoom(fitZoom()));
+        const onResize = () => game.scale.setZoom(fitZoom());
         // SceneManager.start() does not stop the caller the way Scene.scene.start() does,
         // so stop the scene we are leaving or both keep updating and rendering.
-        bus.on('enter-house', ({ houseId }) => {
+        const onEnter = ({ houseId }: { houseId: string }) => {
           game.scene.stop('OverworldScene');
           game.scene.start('InteriorScene', { houseId });
-        });
-        bus.on('exit-house', () => {
+        };
+        const onExit = () => {
           game.scene.stop('InteriorScene');
           game.scene.start('OverworldScene');
+        };
+        window.addEventListener('resize', onResize);
+        bus.on('enter-house', onEnter);
+        bus.on('exit-house', onExit);
+        game.events.once(Phaser.Core.Events.DESTROY, () => {
+          window.removeEventListener('resize', onResize);
+          bus.off('enter-house', onEnter);
+          bus.off('exit-house', onExit);
         });
       },
     },
