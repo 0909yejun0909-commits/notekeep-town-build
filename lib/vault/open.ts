@@ -2,7 +2,7 @@
 
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
 import type { VaultHandle, WorldModel } from '@/lib/types';
-import { parseVault } from '@/lib/vault/parse';
+import { makeLinkResolver, parseVault } from '@/lib/vault/parse';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 
 const HEAD_BYTES = 2048;
@@ -23,11 +23,15 @@ async function walk(
   prefix: string,
   out: Map<string, FileSystemFileHandle>,
 ) {
-  for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
-    if (name.startsWith('.')) continue;
-    const path = prefix ? `${prefix}/${name}` : name;
-    if (handle.kind === 'directory') await walk(handle as FileSystemDirectoryHandle, path, out);
-    else out.set(path, handle as FileSystemFileHandle);
+  try {
+    for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
+      if (name.startsWith('.')) continue;
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (handle.kind === 'directory') await walk(handle as FileSystemDirectoryHandle, path, out);
+      else out.set(path, handle as FileSystemFileHandle);
+    }
+  } catch {
+    // A folder the browser cannot list (cloud placeholder, permission) is skipped, not fatal.
   }
 }
 
@@ -49,14 +53,18 @@ export async function openVault(): Promise<VaultHandle | null> {
 
   const files = new Map<string, FileSystemFileHandle>();
   await walk(dir, '', files);
+  const paths = [...files.keys()];
+  const resolve = makeLinkResolver(paths);
 
-  const getFile = async (path: string) => {
-    const handle = files.get(path);
-    if (!handle) throw new Error(`No such file in vault: ${path}`);
+  // Accepts a vault path or an Obsidian link target ("Note", "Note#Heading|alias", "img.png").
+  const getFile = async (link: string) => {
+    const path = resolve(link);
+    const handle = path ? files.get(path) : undefined;
+    if (!handle) throw new Error(`No such file in vault: ${link}`);
     return handle.getFile();
   };
 
-  const world = await parseVault(dir.name, [...files.keys()], async (p) =>
+  const world = await parseVault(dir.name, paths, async (p) =>
     (await getFile(p)).slice(0, HEAD_BYTES).text(),
   );
   publishWorld(world);
@@ -70,17 +78,21 @@ export async function openVault(): Promise<VaultHandle | null> {
 
 export async function openDemoVault(): Promise<VaultHandle | null> {
   const paths = Object.keys(DEMO_FILES);
-  const world = await parseVault(DEMO_VAULT_NAME, paths, async (p) => DEMO_FILES[p].slice(0, HEAD_BYTES));
+  const resolve = makeLinkResolver(paths);
+  const getText = (link: string) => {
+    const path = resolve(link);
+    const text = path ? DEMO_FILES[path] : undefined;
+    if (text === undefined) throw new Error(`No such file in vault: ${link}`);
+    return text;
+  };
+
+  const world = await parseVault(DEMO_VAULT_NAME, paths, async (p) => getText(p).slice(0, HEAD_BYTES));
   publishWorld(world);
 
   return {
     world,
-    readNote: async (id) => {
-      const text = DEMO_FILES[id];
-      if (text === undefined) throw new Error(`No such file in vault: ${id}`);
-      return text;
-    },
-    readBinary: async () => new Blob([]),
+    readNote: async (id) => getText(id),
+    readBinary: async (path) => new Blob([getText(path)], { type: 'text/markdown' }),
   };
 }
 
