@@ -1,16 +1,17 @@
 import Phaser from 'phaser';
 import type { WorldModel } from '@/lib/types';
 import { regionSize } from '@/lib/vault/parse';
-import { buildTilemap } from '@/game/tilemap';
-import { GridMovement, tileToWorld } from '@/game/gridMovement';
+import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
+import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { bus } from '@/game/bus';
 
-const TILE = 16;
+const REGION_PAD = 6;
 
 export default class OverworldScene extends Phaser.Scene {
   private movement: GridMovement | null = null;
+  private player: Phaser.GameObjects.Sprite | null = null;
   private doors = new Map<string, string>();
   private lastDoorKey: string | null = null;
 
@@ -28,45 +29,62 @@ export default class OverworldScene extends Phaser.Scene {
     const sizes = world.regions.map((r) => regionSize(r));
     const cols = Math.max(1, Math.ceil(Math.sqrt(world.regions.length)));
     const rows = Math.max(1, Math.ceil(world.regions.length / cols));
-    const pad = 4;
     const maxW = Math.max(...sizes.map(([w]) => w));
     const maxH = Math.max(...sizes.map(([, h]) => h));
-    const cellW = maxW + pad;
-    const cellH = maxH + pad;
+    const cellW = maxW + REGION_PAD;
+    const cellH = maxH + REGION_PAD;
+    const worldW = cols * cellW;
+    const worldH = rows * cellH;
+
+    this.add
+      .tileSprite(0, 0, worldW * TILE, worldH * TILE, 'terrain-grass')
+      .setOrigin(0, 0)
+      .setDepth(-1000);
 
     const blocked = new Set<string>();
+    const entries: Entry[] = [];
+    const origins: [number, number][] = [];
     const areas: NpcSpawnArea[] = [];
 
     world.regions.forEach((region, i) => {
-      const [w, h] = sizes[i];
-      const originGx = (i % cols) * cellW;
-      const originGy = Math.floor(i / cols) * cellH;
-      areas.push({ originGx, originGy, width: w, height: h });
-      const result = buildTilemap(this, region, originGx, originGy, w, h);
+      const originGx = (i % cols) * cellW + Math.floor(REGION_PAD / 2);
+      const originGy = Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
+      origins.push([originGx, originGy]);
+      areas.push({ originGx, originGy, width: sizes[i][0], height: sizes[i][1] });
+      const result = buildHouses(this, region, originGx, originGy);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
+      entries.push(...result.entries);
     });
 
-    const worldWidthPx = cols * cellW * TILE;
-    const worldHeightPx = rows * cellH * TILE;
+    const road = buildRoads(this, entries, blocked, worldW, worldH);
 
+    world.regions.forEach((region, i) => {
+      const [w, h] = sizes[i];
+      const [ox, oy] = origins[i];
+      scatterDecoration(this, region, ox, oy, w, h, blocked, this.doors, road);
+    });
+
+    // Coming back out of a house: respawn just below the door we left through.
     const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
-    let spawnGx = returnTile ? returnTile.gx : Math.floor(cellW / 2);
-    let spawnGy = returnTile ? returnTile.gy : Math.floor(cellH / 2);
+    const first = entries[0];
+    let spawnGx = returnTile ? returnTile.gx : first ? first.gx : Math.floor(worldW / 2);
+    let spawnGy = returnTile ? returnTile.gy : first ? first.gy + 2 : Math.floor(worldH / 2);
     let guard = 0;
-    while (blocked.has(`${spawnGx},${spawnGy}`) && guard < cellH) {
+    while ((blocked.has(`${spawnGx},${spawnGy}`) || this.doors.has(`${spawnGx},${spawnGy}`)) && guard < worldH) {
       spawnGy += 1;
       guard += 1;
     }
 
-    const spawnPos = tileToWorld(spawnGx, spawnGy);
-    const player = this.add.sprite(spawnPos.x, spawnPos.y, 'player');
+    const spawn = tileToWorld(spawnGx, spawnGy);
+    const player = this.add.sprite(spawn.x, spawn.y, 'player');
     player.setOrigin(0.5, 0.64);
     player.setDepth(player.y);
     dressPlayer(this, player);
+    this.player = player;
 
     const isWalkable = (gx: number, gy: number) => {
-      if (gx < 0 || gy < 0 || gx >= cols * cellW || gy >= rows * cellH) return false;
+      if (gx < 0 || gy < 0 || gx >= worldW || gy >= worldH) return false;
       return !blocked.has(`${gx},${gy}`);
     };
 
@@ -74,19 +92,17 @@ export default class OverworldScene extends Phaser.Scene {
 
     this.game.registry.set('player', player);
     this.game.registry.set('isWalkable', isWalkable);
-    if (returnTile) this.lastDoorKey = `${spawnGx},${spawnGy}`;
 
     // NPCs read isWalkable from the registry, so they spawn only after it is published.
     world.regions.forEach((region, i) => spawnNpcs(this, region, areas[i]));
 
-    // Grass-coloured backdrop so gaps between regions and any space beyond the
-    // world read as meadow, and a world smaller than the view sits centred.
+    // Grass backdrop beyond the world edge, and a world smaller than the view sits centred.
     const cam = this.cameras.main;
     cam.setBackgroundColor('#3E8948');
     const fit = () => {
-      const bx = Math.min(0, Math.floor((worldWidthPx - cam.width) / 2));
-      const by = Math.min(0, Math.floor((worldHeightPx - cam.height) / 2));
-      cam.setBounds(bx, by, Math.max(worldWidthPx, cam.width), Math.max(worldHeightPx, cam.height));
+      const bx = Math.min(0, Math.floor((worldW * TILE - cam.width) / 2));
+      const by = Math.min(0, Math.floor((worldH * TILE - cam.height) / 2));
+      cam.setBounds(bx, by, Math.max(worldW * TILE, cam.width), Math.max(worldH * TILE, cam.height));
     };
     fit();
     this.scale.on(Phaser.Scale.Events.RESIZE, fit);
@@ -95,17 +111,16 @@ export default class OverworldScene extends Phaser.Scene {
   }
 
   update() {
-    if (!this.movement) return;
+    if (!this.movement || !this.player) return;
     this.movement.update();
 
-    const player = this.game.registry.get('player') as Phaser.GameObjects.Sprite | undefined;
-    if (!player) return;
+    const player = this.player;
     player.setDepth(player.y);
 
-    const { gx, gy } = this.movement.getTile();
+    const { gx, gy } = worldToTile(player.x, player.y);
     const key = `${gx},${gy}`;
 
-    if (this.doors.has(key)) {
+    if (this.doors.has(key) && !this.movement.isMoving()) {
       if (this.lastDoorKey !== key) {
         this.lastDoorKey = key;
         this.game.registry.set('returnTile', { gx, gy });
@@ -113,7 +128,7 @@ export default class OverworldScene extends Phaser.Scene {
         this.scene.stop();
         return;
       }
-    } else {
+    } else if (!this.doors.has(key)) {
       this.lastDoorKey = null;
     }
   }
