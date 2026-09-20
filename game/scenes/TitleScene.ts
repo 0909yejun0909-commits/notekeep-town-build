@@ -58,7 +58,7 @@ export default class TitleScene extends Phaser.Scene {
     this.add.image(Math.floor(width / 2) - TILE, height - TILE, 'tree-oak', 2).setOrigin(0, 1);
 
     this.add
-      .text(Math.floor(width / 2), Math.floor(height * 0.28), 'Notekeep Town', {
+      .text(Math.floor(width / 2), Math.floor(height * 0.2), 'Notekeep Town', {
         fontFamily: 'monospace',
         fontSize: '28px',
         fontStyle: 'bold',
@@ -69,7 +69,7 @@ export default class TitleScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(Math.floor(width / 2), Math.floor(height * 0.28) + 30, 'Your notes, as a town you can walk around', {
+      .text(Math.floor(width / 2), Math.floor(height * 0.2) + 30, 'Your notes, as a town you can walk around', {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#fff7e6',
