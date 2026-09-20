@@ -43,14 +43,13 @@ export default class OverworldScene extends Phaser.Scene {
 
     const blocked = new Set<string>();
     const entries: Entry[] = [];
-    const origins: [number, number][] = [];
     const areas: NpcSpawnArea[] = [];
 
     world.regions.forEach((region, i) => {
+      const [w, h] = sizes[i];
       const originGx = (i % cols) * cellW + Math.floor(REGION_PAD / 2);
       const originGy = Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
-      origins.push([originGx, originGy]);
-      areas.push({ originGx, originGy, width: sizes[i][0], height: sizes[i][1] });
+      areas.push({ originGx, originGy, width: w, height: h });
       const result = buildHouses(this, region, originGx, originGy);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
@@ -60,13 +59,13 @@ export default class OverworldScene extends Phaser.Scene {
     const road = buildRoads(this, entries, blocked, worldW, worldH);
 
     world.regions.forEach((region, i) => {
-      const [w, h] = sizes[i];
-      const [ox, oy] = origins[i];
-      scatterDecoration(this, region, ox, oy, w, h, blocked, this.doors, road);
+      const a = areas[i];
+      scatterDecoration(this, region, a.originGx, a.originGy, a.width, a.height, blocked, this.doors, road);
     });
 
-    // Coming back out of a house: respawn just below the door we left through.
+    // Coming back out of a house puts the player on the road in front of that door.
     const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
+    this.game.registry.remove('returnTile');
     const first = entries[0];
     let spawnGx = returnTile ? returnTile.gx : first ? first.gx : Math.floor(worldW / 2);
     let spawnGy = returnTile ? returnTile.gy : first ? first.gy + 2 : Math.floor(worldH / 2);
@@ -96,13 +95,16 @@ export default class OverworldScene extends Phaser.Scene {
     // NPCs read isWalkable from the registry, so they spawn only after it is published.
     world.regions.forEach((region, i) => spawnNpcs(this, region, areas[i]));
 
-    // Grass backdrop beyond the world edge, and a world smaller than the view sits centred.
+    // Grass-coloured backdrop so any space beyond the world reads as meadow, and a
+    // world smaller than the view sits centred instead of hugging the top-left.
     const cam = this.cameras.main;
     cam.setBackgroundColor('#3E8948');
+    const worldWidthPx = worldW * TILE;
+    const worldHeightPx = worldH * TILE;
     const fit = () => {
-      const bx = Math.min(0, Math.floor((worldW * TILE - cam.width) / 2));
-      const by = Math.min(0, Math.floor((worldH * TILE - cam.height) / 2));
-      cam.setBounds(bx, by, Math.max(worldW * TILE, cam.width), Math.max(worldH * TILE, cam.height));
+      const bx = Math.min(0, Math.floor((worldWidthPx - cam.width) / 2));
+      const by = Math.min(0, Math.floor((worldHeightPx - cam.height) / 2));
+      cam.setBounds(bx, by, Math.max(worldWidthPx, cam.width), Math.max(worldHeightPx, cam.height));
     };
     fit();
     this.scale.on(Phaser.Scale.Events.RESIZE, fit);
@@ -123,9 +125,8 @@ export default class OverworldScene extends Phaser.Scene {
     if (this.doors.has(key) && !this.movement.isMoving()) {
       if (this.lastDoorKey !== key) {
         this.lastDoorKey = key;
-        this.game.registry.set('returnTile', { gx, gy });
+        this.game.registry.set('returnTile', { gx, gy: gy + 1 });
         bus.emit('enter-house', { houseId: this.doors.get(key)! });
-        this.scene.stop();
         return;
       }
     } else if (!this.doors.has(key)) {

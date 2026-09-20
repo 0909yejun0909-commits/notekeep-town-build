@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'CuteFantasy';
+  src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

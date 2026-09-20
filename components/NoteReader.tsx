@@ -120,21 +120,16 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     if (!note) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        e.stopPropagation();
         bus.emit('close-note', undefined);
       }
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [note]);
 
   return (
     <>
-      <style>{`
-        @font-face {
-          font-family: 'CuteFantasy';
-          src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
-        }
-      `}</style>
       {note && (
         <div
           className="absolute inset-0 z-50 flex items-center justify-center bg-black/70"
