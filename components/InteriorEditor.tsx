@@ -222,7 +222,7 @@ export default function InteriorEditor() {
 
         <div
           className="relative grid border border-neutral-700"
-          style={{ gridTemplateColumns: `repeat(${w}, 14px)`, gridTemplateRows: `repeat(${h}, 14px)` }}
+          style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
         >
           {Array.from({ length: h }).map((_, gy) =>
             Array.from({ length: w }).map((_, gx) => {
@@ -244,6 +244,34 @@ export default function InteriorEditor() {
               );
             }),
           )}
+
+          {draft.placements.map((p, i) => {
+            const entry = CATALOG_BY_ID[p.item];
+            if (!entry) return null;
+            const [fw, fh] = entry.footprint;
+            const [rx, ry] = entry.rect;
+            const isQuarterTurn = entry.rotations.length > 2;
+            return (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: p.gx * 16,
+                  top: p.gy * 16,
+                  width: fw * 16,
+                  height: fh * 16,
+                  backgroundImage: `url(${entry.sheetUrl})`,
+                  backgroundPosition: `-${rx}px -${ry}px`,
+                  imageRendering: 'pixelated',
+                  pointerEvents: 'none',
+                  outline: i === selected ? '2px solid #facc15' : undefined,
+                  outlineOffset: i === selected ? '-2px' : undefined,
+                  transform: isQuarterTurn ? `rotate(${p.rotation}deg)` : p.rotation === 180 ? 'scaleX(-1)' : undefined,
+                  transformOrigin: 'center center',
+                }}
+              />
+            );
+          })}
         </div>
 
         {error && <span className="text-xs text-red-400">{error}</span>}

@@ -59,6 +59,12 @@ export type CatalogEntry = {
   frameKey: string;
   footprint: [number, number];
   rotations: Array<0 | 90 | 180 | 270>;
+  // Where to crop this item's sprite from, for rendering a real thumbnail in
+  // the editor's grid (CSS background-position, not a Phaser texture frame —
+  // duplicates BootScene.ts's pixel rects since that one carves Phaser frames
+  // and this one crops a plain <img>, and the two can't share a data format).
+  sheetUrl: string;
+  rect: [number, number, number, number];
 };
 
 export type FurniturePlacement = {
