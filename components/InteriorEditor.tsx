@@ -239,6 +239,15 @@ export default function InteriorEditor() {
                   }}
                   disabled={isStructural}
                   onClick={() => onCellClick(gx, gy)}
+                  onDragOver={(e) => {
+                    if (moving === null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    onCellClick(gx, gy);
+                  }}
                   title={idx !== null ? draft.placements[idx].item : ''}
                 />
               );
@@ -254,6 +263,29 @@ export default function InteriorEditor() {
             return (
               <div
                 key={i}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', String(i));
+                  setError(null);
+                  setPicking(null);
+                  setSelected(i);
+                  setMoving(i);
+                }}
+                onDragEnd={() => setMoving((m) => (m === i ? null : m))}
+                onDragOver={(e) => {
+                  if (moving === null) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  onCellClick(p.gx, p.gy);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCellClick(p.gx, p.gy);
+                }}
                 style={{
                   position: 'absolute',
                   left: p.gx * 16,
@@ -263,7 +295,7 @@ export default function InteriorEditor() {
                   backgroundImage: `url(${entry.sheetUrl})`,
                   backgroundPosition: `-${rx}px -${ry}px`,
                   imageRendering: 'pixelated',
-                  pointerEvents: 'none',
+                  cursor: moving === i ? 'grabbing' : 'grab',
                   outline: i === selected ? '2px solid #facc15' : undefined,
                   outlineOffset: i === selected ? '-2px' : undefined,
                   transform: isQuarterTurn ? `rotate(${p.rotation}deg)` : p.rotation === 180 ? 'scaleX(-1)' : undefined,
@@ -275,7 +307,7 @@ export default function InteriorEditor() {
         </div>
 
         {error && <span className="text-xs text-red-400">{error}</span>}
-        {moving !== null && <span className="text-xs text-yellow-400">Click a cell to move it there.</span>}
+        {moving !== null && <span className="text-xs text-yellow-400">Drag it, or click a cell to move it there.</span>}
 
         {picking && (
           <div className="flex flex-wrap gap-2">
