@@ -27,6 +27,7 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
     width,
     height,
     zoom: ZOOM,
+    fps: { forceSetTimeOut: true },
     scene: [BootScene, TitleScene, OverworldScene, InteriorScene],
     physics: {
       default: 'arcade',
