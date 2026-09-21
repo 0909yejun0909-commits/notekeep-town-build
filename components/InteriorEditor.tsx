@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_ID } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, structuralOccupied, shelfOccupied, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import { canPlace, canPlaceShelf, canResize, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogItemId, FurniturePlacement, InteriorLayout } from '@/lib/types';
 
 // Matches game/scenes/BootScene.ts's FURNITURE_RECT.shelf exactly — the shelf
@@ -12,7 +12,7 @@ import type { CatalogItemId, FurniturePlacement, InteriorLayout } from '@/lib/ty
 const SHELF_SHEET_URL = '/assets/furniture/bookshelves.png';
 const SHELF_RECT: [number, number, number, number] = [16, 0, 32, 32];
 
-type Session = { houseId: string; w: number; h: number; doorGx: number; doorGy: number };
+type Session = { houseId: string };
 // A selection/move target is either one furniture placement (its index) or
 // the shelf, which isn't part of `placements` — it's always present, always
 // the same style, only its position is editable.
@@ -73,7 +73,8 @@ export default function InteriorEditor() {
 
   if (!session || !draft) return null;
 
-  const { w, h, doorGx } = session;
+  const [w, h] = ROOM_SIZES[draft.roomSize];
+  const [doorGx, doorGy] = doorPositionFor(w, h);
   // A fresh non-null binding: nested function declarations below close over `draft`
   // without narrowing (TS doesn't carry the early-return null check across function
   // boundaries), so they read this instead.
@@ -256,6 +257,28 @@ export default function InteriorEditor() {
             />
           ))}
         </div>
+        <div className="flex gap-2">
+          <span className="text-xs uppercase text-neutral-400">Room Size</span>
+          {(['small', 'medium', 'large'] as const).map((size) => (
+            <button
+              key={size}
+              className={`rounded border px-2 py-1 text-xs capitalize ${
+                draft.roomSize === size ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'
+              }`}
+              onClick={() => {
+                const [newW, newH] = ROOM_SIZES[size];
+                if (!canResize(draft, CATALOG_BY_ID, newW, newH)) {
+                  setError("Some furniture won't fit at this size — move or remove it first.");
+                  return;
+                }
+                setError(null);
+                setDraft({ ...draft, roomSize: size });
+              }}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
 
         <div
           className="relative grid border border-neutral-700"
@@ -266,7 +289,7 @@ export default function InteriorEditor() {
               const idx = cellPlacementIndex(gx, gy);
               const onShelf = isShelfCell(gx, gy);
               const isStructural = structural.has(`${gx},${gy}`);
-              const isDoor = gx === doorGx && gy === session.doorGy;
+              const isDoor = gx === doorGx && gy === doorGy;
               return (
                 <button
                   key={`${gx},${gy}`}
