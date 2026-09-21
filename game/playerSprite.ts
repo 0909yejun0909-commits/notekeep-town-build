@@ -27,8 +27,13 @@ export function dressPlayer(scene: Phaser.Scene, sprite: Phaser.GameObjects.Spri
   };
   tick();
 
-  scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
+  // POST_UPDATE, not UPDATE: UPDATE fires before the scene's own update() sets
+  // the base sprite's depth for this frame (depth = y, so it changes every frame
+  // while walking). Syncing on UPDATE copies last frame's stale, smaller depth
+  // while walking down (y increasing) — base ends up drawn in front of its own
+  // clothes for that one direction only.
+  scene.events.on(Phaser.Scenes.Events.POST_UPDATE, tick);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-    scene.events.off(Phaser.Scenes.Events.UPDATE, tick);
+    scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
   });
 }
