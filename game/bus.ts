@@ -1,4 +1,4 @@
-import type { NoteRef } from '@/lib/types';
+import type { InteriorLayout, NoteRef } from '@/lib/types';
 
 type BusEvents = {
   'enter-house': { houseId: string };
@@ -8,6 +8,9 @@ type BusEvents = {
   'open-shelf': { houseId: string };
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
+  'open-interior-editor': { houseId: string; w: number; h: number; doorGx: number; doorGy: number; layout: InteriorLayout };
+  'close-interior-editor': undefined;
+  'commit-interior-layout': { houseId: string; layout: InteriorLayout };
 };
 
 type Callback<K extends keyof BusEvents> = (payload: BusEvents[K]) => void;
