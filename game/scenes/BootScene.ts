@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { FurnitureId } from '@/lib/types';
+import { CATALOG } from '@/lib/catalog';
 
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
 //   this.add.image(px, py, 'furn_bed', 'bed')
@@ -12,6 +13,27 @@ const FURNITURE_RECT: Record<FurnitureId, [number, number, number, number]> = {
   painting: [48, 32, 16, 16],
   lamp: [0, 0, 16, 32],
   rug: [0, 0, 48, 48],
+};
+
+// Colour/species variants beyond the base 8 FurnitureId frames above — rects come
+// straight from docs/ASSETS.md's documented deltas, never guessed.
+const VARIANT_RECT: Record<string, [number, number, number, number]> = {
+  bed_blue: [0, 32, 32, 32],
+  bed_green: [0, 64, 32, 32],
+  bed_pink: [0, 96, 32, 32],
+  bed_yellow: [0, 128, 32, 32],
+  bed_red: [0, 160, 32, 32],
+  rug_cyan: [0, 80, 48, 48],
+  lamp_blue: [32, 0, 16, 32],
+  lamp_green: [64, 0, 16, 32],
+  lamp_pink: [96, 0, 16, 32],
+  lamp_yellow: [128, 0, 16, 32],
+  plant_a: [0, 0, 16, 32],
+  plant_b: [16, 0, 16, 32],
+  plant_c: [48, 0, 16, 32],
+  plant_d: [64, 0, 16, 32],
+  plant_e: [80, 0, 16, 32],
+  plant_f: [96, 0, 16, 32],
 };
 
 export default class BootScene extends Phaser.Scene {
@@ -65,6 +87,15 @@ export default class BootScene extends Phaser.Scene {
     for (const [id, [x, y, w, h]] of Object.entries(FURNITURE_RECT)) {
       const key = `furn_${id}`;
       if (this.textures.exists(key)) this.textures.get(key).add(id, 0, x, y, w, h);
+    }
+    for (const entry of CATALOG) {
+      if (entry.frameKey in FURNITURE_RECT) continue; // already carved above
+      const rect = VARIANT_RECT[entry.frameKey];
+      if (!rect) continue;
+      const [x, y, w, h] = rect;
+      if (this.textures.exists(entry.textureKey)) {
+        this.textures.get(entry.textureKey).add(entry.frameKey, 0, x, y, w, h);
+      }
     }
 
     const facings: Array<['down' | 'right' | 'up', number]> = [
