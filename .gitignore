@@ -43,3 +43,6 @@ next-env.d.ts
 # licensed art, never committed
 /public/assets
 /kenmi-art.zip
+
+# scratch worktrees for plan execution
+/.worktrees
