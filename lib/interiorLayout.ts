@@ -23,33 +23,37 @@ export function footprintCells(gx: number, gy: number, fw: number, fh: number): 
   return cells;
 }
 
-// Tiles no placement may ever occupy: perimeter walls, the back wall behind the
-// shelf, the fixed 3-segment shelf itself, its approach row, and the clear lane
-// from the door up to the shelf. Shared by the default-layout generator and the
-// editor's placement validation so they can never disagree about what's free.
-export function structuralOccupied(w: number, h: number, doorGx: number, shelfGx: number): Set<string> {
+// Tiles no placement may ever occupy: perimeter walls, and the clear lane
+// from the door towards the back of the room. Shared by the default-layout
+// generator and the editor's placement validation so they can never disagree
+// about what's free. Does NOT include the shelf's own footprint — the shelf
+// can move now, so its occupied cells are computed separately by
+// `shelfOccupied()` and unioned in by the caller, wherever it currently is.
+export function structuralOccupied(w: number, h: number, doorGx: number): Set<string> {
   const occupied = new Set<string>();
   for (let x = 0; x < w; x++) {
     occupied.add(`${x},0`);
-    occupied.add(`${x},${SHELF_GY}`);
     occupied.add(`${x},${h - 1}`);
   }
   for (let y = 0; y < h; y++) {
     occupied.add(`0,${y}`);
     occupied.add(`${w - 1},${y}`);
   }
-  for (let s = 0; s < SHELF_SEGMENTS; s++) {
-    const gx = shelfGx + s * 2;
-    for (let dx = 0; dx < 2; dx++) {
-      for (let dy = 0; dy < 2; dy++) occupied.add(`${gx + dx},${SHELF_GY + dy}`);
-    }
-  }
-  for (let x = shelfGx; x < shelfGx + SHELF_W; x++) occupied.add(`${x},${SHELF_GY + 2}`);
   for (let y = SHELF_GY + 2; y < h; y++) {
     occupied.add(`${doorGx},${y}`);
     occupied.add(`${doorGx - 1},${y}`);
     occupied.add(`${doorGx + 1},${y}`);
   }
+  return occupied;
+}
+
+// The shelf's own footprint (SHELF_W x 2 tiles) plus its approach row
+// immediately below it — wherever it currently sits. Union this with
+// `structuralOccupied()` to get "everything furniture must avoid."
+export function shelfOccupied(shelfGx: number, shelfGy: number): Set<string> {
+  const occupied = new Set<string>();
+  for (const cell of footprintCells(shelfGx, shelfGy, SHELF_W, 2)) occupied.add(cell);
+  for (let x = shelfGx; x < shelfGx + SHELF_W; x++) occupied.add(`${x},${shelfGy + 2}`);
   return occupied;
 }
 
@@ -89,13 +93,15 @@ export function shelfGxFor(w: number): number {
 // saved layout exists, and to seed the editor's first draft for an untouched house.
 export function computeDefaultLayout(house: House, w: number, h: number, doorGx: number, doorGy: number): InteriorLayout {
   const shelfGx = shelfGxFor(w);
+  const shelfGy = SHELF_GY;
   // Both stored as indices into FLOOR_FRAMES/WALL_TRIPLES, not raw sheet frame
   // numbers — the editor UI picks a swatch by index, and InteriorScene looks the
   // actual frame number up from the same index, so both sides must agree on that.
   const floorFrame = hash(house.id) % FLOOR_FRAMES.length;
   const wallTriple = hash(house.name) % WALL_TRIPLES.length;
 
-  const occupied = structuralOccupied(w, h, doorGx, shelfGx);
+  const occupied = structuralOccupied(w, h, doorGx);
+  for (const cell of shelfOccupied(shelfGx, shelfGy)) occupied.add(cell);
   const pending = house.rooms.flatMap((r) => r.notes);
   const placements: FurniturePlacement[] = [];
 
@@ -111,7 +117,7 @@ export function computeDefaultLayout(house: House, w: number, h: number, doorGx:
     placements.push({ item: type, gx: dx, gy: dy, rotation: 0, noteId: note?.id });
   }
 
-  return { floorFrame, wallTriple, placements };
+  return { floorFrame, wallTriple, shelf: { gx: shelfGx, gy: shelfGy }, placements };
 }
 
 // Can `item` be placed at (gx, gy) in `layout`, given the room's structural tiles?
@@ -136,6 +142,32 @@ export function canPlace(
   for (let i = 0; i < layout.placements.length; i++) {
     if (i === skipIndex) continue;
     const p = layout.placements[i];
+    const pe = catalogById[p.item];
+    if (!pe) continue;
+    const pCells = footprintCells(p.gx, p.gy, pe.footprint[0], pe.footprint[1]);
+    if (cells.some((c) => pCells.includes(c))) return false;
+  }
+  return true;
+}
+
+// Can the shelf (always SHELF_W x 2 tiles) move to (gx, gy)? `structural` here
+// is `structuralOccupied()` only (perimeter + door lane) — deliberately NOT
+// unioned with the shelf's own current position, since we're choosing where
+// it moves TO and it shouldn't collide with itself. Checked against every
+// furniture placement's real footprint via `catalogById`.
+export function canPlaceShelf(
+  layout: InteriorLayout,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  structural: Set<string>,
+  w: number,
+  h: number,
+  gx: number,
+  gy: number,
+): boolean {
+  if (gx < 1 || gy < 1 || gx + SHELF_W > w - 1 || gy + 2 > h - 1) return false;
+  const cells = footprintCells(gx, gy, SHELF_W, 2);
+  if (cells.some((c) => structural.has(c))) return false;
+  for (const p of layout.placements) {
     const pe = catalogById[p.item];
     if (!pe) continue;
     const pCells = footprintCells(p.gx, p.gy, pe.footprint[0], pe.footprint[1]);

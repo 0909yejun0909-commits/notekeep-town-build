@@ -9,7 +9,6 @@ import {
   SHELF_W,
   FLOOR_FRAMES,
   WALL_TRIPLES,
-  shelfGxFor,
   computeDefaultLayout,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
@@ -33,7 +32,6 @@ export default class InteriorScene extends Phaser.Scene {
 
   private doorGx = 0;
   private doorGy = 0;
-  private shelfGx = 0;
   private blocked = new Set<string>();
   private shelfApproach = new Set<string>();
   private approach = new Map<string, NoteRef>();
@@ -100,11 +98,12 @@ export default class InteriorScene extends Phaser.Scene {
     const h = Math.max(MIN_ROOM_H, Math.ceil(this.scale.height / TILE));
     this.doorGx = Math.floor(w / 2);
     this.doorGy = h - 1;
-    this.shelfGx = shelfGxFor(w);
 
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
     const saved = this.fingerprint ? getLayout(this.fingerprint, this.houseId) : null;
     this.layout = saved ?? computeDefaultLayout(house, w, h, this.doorGx, this.doorGy);
+    const shelfGx = this.layout.shelf.gx;
+    const shelfGy = this.layout.shelf.gy;
 
     const noteCount = house.rooms.reduce((n, r) => n + r.notes.length, 0);
     // this.layout.floorFrame/wallTriple are indices into FLOOR_FRAMES/WALL_TRIPLES
@@ -128,31 +127,37 @@ export default class InteriorScene extends Phaser.Scene {
       }
     }
 
-    // Back wall gets a second row so the shelf has something to lean on.
-    for (let x = 1; x < w - 1; x++) {
-      this.add.image(x * TILE, SHELF_GY * TILE, 'interior-walls', wallBase).setOrigin(0, 0).setDepth(1);
-      this.blocked.add(`${x},${SHELF_GY}`);
+    // Back wall gets a second row so the shelf has something to lean on — only
+    // when the shelf is actually against the top wall; moved elsewhere, it's
+    // just a free-standing piece like any other furniture.
+    if (shelfGy === SHELF_GY) {
+      for (let x = 1; x < w - 1; x++) {
+        this.add.image(x * TILE, SHELF_GY * TILE, 'interior-walls', wallBase).setOrigin(0, 0).setDepth(1);
+        this.blocked.add(`${x},${SHELF_GY}`);
+      }
     }
 
-    // Bookshelf: three verified 32x32 shelf frames side by side, rows SHELF_GY..SHELF_GY+1.
+    // Bookshelf: three verified 32x32 shelf frames side by side, rows shelfGy..shelfGy+1.
     for (let s = 0; s < SHELF_SEGMENTS; s++) {
-      const gx = this.shelfGx + s * 2;
+      const gx = shelfGx + s * 2;
       const img = this.add
-        .image(gx * TILE, SHELF_GY * TILE, 'furn_shelf', 'shelf')
+        .image(gx * TILE, shelfGy * TILE, 'furn_shelf', 'shelf')
         .setOrigin(0, 0)
         .setDepth(5)
         .setInteractive({ useHandCursor: true });
       img.on('pointerdown', () => this.openShelf());
       for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) this.blocked.add(`${gx + dx},${SHELF_GY + dy}`);
+        for (let dy = 0; dy < 2; dy++) this.blocked.add(`${gx + dx},${shelfGy + dy}`);
       }
     }
-    for (let x = this.shelfGx; x < this.shelfGx + SHELF_W; x++) {
-      this.shelfApproach.add(`${x},${SHELF_GY + 2}`);
+    for (let x = shelfGx; x < shelfGx + SHELF_W; x++) {
+      this.shelfApproach.add(`${x},${shelfGy + 2}`);
     }
 
+    const labelCenterX = (w / 2) * TILE;
+
     this.add
-      .text((this.shelfGx + SHELF_W / 2) * TILE, 3, `${house.name} · ${noteCount}`, {
+      .text(labelCenterX, 3, `${house.name} · ${noteCount}`, {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffffff',
@@ -162,7 +167,7 @@ export default class InteriorScene extends Phaser.Scene {
       .setDepth(6);
 
     this.add
-      .text((this.shelfGx + SHELF_W / 2) * TILE, 13, 'CUSTOMIZE', {
+      .text(labelCenterX, 13, 'CUSTOMIZE', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffe066',

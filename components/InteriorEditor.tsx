@@ -3,18 +3,28 @@
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_ID } from '@/lib/catalog';
-import { canPlace, structuralOccupied, shelfGxFor, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import { canPlace, canPlaceShelf, structuralOccupied, shelfOccupied, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogItemId, FurniturePlacement, InteriorLayout } from '@/lib/types';
 
+// Matches game/scenes/BootScene.ts's FURNITURE_RECT.shelf exactly — the shelf
+// isn't a CatalogEntry (it's structural, not a placeable catalog item), so its
+// sprite data is duplicated here the same way furniture sprite data is.
+const SHELF_SHEET_URL = '/assets/furniture/bookshelves.png';
+const SHELF_RECT: [number, number, number, number] = [16, 0, 32, 32];
+
 type Session = { houseId: string; w: number; h: number; doorGx: number; doorGy: number };
+// A selection/move target is either one furniture placement (its index) or
+// the shelf, which isn't part of `placements` — it's always present, always
+// the same style, only its position is editable.
+type Target = number | 'shelf';
 
 export default function InteriorEditor() {
   const [session, setSession] = useState<Session | null>(null);
   const [draft, setDraft] = useState<InteriorLayout | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Target | null>(null);
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [moving, setMoving] = useState<number | null>(null);
+  const [moving, setMoving] = useState<Target | null>(null);
 
   useEffect(() => {
     const onOpen = (payload: Session & { layout: InteriorLayout }) => {
@@ -64,12 +74,19 @@ export default function InteriorEditor() {
   if (!session || !draft) return null;
 
   const { w, h, doorGx } = session;
-  const shelfGx = shelfGxFor(w);
-  const structural = structuralOccupied(w, h, doorGx, shelfGx);
   // A fresh non-null binding: nested function declarations below close over `draft`
   // without narrowing (TS doesn't carry the early-return null check across function
   // boundaries), so they read this instead.
   const layout = draft;
+
+  // Perimeter + door lane only — does NOT include the shelf's own footprint,
+  // since the shelf can move now. This is what marks a grid cell permanently
+  // unusable (disabled button); the shelf blocks furniture too, but that's
+  // handled by unioning in `shelfOccupied()` only where furniture placement
+  // is actually validated, not by disabling the underlying cell everywhere.
+  const structural = structuralOccupied(w, h, doorGx);
+  const structuralWithShelf = new Set(structural);
+  for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
 
   function cellPlacementIndex(gx: number, gy: number): number | null {
     for (let i = 0; i < layout.placements.length; i++) {
@@ -82,24 +99,40 @@ export default function InteriorEditor() {
     return null;
   }
 
+  function isShelfCell(gx: number, gy: number): boolean {
+    const { gx: sx, gy: sy } = layout.shelf;
+    return gx >= sx && gx < sx + SHELF_W && gy >= sy && gy < sy + 2;
+  }
+
   function onCellClick(gx: number, gy: number) {
     setError(null);
     if (structural.has(`${gx},${gy}`)) return;
     const idx = cellPlacementIndex(gx, gy);
+    const onShelf = isShelfCell(gx, gy);
 
     if (moving !== null) {
-      if (idx !== null) {
-        // Clicking any occupied cell (including the moving piece's own current
-        // spot) cancels the pending move and selects whatever was clicked —
-        // more forgiving than silently ignoring the click.
+      if (idx !== null || onShelf) {
+        // Clicking any occupied cell (furniture, the shelf, or the moving
+        // piece's own current spot) cancels the pending move and selects
+        // whatever was clicked — more forgiving than silently ignoring it.
         setMoving(null);
-        setSelected(idx);
+        setSelected(onShelf ? 'shelf' : idx);
         setPicking(null);
         return;
       }
       if (!draft) return;
+      if (moving === 'shelf') {
+        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy)) {
+          setError("Doesn't fit there.");
+          return;
+        }
+        setDraft({ ...draft, shelf: { gx, gy } });
+        setSelected('shelf');
+        setMoving(null);
+        return;
+      }
       const p = draft.placements[moving];
-      if (!canPlace(draft, CATALOG_BY_ID, structural, w, h, p.item, gx, gy, moving)) {
+      if (!canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, p.item, gx, gy, moving)) {
         setError("Doesn't fit there.");
         return;
       }
@@ -111,7 +144,10 @@ export default function InteriorEditor() {
       return;
     }
 
-    if (idx !== null) {
+    if (onShelf) {
+      setSelected('shelf');
+      setPicking(null);
+    } else if (idx !== null) {
       setSelected(idx);
       setPicking(null);
     } else {
@@ -122,7 +158,7 @@ export default function InteriorEditor() {
 
   function placeItem(item: CatalogItemId) {
     if (!picking || !draft) return;
-    if (!canPlace(draft, CATALOG_BY_ID, structural, w, h, item, picking.gx, picking.gy)) {
+    if (!canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, item, picking.gx, picking.gy)) {
       setError("Doesn't fit there.");
       return;
     }
@@ -138,14 +174,14 @@ export default function InteriorEditor() {
   }
 
   function removeSelected() {
-    if (selected === null || !draft) return;
+    if (selected === null || selected === 'shelf' || !draft) return;
     setDraft({ ...draft, placements: draft.placements.filter((_, i) => i !== selected) });
     setSelected(null);
     setMoving(null);
   }
 
   function rotateSelected() {
-    if (selected === null || !draft) return;
+    if (selected === null || selected === 'shelf' || !draft) return;
     const p = draft.placements[selected];
     const entry = CATALOG_BY_ID[p.item];
     if (!entry) return;
@@ -157,14 +193,15 @@ export default function InteriorEditor() {
   }
 
   function swapSelected(item: CatalogItemId) {
-    if (selected === null || !draft) return;
+    if (selected === null || selected === 'shelf' || !draft) return;
     const placements = draft.placements.slice();
     placements[selected] = { ...placements[selected], item, rotation: 0 };
     setDraft({ ...draft, placements });
   }
 
-  const selectedPlacement = selected !== null ? draft.placements[selected] : null;
+  const selectedPlacement = typeof selected === 'number' ? draft.placements[selected] : null;
   const selectedCategory = selectedPlacement ? CATALOG_BY_ID[selectedPlacement.item]?.category : null;
+  const shelfSelected = selected === 'shelf';
 
   return (
     <div
@@ -227,6 +264,7 @@ export default function InteriorEditor() {
           {Array.from({ length: h }).map((_, gy) =>
             Array.from({ length: w }).map((_, gx) => {
               const idx = cellPlacementIndex(gx, gy);
+              const onShelf = isShelfCell(gx, gy);
               const isStructural = structural.has(`${gx},${gy}`);
               const isDoor = gx === doorGx && gy === session.doorGy;
               return (
@@ -234,7 +272,13 @@ export default function InteriorEditor() {
                   key={`${gx},${gy}`}
                   className="border border-neutral-800 text-[8px]"
                   style={{
-                    background: isDoor ? '#8a5a2a' : isStructural ? '#333' : idx !== null ? '#5a7a5a' : '#1a1a1a',
+                    background: isDoor
+                      ? '#8a5a2a'
+                      : isStructural
+                        ? '#333'
+                        : idx !== null || onShelf
+                          ? '#5a7a5a'
+                          : '#1a1a1a',
                     cursor: isStructural ? 'default' : 'pointer',
                   }}
                   disabled={isStructural}
@@ -248,7 +292,7 @@ export default function InteriorEditor() {
                     e.preventDefault();
                     onCellClick(gx, gy);
                   }}
-                  title={idx !== null ? draft.placements[idx].item : ''}
+                  title={idx !== null ? draft.placements[idx].item : onShelf ? 'shelf' : ''}
                 />
               );
             }),
@@ -304,6 +348,48 @@ export default function InteriorEditor() {
               />
             );
           })}
+
+          {Array.from({ length: SHELF_SEGMENTS }).map((_, s) => (
+            <div
+              key={`shelf-${s}`}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', 'shelf');
+                setError(null);
+                setPicking(null);
+                setSelected('shelf');
+                setMoving('shelf');
+              }}
+              onDragEnd={() => setMoving((m) => (m === 'shelf' ? null : m))}
+              onDragOver={(e) => {
+                if (moving === null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                onCellClick(layout.shelf.gx, layout.shelf.gy);
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCellClick(layout.shelf.gx, layout.shelf.gy);
+              }}
+              style={{
+                position: 'absolute',
+                left: (layout.shelf.gx + s * 2) * 16,
+                top: layout.shelf.gy * 16,
+                width: 32,
+                height: 32,
+                backgroundImage: `url(${SHELF_SHEET_URL})`,
+                backgroundPosition: `-${SHELF_RECT[0]}px -${SHELF_RECT[1]}px`,
+                imageRendering: 'pixelated',
+                cursor: moving === 'shelf' ? 'grabbing' : 'grab',
+                outline: shelfSelected ? '2px solid #facc15' : undefined,
+                outlineOffset: shelfSelected ? '-2px' : undefined,
+              }}
+            />
+          ))}
         </div>
 
         {error && <span className="text-xs text-red-400">{error}</span>}
@@ -348,6 +434,18 @@ export default function InteriorEditor() {
                 {e.id}
               </button>
             ))}
+          </div>
+        )}
+
+        {shelfSelected && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase text-neutral-400">Selected: shelf</span>
+            <button
+              className={`rounded border px-2 py-1 text-xs ${moving === 'shelf' ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+              onClick={toggleMove}
+            >
+              {moving === 'shelf' ? 'Cancel move' : 'Move'}
+            </button>
           </div>
         )}
       </div>

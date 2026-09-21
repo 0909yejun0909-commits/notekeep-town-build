@@ -80,6 +80,10 @@ export type FurniturePlacement = {
 export type InteriorLayout = {
   floorFrame: number;
   wallTriple: number;
+  // The bookshelf isn't a FurniturePlacement — it's always present, always the
+  // same style, and it's the only guaranteed way to browse every note in the
+  // house — but it can be moved, so its position lives here.
+  shelf: { gx: number; gy: number };
   placements: FurniturePlacement[];
 };
 
