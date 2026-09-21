@@ -1,5 +1,5 @@
 import { FOOTPRINT, hash } from './types';
-import type { CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout } from './types';
+import type { CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout, RoomSize } from './types';
 
 export const SHELF_SEGMENTS = 3;
 export const SHELF_W = SHELF_SEGMENTS * 2;
@@ -12,6 +12,16 @@ export const WALL_TRIPLES: [number, number, number][] = [
   [46, 60, 74],
   [47, 61, 75],
 ];
+
+export const ROOM_SIZES: Record<RoomSize, [number, number]> = {
+  small: [13, 10],
+  medium: [16, 12],
+  large: [20, 15],
+};
+
+export function doorPositionFor(w: number, h: number): [number, number] {
+  return [Math.floor(w / 2), h - 1];
+}
 
 export const DECOR_TYPES: FurnitureId[] = ['rug', 'desk', 'bed', 'plant', 'lamp', 'chest', 'painting'];
 
@@ -91,7 +101,9 @@ export function shelfGxFor(w: number): number {
 
 // Today's deterministic hash-derived layout — used both as the fallback when no
 // saved layout exists, and to seed the editor's first draft for an untouched house.
-export function computeDefaultLayout(house: House, w: number, h: number, doorGx: number, doorGy: number): InteriorLayout {
+export function computeDefaultLayout(house: House, roomSize: RoomSize = 'large'): InteriorLayout {
+  const [w, h] = ROOM_SIZES[roomSize];
+  const [doorGx] = doorPositionFor(w, h);
   const shelfGx = shelfGxFor(w);
   const shelfGy = SHELF_GY;
   // Both stored as indices into FLOOR_FRAMES/WALL_TRIPLES, not raw sheet frame
@@ -117,7 +129,7 @@ export function computeDefaultLayout(house: House, w: number, h: number, doorGx:
     placements.push({ item: type, gx: dx, gy: dy, rotation: 0, noteId: note?.id });
   }
 
-  return { floorFrame, wallTriple, shelf: { gx: shelfGx, gy: shelfGy }, placements };
+  return { floorFrame, wallTriple, roomSize, shelf: { gx: shelfGx, gy: shelfGy }, placements };
 }
 
 // Can `item` be placed at (gx, gy) in `layout`, given the room's structural tiles?
@@ -172,6 +184,41 @@ export function canPlaceShelf(
     if (!pe) continue;
     const pCells = footprintCells(p.gx, p.gy, pe.footprint[0], pe.footprint[1]);
     if (cells.some((c) => pCells.includes(c))) return false;
+  }
+  return true;
+}
+
+// Would every existing placement, and the shelf, still fit inside a room
+// resized to (newW, newH)? Used to block a shrink that would strand
+// furniture outside the new walls or on top of the (possibly relocated)
+// door lane. Nothing moves relative to the room's top-left corner, so this
+// only needs to check bounds + the new structural set — pieces can't newly
+// overlap each other, since their relative positions don't change.
+export function canResize(
+  layout: InteriorLayout,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  newW: number,
+  newH: number,
+): boolean {
+  const [newDoorGx] = doorPositionFor(newW, newH);
+  const structural = structuralOccupied(newW, newH, newDoorGx);
+
+  const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, SHELF_W, 2);
+  if (
+    layout.shelf.gx < 1 || layout.shelf.gy < 1 ||
+    layout.shelf.gx + SHELF_W > newW - 1 || layout.shelf.gy + 2 > newH - 1 ||
+    shelfCells.some((c) => structural.has(c))
+  ) {
+    return false;
+  }
+
+  for (const p of layout.placements) {
+    const entry = catalogById[p.item];
+    if (!entry) continue;
+    const [fw, fh] = entry.footprint;
+    if (p.gx < 1 || p.gy < 1 || p.gx + fw > newW - 1 || p.gy + fh > newH - 1) return false;
+    const cells = footprintCells(p.gx, p.gy, fw, fh);
+    if (cells.some((c) => structural.has(c))) return false;
   }
   return true;
 }
