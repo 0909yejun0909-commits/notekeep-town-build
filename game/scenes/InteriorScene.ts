@@ -9,14 +9,12 @@ import {
   SHELF_W,
   FLOOR_FRAMES,
   WALL_TRIPLES,
+  ROOM_SIZES,
+  doorPositionFor,
   computeDefaultLayout,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
 import { CATALOG_BY_ID } from '@/lib/catalog';
-
-// The room is the whole viewport, whatever size the window is (never smaller than this).
-const MIN_ROOM_W = 20;
-const MIN_ROOM_H = 15;
 
 function findHouse(world: WorldModel | undefined, houseId: string): House | undefined {
   if (!world) return undefined;
@@ -94,14 +92,11 @@ export default class InteriorScene extends Phaser.Scene {
       return;
     }
 
-    const w = Math.max(MIN_ROOM_W, Math.ceil(this.scale.width / TILE));
-    const h = Math.max(MIN_ROOM_H, Math.ceil(this.scale.height / TILE));
-    this.doorGx = Math.floor(w / 2);
-    this.doorGy = h - 1;
-
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
     const saved = this.fingerprint ? getLayout(this.fingerprint, this.houseId) : null;
-    this.layout = saved ?? computeDefaultLayout(house, w, h, this.doorGx, this.doorGy);
+    this.layout = saved ?? computeDefaultLayout(house);
+    const [w, h] = ROOM_SIZES[this.layout.roomSize];
+    [this.doorGx, this.doorGy] = doorPositionFor(w, h);
     const shelfGx = this.layout.shelf.gx;
     const shelfGy = this.layout.shelf.gy;
 
@@ -218,12 +213,6 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.setBackgroundColor('#141018');
-    const onResize = () => {
-      bus.emit('close-interior-editor', undefined);
-      this.scene.restart({ houseId: this.houseId });
-    };
-    this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
-    this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, onResize));
 
     this.prevGx = this.doorGx;
     this.prevGy = this.doorGy;
@@ -255,14 +244,7 @@ export default class InteriorScene extends Phaser.Scene {
   private openEditor() {
     if (this.shelfOpen || this.noteOpen || this.exiting || this.editingLayout) return;
     this.editingLayout = true;
-    bus.emit('open-interior-editor', {
-      houseId: this.houseId,
-      w: Math.max(MIN_ROOM_W, Math.ceil(this.scale.width / TILE)),
-      h: Math.max(MIN_ROOM_H, Math.ceil(this.scale.height / TILE)),
-      doorGx: this.doorGx,
-      doorGy: this.doorGy,
-      layout: this.layout,
-    });
+    bus.emit('open-interior-editor', { houseId: this.houseId, layout: this.layout });
   }
 
   private renderPlacement(placement: FurniturePlacement, allNotes: NoteRef[]) {
