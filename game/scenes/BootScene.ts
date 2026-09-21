@@ -6,8 +6,10 @@ import { CATALOG } from '@/lib/catalog';
 //   this.add.image(px, py, 'furn_bed', 'bed')
 const FURNITURE_RECT: Record<FurnitureId, [number, number, number, number]> = {
   // docs/ASSETS.md's [72,8,32,48] included 16px of transparent padding above the
-  // sprite (verified pixel-by-pixel), rendering a visible gap above the desk —
-  // this rect is the tight crop, footprint unchanged at 2x3.
+  // sprite (verified pixel-by-pixel) — this rect is the tight 2x2-tile crop.
+  // FOOTPRINT.desk in lib/types.ts (and the catalog entry's footprint) shrank
+  // from [2,3] to [2,2] to match — the third row was an invisible, blocked
+  // tile with nothing rendered over it.
   desk: [72, 24, 32, 32],
   shelf: [16, 0, 32, 32],
   bed: [0, 0, 32, 32],

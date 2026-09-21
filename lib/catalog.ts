@@ -7,7 +7,7 @@ import type { CatalogEntry, CatalogItemId } from './types';
 // `sheetUrl`/`rect` mirror BootScene.ts's FURNITURE_RECT/VARIANT_RECT pixel rects,
 // used here to crop a plain <img> for the editor's grid instead of a Phaser frame.
 export const CATALOG: CatalogEntry[] = [
-  { id: 'desk', category: 'desk', textureKey: 'furn_desk', frameKey: 'desk', footprint: [2, 3], rotations: [0, 180], sheetUrl: '/assets/furniture/tables.png', rect: [72, 24, 32, 32] },
+  { id: 'desk', category: 'desk', textureKey: 'furn_desk', frameKey: 'desk', footprint: [2, 2], rotations: [0, 180], sheetUrl: '/assets/furniture/tables.png', rect: [72, 24, 32, 32] },
   { id: 'chest', category: 'chest', textureKey: 'furn_chest', frameKey: 'chest', footprint: [1, 1], rotations: [0, 180], sheetUrl: '/assets/furniture/chest.png', rect: [0, 0, 16, 16] },
   { id: 'painting', category: 'painting', textureKey: 'furn_painting', frameKey: 'painting', footprint: [1, 1], rotations: [0, 90, 180, 270], sheetUrl: '/assets/furniture/decor.png', rect: [48, 32, 16, 16] },
   { id: 'bed', category: 'bed', textureKey: 'furn_bed', frameKey: 'bed', footprint: [2, 2], rotations: [0, 180], sheetUrl: '/assets/furniture/beds.png', rect: [0, 0, 32, 32] },

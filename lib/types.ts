@@ -40,7 +40,7 @@ export type VaultHandle = {
 // furniture (A) and the track that RENDERS it (C) need the same numbers, or
 // placement and rendering disagree about how big a piece is and pieces overlap.
 export const FOOTPRINT: Record<FurnitureId, [number, number]> = {
-  desk: [2, 3], shelf: [2, 2], bed: [2, 2], chest: [1, 1],
+  desk: [2, 2], shelf: [2, 2], bed: [2, 2], chest: [1, 1],
   plant: [1, 2], painting: [1, 1], lamp: [1, 2], rug: [3, 3],
 };
 
