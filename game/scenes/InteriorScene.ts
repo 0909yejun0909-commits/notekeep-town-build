@@ -213,7 +213,10 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.setBackgroundColor('#141018');
-    const onResize = () => this.scene.restart({ houseId: this.houseId });
+    const onResize = () => {
+      bus.emit('close-interior-editor', undefined);
+      this.scene.restart({ houseId: this.houseId });
+    };
     this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
     this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, onResize));
 
@@ -269,8 +272,11 @@ export default class InteriorScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(isRug ? 2 : 5);
 
-    if (entry.rotations.length > 2) img.setAngle(rotation);
-    else if (rotation === 180) img.setFlipX(true);
+    if (entry.rotations.length > 2) {
+      img.setOrigin(0.5, 0.5).setPosition((gx + fw / 2) * TILE, (gy + fh / 2) * TILE).setAngle(rotation);
+    } else if (rotation === 180) {
+      img.setFlipX(true);
+    }
 
     for (let i = 0; i < fw; i++) {
       for (let j = 0; j < fh; j++) {

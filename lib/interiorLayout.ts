@@ -107,6 +107,7 @@ export function computeDefaultLayout(house: House, w: number, h: number, doorGx:
     const [dx, dy] = spot;
     const note = type === 'rug' ? undefined : pending.shift();
     for (const cell of footprintCells(dx, dy, fw, fh)) occupied.add(cell);
+    if (note) occupied.add(`${dx + Math.floor(fw / 2)},${dy + fh}`);
     placements.push({ item: type, gx: dx, gy: dy, rotation: 0, noteId: note?.id });
   }
 

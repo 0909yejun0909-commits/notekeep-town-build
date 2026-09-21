@@ -18,7 +18,16 @@ export function getLayout(fingerprint: string, houseId: string): InteriorLayout 
   try {
     const raw = localStorage.getItem(storageKey(fingerprint, houseId));
     if (!raw) return null;
-    return JSON.parse(raw) as InteriorLayout;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed !== 'object' || parsed === null ||
+      typeof parsed.floorFrame !== 'number' ||
+      typeof parsed.wallTriple !== 'number' ||
+      !Array.isArray(parsed.placements)
+    ) {
+      return null;
+    }
+    return parsed as InteriorLayout;
   } catch {
     return null;
   }

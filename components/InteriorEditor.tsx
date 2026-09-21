@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_ID } from '@/lib/catalog';
 import { canPlace, structuralOccupied, shelfGxFor, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
@@ -14,17 +14,17 @@ export default function InteriorEditor() {
   const [selected, setSelected] = useState<number | null>(null);
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sessionRef = useRef<Session | null>(null);
+  const [moving, setMoving] = useState<number | null>(null);
 
   useEffect(() => {
     const onOpen = (payload: Session & { layout: InteriorLayout }) => {
       const { layout, ...s } = payload;
-      sessionRef.current = s;
       setSession(s);
       setDraft(layout);
       setSelected(null);
       setPicking(null);
       setError(null);
+      setMoving(null);
     };
     bus.on('open-interior-editor', onOpen);
     return () => bus.off('open-interior-editor', onOpen);
@@ -36,13 +36,16 @@ export default function InteriorEditor() {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.stopPropagation();
+        if (moving !== null) {
+          setMoving(null);
+          return;
+        }
         close();
       }
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, moving]);
 
   function close() {
     setSession(null);
@@ -83,6 +86,31 @@ export default function InteriorEditor() {
     setError(null);
     if (structural.has(`${gx},${gy}`)) return;
     const idx = cellPlacementIndex(gx, gy);
+
+    if (moving !== null) {
+      if (idx !== null) {
+        // Clicking any occupied cell (including the moving piece's own current
+        // spot) cancels the pending move and selects whatever was clicked —
+        // more forgiving than silently ignoring the click.
+        setMoving(null);
+        setSelected(idx);
+        setPicking(null);
+        return;
+      }
+      if (!draft) return;
+      const p = draft.placements[moving];
+      if (!canPlace(draft, CATALOG_BY_ID, structural, w, h, p.item, gx, gy, moving)) {
+        setError("Doesn't fit there.");
+        return;
+      }
+      const placements = draft.placements.slice();
+      placements[moving] = { ...p, gx, gy };
+      setDraft({ ...draft, placements });
+      setSelected(moving);
+      setMoving(null);
+      return;
+    }
+
     if (idx !== null) {
       setSelected(idx);
       setPicking(null);
@@ -103,10 +131,17 @@ export default function InteriorEditor() {
     setPicking(null);
   }
 
+  function toggleMove() {
+    if (selected === null) return;
+    setError(null);
+    setMoving((prev) => (prev === selected ? null : selected));
+  }
+
   function removeSelected() {
     if (selected === null || !draft) return;
     setDraft({ ...draft, placements: draft.placements.filter((_, i) => i !== selected) });
     setSelected(null);
+    setMoving(null);
   }
 
   function rotateSelected() {
@@ -212,6 +247,7 @@ export default function InteriorEditor() {
         </div>
 
         {error && <span className="text-xs text-red-400">{error}</span>}
+        {moving !== null && <span className="text-xs text-yellow-400">Click a cell to move it there.</span>}
 
         {picking && (
           <div className="flex flex-wrap gap-2">
@@ -233,6 +269,12 @@ export default function InteriorEditor() {
             <span className="text-xs uppercase text-neutral-400">Selected: {selectedPlacement.item}</span>
             <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={rotateSelected}>
               Rotate
+            </button>
+            <button
+              className={`rounded border px-2 py-1 text-xs ${moving === selected ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+              onClick={toggleMove}
+            >
+              {moving === selected ? 'Cancel move' : 'Move'}
             </button>
             <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={removeSelected}>
               Remove

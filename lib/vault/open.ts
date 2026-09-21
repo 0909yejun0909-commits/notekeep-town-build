@@ -76,7 +76,8 @@ export async function openVault(): Promise<VaultHandle | null> {
   const world = await parseVault(dir.name, paths, async (p) =>
     (await getFile(p)).slice(0, HEAD_BYTES).text(),
   );
-  publishWorld(world, vaultFingerprint(dir.name, paths));
+  const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
+  publishWorld(world, vaultFingerprint(dir.name, houseIds));
 
   return {
     world,
@@ -111,7 +112,8 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   const getText = (link: string) => files[getPath(link)];
 
   const world = await parseVault(DEMO_VAULT_NAME, paths, async (p) => getText(p).slice(0, HEAD_BYTES));
-  publishWorld(world, vaultFingerprint(DEMO_VAULT_NAME, paths));
+  const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
+  publishWorld(world, vaultFingerprint(DEMO_VAULT_NAME, houseIds));
 
   return {
     world,
