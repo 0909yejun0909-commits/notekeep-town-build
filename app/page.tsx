@@ -6,6 +6,7 @@ import { VaultProvider, useVault, openVault, openDemoVault } from '@/lib/vault/o
 import NoteReader from '@/components/NoteReader';
 import Bookshelf from '@/components/Bookshelf';
 import CharacterCreator from '@/components/CharacterCreator';
+import InteriorEditor from '@/components/InteriorEditor';
 import { bus } from '@/game/bus';
 import type { NoteRef } from '@/lib/types';
 
@@ -56,6 +57,7 @@ function Game() {
       <CharacterCreator visible={!vault} />
       <Bookshelf />
       <NoteReader note={openNote} />
+      <InteriorEditor />
 
       {npcLine && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">
