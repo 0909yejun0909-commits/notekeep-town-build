@@ -48,6 +48,35 @@ export const BIOMES: BiomeId[] = ['meadow', 'forest', 'desert', 'volcano', 'snow
 export const FURNITURE: FurnitureId[] =
   ['desk', 'shelf', 'bed', 'chest', 'plant', 'painting', 'lamp', 'rug'];
 
+// A catalog item is a specific placeable variant (e.g. 'bed_blue'); `category` says
+// which of the 8 FurnitureId kinds it's a variant of, for footprint/interchange rules.
+export type CatalogItemId = string;
+
+export type CatalogEntry = {
+  id: CatalogItemId;
+  category: FurnitureId;
+  textureKey: string;
+  frameKey: string;
+  footprint: [number, number];
+  rotations: Array<0 | 90 | 180 | 270>;
+};
+
+export type FurniturePlacement = {
+  item: CatalogItemId;
+  gx: number;
+  gy: number;
+  rotation: 0 | 90 | 180 | 270;
+  // Set only when this placement was one of the house's original auto-assigned
+  // note-holders. Never set on a placement added later from the catalog.
+  noteId?: string;
+};
+
+export type InteriorLayout = {
+  floorFrame: number;
+  wallTriple: number;
+  placements: FurniturePlacement[];
+};
+
 export function hash(str: string): number {
   let h = 5381;
   for (let i = 0; i < str.length; i++) {
