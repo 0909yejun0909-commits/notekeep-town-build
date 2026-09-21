@@ -4,14 +4,16 @@ import { createContext, createElement, useContext, useState, type ReactNode } fr
 import type { VaultHandle, WorldModel } from '@/lib/types';
 import { makeLinkResolver, parseVault } from '@/lib/vault/parse';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
+import { vaultFingerprint } from '@/lib/interiorStore';
 
 const HEAD_BYTES = 2048;
 
-function publishWorld(world: WorldModel) {
+function publishWorld(world: WorldModel, fingerprint: string) {
   const attempt = () => {
     const game = (window as any).__game;
     if (!game?.registry) return false;
     game.registry.set('world', world);
+    game.registry.set('vaultFingerprint', fingerprint);
     return true;
   };
   if (attempt()) return;
@@ -74,7 +76,7 @@ export async function openVault(): Promise<VaultHandle | null> {
   const world = await parseVault(dir.name, paths, async (p) =>
     (await getFile(p)).slice(0, HEAD_BYTES).text(),
   );
-  publishWorld(world);
+  publishWorld(world, vaultFingerprint(dir.name, paths));
 
   return {
     world,
@@ -109,7 +111,7 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   const getText = (link: string) => files[getPath(link)];
 
   const world = await parseVault(DEMO_VAULT_NAME, paths, async (p) => getText(p).slice(0, HEAD_BYTES));
-  publishWorld(world);
+  publishWorld(world, vaultFingerprint(DEMO_VAULT_NAME, paths));
 
   return {
     world,
