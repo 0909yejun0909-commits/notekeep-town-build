@@ -2,27 +2,22 @@ import Phaser from 'phaser';
 import { bus } from '@/game/bus';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
-import { FOOTPRINT, hash } from '@/lib/types';
-import type { House, NoteRef, WorldModel, FurnitureId } from '@/lib/types';
+import type { House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
+import {
+  SHELF_SEGMENTS,
+  SHELF_GY,
+  SHELF_W,
+  FLOOR_FRAMES,
+  WALL_TRIPLES,
+  shelfGxFor,
+  computeDefaultLayout,
+} from '@/lib/interiorLayout';
+import { getLayout, saveLayout } from '@/lib/interiorStore';
+import { CATALOG_BY_ID } from '@/lib/catalog';
 
 // The room is the whole viewport, whatever size the window is (never smaller than this).
 const MIN_ROOM_W = 20;
 const MIN_ROOM_H = 15;
-
-// One wide bookshelf built from three copies of the verified 32x32 shelf frame.
-const SHELF_SEGMENTS = 3;
-const SHELF_W = SHELF_SEGMENTS * 2;
-const SHELF_GY = 1;
-
-const FLOOR_FRAMES = [0, 2, 4, 6, 16, 32, 34, 48, 50, 52, 54];
-const WALL_TRIPLES: [number, number, number][] = [
-  [42, 56, 70],
-  [45, 59, 73],
-  [46, 60, 74],
-  [47, 61, 75],
-];
-
-const DECOR_TYPES: FurnitureId[] = ['rug', 'desk', 'bed', 'plant', 'lamp', 'chest', 'painting'];
 
 function findHouse(world: WorldModel | undefined, houseId: string): House | undefined {
   if (!world) return undefined;
@@ -31,34 +26,6 @@ function findHouse(world: WorldModel | undefined, houseId: string): House | unde
     if (house) return house;
   }
   return undefined;
-}
-
-function pickSpot(
-  roomW: number,
-  fw: number,
-  fh: number,
-  occupied: Set<string>,
-  seed: number,
-  minY: number,
-  maxY: number,
-): [number, number] | null {
-  const positions: [number, number][] = [];
-  for (let y = minY; y <= maxY - fh; y++) {
-    for (let x = 1; x <= roomW - 1 - fw; x++) positions.push([x, y]);
-  }
-  if (positions.length === 0) return null;
-  const start = seed % positions.length;
-  for (let i = 0; i < positions.length; i++) {
-    const [x, y] = positions[(start + i) % positions.length];
-    let free = true;
-    for (let dx = 0; dx < fw && free; dx++) {
-      for (let dy = 0; dy < fh && free; dy++) {
-        if (occupied.has(`${x + dx},${y + dy}`)) free = false;
-      }
-    }
-    if (free) return [x, y];
-  }
-  return null;
 }
 
 export default class InteriorScene extends Phaser.Scene {
@@ -83,12 +50,26 @@ export default class InteriorScene extends Phaser.Scene {
   private prevGx = 0;
   private prevGy = 0;
 
+  private editingLayout = false;
+  private fingerprint: string | undefined;
+  private layout!: InteriorLayout;
+
   private onCloseShelf = () => {
     this.shelfOpen = false;
   };
 
   private onCloseNote = () => {
     this.noteOpen = false;
+  };
+
+  private onCloseEditor = () => {
+    this.editingLayout = false;
+  };
+
+  private onCommitLayout = ({ houseId, layout }: { houseId: string; layout: InteriorLayout }) => {
+    if (houseId !== this.houseId || !this.fingerprint) return;
+    saveLayout(this.fingerprint, houseId, layout);
+    this.scene.restart({ houseId: this.houseId });
   };
 
   constructor() {
@@ -100,6 +81,7 @@ export default class InteriorScene extends Phaser.Scene {
     this.shelfOpen = false;
     this.noteOpen = false;
     this.exiting = false;
+    this.editingLayout = false;
     this.blocked = new Set();
     this.shelfApproach = new Set();
     this.approach = new Map();
@@ -118,11 +100,18 @@ export default class InteriorScene extends Phaser.Scene {
     const h = Math.max(MIN_ROOM_H, Math.ceil(this.scale.height / TILE));
     this.doorGx = Math.floor(w / 2);
     this.doorGy = h - 1;
-    this.shelfGx = Math.floor((w - SHELF_W) / 2);
+    this.shelfGx = shelfGxFor(w);
+
+    this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
+    const saved = this.fingerprint ? getLayout(this.fingerprint, this.houseId) : null;
+    this.layout = saved ?? computeDefaultLayout(house, w, h, this.doorGx, this.doorGy);
 
     const noteCount = house.rooms.reduce((n, r) => n + r.notes.length, 0);
-    const floorFrame = FLOOR_FRAMES[hash(house.id) % FLOOR_FRAMES.length];
-    const [wallTop, wallMid, wallBase] = WALL_TRIPLES[hash(house.name) % WALL_TRIPLES.length];
+    // this.layout.floorFrame/wallTriple are indices into FLOOR_FRAMES/WALL_TRIPLES
+    // (see lib/interiorLayout.ts's computeDefaultLayout) — look up the real frame
+    // number/triple here, never store the raw frame number in the layout itself.
+    const floorFrame = FLOOR_FRAMES[this.layout.floorFrame] ?? FLOOR_FRAMES[0];
+    const [wallTop, wallMid, wallBase] = WALL_TRIPLES[this.layout.wallTriple] ?? WALL_TRIPLES[0];
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -145,17 +134,6 @@ export default class InteriorScene extends Phaser.Scene {
       this.blocked.add(`${x},${SHELF_GY}`);
     }
 
-    const occupied = new Set<string>();
-    for (let x = 0; x < w; x++) {
-      occupied.add(`${x},0`);
-      occupied.add(`${x},${SHELF_GY}`);
-      occupied.add(`${x},${h - 1}`);
-    }
-    for (let y = 0; y < h; y++) {
-      occupied.add(`0,${y}`);
-      occupied.add(`${w - 1},${y}`);
-    }
-
     // Bookshelf: three verified 32x32 shelf frames side by side, rows SHELF_GY..SHELF_GY+1.
     for (let s = 0; s < SHELF_SEGMENTS; s++) {
       const gx = this.shelfGx + s * 2;
@@ -166,17 +144,11 @@ export default class InteriorScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
       img.on('pointerdown', () => this.openShelf());
       for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) {
-          const key = `${gx + dx},${SHELF_GY + dy}`;
-          this.blocked.add(key);
-          occupied.add(key);
-        }
+        for (let dy = 0; dy < 2; dy++) this.blocked.add(`${gx + dx},${SHELF_GY + dy}`);
       }
     }
     for (let x = this.shelfGx; x < this.shelfGx + SHELF_W; x++) {
-      const key = `${x},${SHELF_GY + 2}`;
-      this.shelfApproach.add(key);
-      occupied.add(key);
+      this.shelfApproach.add(`${x},${SHELF_GY + 2}`);
     }
 
     this.add
@@ -189,38 +161,21 @@ export default class InteriorScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(6);
 
-    // Keep a clear lane from the door up to the shelf.
-    for (let y = SHELF_GY + 2; y < h; y++) {
-      occupied.add(`${this.doorGx},${y}`);
-      occupied.add(`${this.doorGx - 1},${y}`);
-      occupied.add(`${this.doorGx + 1},${y}`);
-    }
+    this.add
+      .text((this.shelfGx + SHELF_W / 2) * TILE, 13, 'CUSTOMIZE', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#ffe066',
+        backgroundColor: '#000000',
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(6)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.openEditor());
 
-    // Every solid piece of furniture holds one of the house's notes (the shelf
-    // holds all of them). Walk up to it and press Space, or just click it.
-    const pending = house.rooms.flatMap((r) => r.notes);
-    for (const type of DECOR_TYPES) {
-      const [fw, fh] = FOOTPRINT[type];
-      const seed = hash(`${house.id}:${type}`);
-      const spot = pickSpot(w, fw, fh, occupied, seed, SHELF_GY + 2, h - 3);
-      if (!spot) continue;
-      const [dx, dy] = spot;
-      const note = type === 'rug' ? undefined : pending.shift();
-      const img = this.add.image(dx * TILE, dy * TILE, `furn_${type}`, type).setOrigin(0, 0).setDepth(type === 'rug' ? 2 : 5);
-      for (let i = 0; i < fw; i++) {
-        for (let j = 0; j < fh; j++) {
-          const key = `${dx + i},${dy + j}`;
-          occupied.add(key);
-          if (type !== 'rug') this.blocked.add(key);
-        }
-      }
-      if (note) {
-        img.setInteractive({ useHandCursor: true });
-        img.on('pointerdown', () => this.openNote(note));
-        const apKey = `${dx + Math.floor(fw / 2)},${dy + fh}`;
-        this.approach.set(apKey, note);
-        occupied.add(apKey);
-      }
+    const allNotes = house.rooms.flatMap((r) => r.notes);
+    for (const placement of this.layout.placements) {
+      this.renderPlacement(placement, allNotes);
     }
 
     this.add
@@ -267,9 +222,13 @@ export default class InteriorScene extends Phaser.Scene {
 
     bus.on('close-shelf', this.onCloseShelf);
     bus.on('close-note', this.onCloseNote);
+    bus.on('close-interior-editor', this.onCloseEditor);
+    bus.on('commit-interior-layout', this.onCommitLayout);
     this.events.once('shutdown', () => {
       bus.off('close-shelf', this.onCloseShelf);
       bus.off('close-note', this.onCloseNote);
+      bus.off('close-interior-editor', this.onCloseEditor);
+      bus.off('commit-interior-layout', this.onCommitLayout);
     });
   }
 
@@ -285,9 +244,53 @@ export default class InteriorScene extends Phaser.Scene {
     bus.emit('open-shelf', { houseId: this.houseId });
   }
 
+  private openEditor() {
+    if (this.shelfOpen || this.noteOpen || this.exiting || this.editingLayout) return;
+    this.editingLayout = true;
+    bus.emit('open-interior-editor', {
+      houseId: this.houseId,
+      w: Math.max(MIN_ROOM_W, Math.ceil(this.scale.width / TILE)),
+      h: Math.max(MIN_ROOM_H, Math.ceil(this.scale.height / TILE)),
+      doorGx: this.doorGx,
+      doorGy: this.doorGy,
+      layout: this.layout,
+    });
+  }
+
+  private renderPlacement(placement: FurniturePlacement, allNotes: NoteRef[]) {
+    const entry = CATALOG_BY_ID[placement.item];
+    if (!entry) return;
+    const [fw, fh] = entry.footprint;
+    const { gx, gy, rotation } = placement;
+    const isRug = entry.category === 'rug';
+
+    const img = this.add
+      .image(gx * TILE, gy * TILE, entry.textureKey, entry.frameKey)
+      .setOrigin(0, 0)
+      .setDepth(isRug ? 2 : 5);
+
+    if (entry.rotations.length > 2) img.setAngle(rotation);
+    else if (rotation === 180) img.setFlipX(true);
+
+    for (let i = 0; i < fw; i++) {
+      for (let j = 0; j < fh; j++) {
+        const key = `${gx + i},${gy + j}`;
+        if (!isRug) this.blocked.add(key);
+      }
+    }
+
+    const note = placement.noteId ? allNotes.find((n) => n.id === placement.noteId) : undefined;
+    if (note) {
+      img.setInteractive({ useHandCursor: true });
+      img.on('pointerdown', () => this.openNote(note));
+      const apKey = `${gx + Math.floor(fw / 2)},${gy + fh}`;
+      this.approach.set(apKey, note);
+    }
+  }
+
   update() {
     if (!this.player || !this.movement) return;
-    if (this.shelfOpen || this.noteOpen || this.exiting) return;
+    if (this.shelfOpen || this.noteOpen || this.exiting || this.editingLayout) return;
 
     this.movement.update();
 
