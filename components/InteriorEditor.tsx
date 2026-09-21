@@ -268,10 +268,11 @@ export default function InteriorEditor() {
               onClick={() => {
                 const [newW, newH] = ROOM_SIZES[size];
                 if (!canResize(draft, CATALOG_BY_ID, newW, newH)) {
-                  setError("Some furniture won't fit at this size — move or remove it first.");
+                  setError("Something's in the way at that size — move furniture or the shelf, then try again.");
                   return;
                 }
                 setError(null);
+                setPicking(null);
                 setDraft({ ...draft, roomSize: size });
               }}
             >

@@ -14,8 +14,12 @@ per-house value, and the room always grows to at least fill the visible window.
   to fill a bigger browser window — that's the deliberate trade-off of making it a discrete,
   storable, per-house setting.
 - `small: [13, 10]`, `medium: [16, 12]`, `large: [20, 15]`. Large equals today's
-  `MIN_ROOM_W`/`MIN_ROOM_H`, which is already proven to fit any window the game supports — so no
-  tier ever needs to be larger than the viewport, and **no camera scrolling/follow work is
+  `MIN_ROOM_W`/`MIN_ROOM_H` — the same floor the old viewport-derived code
+  already enforced (`Math.max(MIN_ROOM_H, ...)`), so this branch is no worse than pre-existing
+  behavior on a short window (a 15-tile-tall room can already clip below a browser window shorter
+  than ~720px, with no camera follow — a pre-existing limitation, not something this feature
+  introduces or needs to solve). No tier in this feature is ever taller than that existing floor,
+  so **no camera scrolling/follow work is
   needed**. (A room smaller than the actual browser window just leaves the dark background
   color, `#141018`, visible around it, top-left anchored — no centering, matching today's
   `cameras.main.setScroll(0, 0)` behavior exactly.)
