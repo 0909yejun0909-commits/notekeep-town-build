@@ -23,13 +23,15 @@ export function getLayout(fingerprint: string, houseId: string): InteriorLayout 
       typeof parsed !== 'object' || parsed === null ||
       typeof parsed.floorFrame !== 'number' ||
       typeof parsed.wallTriple !== 'number' ||
+      (parsed.roomSize !== 'small' && parsed.roomSize !== 'medium' && parsed.roomSize !== 'large') ||
       typeof parsed.shelf !== 'object' || parsed.shelf === null ||
       typeof parsed.shelf.gx !== 'number' ||
       typeof parsed.shelf.gy !== 'number' ||
       !Array.isArray(parsed.placements)
     ) {
-      // Also catches layouts saved before the shelf-move feature existed —
-      // treated the same as "no saved layout," falling back to the default.
+      // Also catches layouts saved before the shelf-move/room-size features
+      // existed — treated the same as "no saved layout," falling back to
+      // the default.
       return null;
     }
     return parsed as InteriorLayout;
