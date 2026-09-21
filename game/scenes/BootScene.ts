@@ -5,7 +5,10 @@ import { CATALOG } from '@/lib/catalog';
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
 //   this.add.image(px, py, 'furn_bed', 'bed')
 const FURNITURE_RECT: Record<FurnitureId, [number, number, number, number]> = {
-  desk: [72, 8, 32, 48],
+  // docs/ASSETS.md's [72,8,32,48] included 16px of transparent padding above the
+  // sprite (verified pixel-by-pixel), rendering a visible gap above the desk —
+  // this rect is the tight crop, footprint unchanged at 2x3.
+  desk: [72, 24, 32, 32],
   shelf: [16, 0, 32, 32],
   bed: [0, 0, 32, 32],
   chest: [0, 0, 16, 16],
