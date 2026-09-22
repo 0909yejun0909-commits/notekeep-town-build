@@ -33,13 +33,16 @@ export function footprintCells(gx: number, gy: number, fw: number, fh: number): 
   return cells;
 }
 
-// Tiles no placement may ever occupy: perimeter walls, and the clear lane
-// from the door towards the back of the room. Shared by the default-layout
-// generator and the editor's placement validation so they can never disagree
-// about what's free. Does NOT include the shelf's own footprint — the shelf
-// can move now, so its occupied cells are computed separately by
-// `shelfOccupied()` and unioned in by the caller, wherever it currently is.
-export function structuralOccupied(w: number, h: number, doorGx: number): Set<string> {
+// Tiles no placement may ever occupy: the perimeter walls. Shared by the
+// default-layout generator and the editor's placement validation so they
+// can never disagree about what's free. Does NOT include the shelf's own
+// footprint — the shelf can move now, so its occupied cells are computed
+// separately by `shelfOccupied()` and unioned in by the caller, wherever it
+// currently is. (Previously also reserved a clear lane from the door to the
+// back wall so furniture could never block the path in from the door — cut
+// because it ate a large share of a small room's usable space and the door
+// tile itself is always walkable regardless of what's placed around it.)
+export function structuralOccupied(w: number, h: number): Set<string> {
   const occupied = new Set<string>();
   for (let x = 0; x < w; x++) {
     occupied.add(`${x},0`);
@@ -48,11 +51,6 @@ export function structuralOccupied(w: number, h: number, doorGx: number): Set<st
   for (let y = 0; y < h; y++) {
     occupied.add(`0,${y}`);
     occupied.add(`${w - 1},${y}`);
-  }
-  for (let y = SHELF_GY + 2; y < h; y++) {
-    occupied.add(`${doorGx},${y}`);
-    occupied.add(`${doorGx - 1},${y}`);
-    occupied.add(`${doorGx + 1},${y}`);
   }
   return occupied;
 }
@@ -103,7 +101,6 @@ export function shelfGxFor(w: number): number {
 // saved layout exists, and to seed the editor's first draft for an untouched house.
 export function computeDefaultLayout(house: House, roomSize: RoomSize = 'large'): InteriorLayout {
   const [w, h] = ROOM_SIZES[roomSize];
-  const [doorGx] = doorPositionFor(w, h);
   const shelfGx = shelfGxFor(w);
   const shelfGy = SHELF_GY;
   // Both stored as indices into FLOOR_FRAMES/WALL_TRIPLES, not raw sheet frame
@@ -112,7 +109,7 @@ export function computeDefaultLayout(house: House, roomSize: RoomSize = 'large')
   const floorFrame = hash(house.id) % FLOOR_FRAMES.length;
   const wallTriple = hash(house.name) % WALL_TRIPLES.length;
 
-  const occupied = structuralOccupied(w, h, doorGx);
+  const occupied = structuralOccupied(w, h);
   for (const cell of shelfOccupied(shelfGx, shelfGy)) occupied.add(cell);
   const pending = house.rooms.flatMap((r) => r.notes);
   const placements: FurniturePlacement[] = [];
@@ -163,9 +160,9 @@ export function canPlace(
 }
 
 // Can the shelf (always SHELF_W x 2 tiles) move to (gx, gy)? `structural` here
-// is `structuralOccupied()` only (perimeter + door lane) — deliberately NOT
-// unioned with the shelf's own current position, since we're choosing where
-// it moves TO and it shouldn't collide with itself. Checked against every
+// is `structuralOccupied()` only (the perimeter) — deliberately NOT unioned
+// with the shelf's own current position, since we're choosing where it
+// moves TO and it shouldn't collide with itself. Checked against every
 // furniture placement's real footprint via `catalogById`.
 export function canPlaceShelf(
   layout: InteriorLayout,
@@ -190,18 +187,17 @@ export function canPlaceShelf(
 
 // Would every existing placement, and the shelf, still fit inside a room
 // resized to (newW, newH)? Used to block a shrink that would strand
-// furniture outside the new walls or on top of the (possibly relocated)
-// door lane. Nothing moves relative to the room's top-left corner, so this
-// only needs to check bounds + the new structural set — pieces can't newly
-// overlap each other, since their relative positions don't change.
+// furniture outside the new walls. Nothing moves relative to the room's
+// top-left corner, so this only needs to check bounds + the new structural
+// set — pieces can't newly overlap each other, since their relative
+// positions don't change.
 export function canResize(
   layout: InteriorLayout,
   catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
   newW: number,
   newH: number,
 ): boolean {
-  const [newDoorGx] = doorPositionFor(newW, newH);
-  const structural = structuralOccupied(newW, newH, newDoorGx);
+  const structural = structuralOccupied(newW, newH);
 
   const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, SHELF_W, 2);
   if (

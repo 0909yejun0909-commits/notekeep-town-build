@@ -80,12 +80,12 @@ export default function InteriorEditor() {
   // boundaries), so they read this instead.
   const layout = draft;
 
-  // Perimeter + door lane only — does NOT include the shelf's own footprint,
-  // since the shelf can move now. This is what marks a grid cell permanently
+  // The perimeter only — does NOT include the shelf's own footprint, since
+  // the shelf can move now. This is what marks a grid cell permanently
   // unusable (disabled button); the shelf blocks furniture too, but that's
   // handled by unioning in `shelfOccupied()` only where furniture placement
   // is actually validated, not by disabling the underlying cell everywhere.
-  const structural = structuralOccupied(w, h, doorGx);
+  const structural = structuralOccupied(w, h);
   const structuralWithShelf = new Set(structural);
   for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
 
