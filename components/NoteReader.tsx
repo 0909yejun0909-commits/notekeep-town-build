@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { safeUrl } from '@/lib/safeUrl';
 import type { NoteRef, VaultHandle } from '@/lib/types';
 import { useVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
@@ -391,7 +392,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 {status === 'loading' && <p style={{ color: INK_SOFT }}>Opening…</p>}
                 {status === 'error' && <p style={{ color: INK_SOFT }}>Could not read this note.</p>}
                 {content && (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url) => url} components={components}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeUrl} components={components}>
                     {content}
                   </ReactMarkdown>
                 )}
@@ -428,7 +429,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 />
                 <div className="note-scroll note-prose">
                   <h2 className="note-title">{note.title}</h2>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url) => url} components={components}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeUrl} components={components}>
                     {wikilinksToMarkdown(draft)}
                   </ReactMarkdown>
                 </div>
