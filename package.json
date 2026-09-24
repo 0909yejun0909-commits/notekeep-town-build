@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "relay": "node relay/server.mts",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"relay/*.test.mts\" \"lib/**/*.test.mts\""
   },
   "dependencies": {
@@ -14,13 +15,15 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
