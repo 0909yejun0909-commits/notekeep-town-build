@@ -74,6 +74,7 @@ export function useSession(): SessionState {
 }
 
 export function loadName(): string {
+  if (typeof window === 'undefined') return '';
   try {
     return localStorage.getItem(NAME_KEY) ?? '';
   } catch {

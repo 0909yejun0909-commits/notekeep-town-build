@@ -196,6 +196,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const [raw, setRaw] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [errorText, setErrorText] = useState<string | null>(null);
   const urlsRef = useRef<string[]>([]);
 
   const [editing, setEditing] = useState(false);
@@ -241,6 +242,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     editingRef.current = false;
     setSaveState('idle');
     setSaveError(null);
+    setErrorText(null);
     setPage(0);
     setPageCount(1);
 
@@ -256,8 +258,10 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         setRaw(text);
         await display(text, () => cancelled);
         if (!cancelled) setStatus('idle');
-      } catch {
-        if (!cancelled) setStatus('error');
+      } catch (err) {
+        if (cancelled) return;
+        setErrorText(err instanceof Error && err.cause === 'host' ? err.message : null);
+        setStatus('error');
       }
     })();
 
@@ -390,7 +394,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               <div ref={pagesRef} className="note-pages note-prose">
                 <h2 className="note-title">{note.title}</h2>
                 {status === 'loading' && <p style={{ color: INK_SOFT }}>Opening…</p>}
-                {status === 'error' && <p style={{ color: INK_SOFT }}>Could not read this note.</p>}
+                {status === 'error' && <p style={{ color: INK_SOFT }}>{errorText ?? 'Could not read this note.'}</p>}
                 {content && (
                   <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeUrl} components={components}>
                     {content}

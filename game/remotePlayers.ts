@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getAnchorSource, setAnchorSource, type AvatarAnchor } from '@/game/anchors';
 import { tileToWorld, type Direction } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import type { Presence, SceneId } from '@/lib/multiplayer/protocol';
@@ -8,15 +9,6 @@ const STEP_MS = 150; // matches GridMovement's own tween
 const HEAD = 32; // world px from a sprite's feet to just above its head
 
 type Avatar = { sprite: Phaser.GameObjects.Sprite; undress: () => void; gx: number; gy: number; facing: Direction };
-export type AvatarAnchor = { id: string; x: number; y: number };
-
-let anchors: (() => AvatarAnchor[]) | null = null;
-
-// Viewport points just above every avatar's head in the running scene, for the
-// React name-tag overlay (text stays crisp there instead of being pixel-scaled).
-export function avatarAnchors(): AvatarAnchor[] {
-  return anchors ? anchors() : [];
-}
 
 function animate(sprite: Phaser.GameObjects.Sprite, kind: 'idle' | 'walk', facing: Direction) {
   sprite.setFlipX(facing === 'left');
@@ -96,13 +88,13 @@ export function attachRemotePlayers(scene: Phaser.Scene, sceneId: SceneId, local
     for (const [peerId, a] of avatars) out.push(at(peerId, a.sprite));
     return out;
   };
-  anchors = mine;
+  setAnchorSource(mine);
 
   // The scene destroys the sprites and their clothes itself on shutdown.
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     off();
     scene.events.off(Phaser.Scenes.Events.UPDATE, sortDepth);
     avatars.clear();
-    if (anchors === mine) anchors = null;
+    if (getAnchorSource() === mine) setAnchorSource(null);
   });
 }
