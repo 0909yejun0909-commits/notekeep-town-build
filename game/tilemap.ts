@@ -10,6 +10,7 @@ export type TilemapResult = {
   blocked: Set<string>;
   doors: Map<string, string>;
   entries: Entry[];
+  houseImages: Map<string, Phaser.GameObjects.Image>;
 };
 
 const key = (x: number, y: number) => `${x},${y}`;
@@ -23,6 +24,7 @@ export function buildHouses(
   const blocked = new Set<string>();
   const doors = new Map<string, string>();
   const entries: Entry[] = [];
+  const houseImages = new Map<string, Phaser.GameObjects.Image>();
 
   for (const house of region.houses) {
     const [w, h] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
@@ -30,10 +32,11 @@ export function buildHouses(
     const gx = originGx + house.gx;
     const gy = originGy + house.gy;
 
-    scene.add
+    const img = scene.add
       .image(gx * TILE, gy * TILE, `house-${house.variant}`)
       .setOrigin(0, 0)
       .setDepth((gy + h) * TILE);
+    houseImages.set(house.id, img);
 
     for (let y = 0; y < h - 1; y++) {
       for (let x = 0; x < w; x++) {
@@ -48,7 +51,7 @@ export function buildHouses(
     entries.push({ gx: entryX, gy: entryY, houseId: house.id });
   }
 
-  return { blocked, doors, entries };
+  return { blocked, doors, entries, houseImages };
 }
 
 // grass_meadow.png, read off the sheet: 3x3 sand-on-grass block at 80, inner corners at 128.
