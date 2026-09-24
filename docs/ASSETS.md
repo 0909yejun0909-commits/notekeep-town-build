@@ -70,11 +70,17 @@ cp "$KENMI/Cute_Fantasy_Volcano/Tiles/Volcano_Tiles.png"             "$DEST/terr
 cp "$KENMI/Cute_Fantasy_Christmass/Decorations/Christmass_Grass.png" "$DEST/terrain/snow.png"
 
 H="$CF/Buildings/Buildings/Houses/Wood"
-cp "$H/House_1_Wood_Base_Red.png"   "$DEST/buildings/house_0.png"
-cp "$H/House_2_Wood_Base_Blue.png"  "$DEST/buildings/house_1.png"
-cp "$H/House_3_Wood_Green_Red.png"  "$DEST/buildings/house_2.png"
-cp "$H/House_4_Wood_Base_Black.png" "$DEST/buildings/house_3.png"
-cp "$H/House_5_Wood_Red_Blue.png"   "$DEST/buildings/house_4.png"
+# Every shape ships in all 9 wall/roof color combos; wall/roof color is picked independently
+# of shape (lib/houseCatalog.ts), so all 45 are installed, not just each shape's original combo.
+for shape in 1 2 3 4 5; do
+  for wc in Base Green Red; do
+    for rc in Black Blue Red; do
+      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
+      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+      cp "$H/House_${shape}_Wood_${wc}_${rc}.png" "$DEST/buildings/house_$((shape - 1))_${wl}_${rl}.png"
+    done
+  done
+done
 
 cp "$CF/Buildings/Houses_Interiors/Wood_Floor_Tiles.png" "$DEST/interior/floor.png"
 cp "$CF/Buildings/Houses_Interiors/Interior_Walls.png"   "$DEST/interior/walls.png"
@@ -281,16 +287,21 @@ FILE: public/assets/terrain/flowers.png      (texture key: flowers)
 
 ## Buildings
 
-Five separate files, not a spritesheet. `variant` (0-4) maps straight to the filename.
-Door tile is given in tiles from the sprite's top-left; it is the **lower** of the two door
-tiles, so the player walks onto the tile directly below it.
+Separate files, not a spritesheet. Each of the 5 shapes (`variant` 0-4) ships in all 9
+wall/roof color combos — color is picked independently of shape (`lib/houseCatalog.ts`) and
+never changes a shape's footprint or door tile, only which of the 45 files loads. Filename is
+`house_{variant}_{wallColor}_{roofColor}.png`, wallColor one of `base`/`green`/`red`, roofColor
+one of `black`/`blue`/`red`. Door tile is given in tiles from the sprite's top-left; it is the
+**lower** of the two door tiles, so the player walks onto the tile directly below it. Dimensions
+and door tile are the same across every color combo of a given shape — only listing one row
+each below.
 
 ```text
-  public/assets/buildings/house_0.png    96x128    6 x 8 tiles    door tile (2, 6)
-  public/assets/buildings/house_1.png   144x128    9 x 8 tiles    door tile (2, 6)
-  public/assets/buildings/house_2.png   144x128    9 x 8 tiles    door tile (5, 6)
-  public/assets/buildings/house_3.png   112x96     7 x 6 tiles    door tile (2, 4)
-  public/assets/buildings/house_4.png   192x128   12 x 8 tiles    door tile (5, 6)
+  public/assets/buildings/house_0_*.png    96x128    6 x 8 tiles    door tile (2, 6)
+  public/assets/buildings/house_1_*.png   144x128    9 x 8 tiles    door tile (2, 6)
+  public/assets/buildings/house_2_*.png   144x128    9 x 8 tiles    door tile (5, 6)
+  public/assets/buildings/house_3_*.png   112x96     7 x 6 tiles    door tile (2, 4)
+  public/assets/buildings/house_4_*.png   192x128   12 x 8 tiles    door tile (5, 6)
 
   Every house has one empty tile row at the bottom (shadow space), so the building's
   solid rows end at the door row. Collide everything except the entry tile below the door.

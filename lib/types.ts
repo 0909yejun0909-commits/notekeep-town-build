@@ -12,10 +12,15 @@ export type NoteRef = {
 
 export type Room = { id: string; name: string; notes: NoteRef[] };
 
+export type WallColor = 'base' | 'green' | 'red';
+export type RoofColor = 'black' | 'blue' | 'red';
+
 export type House = {
   id: string; name: string;
   gx: number; gy: number;   // grid position inside its region
-  variant: number;          // which building sprite, 0-4
+  variant: number;          // which building sprite shape, 0-4
+  wallColor: WallColor;     // independent of shape — every shape has all 3
+  roofColor: RoofColor;     // independent of shape — every shape has all 3
   rooms: Room[];
 };
 

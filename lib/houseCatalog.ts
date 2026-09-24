@@ -1,4 +1,4 @@
-import type { House } from './types';
+import type { House, RoofColor, WallColor } from './types';
 
 // Building sprite size in tiles per variant, and the lower door tile, from the manifest.
 // The single source of truth — lib/vault/parse.ts and game/tilemap.ts both import from here
@@ -12,6 +12,26 @@ export const HOUSE_DOOR: Record<number, [number, number]> = {
 export const HOUSE_VARIANTS = [0, 1, 2, 3, 4] as const;
 export const REGION_MARGIN = 2;
 export const HOUSE_GAP = 3;
+
+// Every shape ships in all 9 wall/roof color combinations — color is independent of shape and
+// never changes a house's footprint or door tile, only which of the 45 pre-rendered sprites
+// (installed by scripts/install-assets.sh) gets loaded.
+export const WALL_COLORS: readonly WallColor[] = ['base', 'green', 'red'];
+export const ROOF_COLORS: readonly RoofColor[] = ['black', 'blue', 'red'];
+
+// Each shape's original fixed color combo, from before wall/roof color became independently
+// pickable — the default for a house with no saved override, so an un-customized town looks
+// exactly as it did before this feature.
+export const DEFAULT_WALL_COLOR: Record<number, WallColor> = {
+  0: 'base', 1: 'base', 2: 'green', 3: 'base', 4: 'red',
+};
+export const DEFAULT_ROOF_COLOR: Record<number, RoofColor> = {
+  0: 'red', 1: 'blue', 2: 'red', 3: 'black', 4: 'blue',
+};
+
+export function houseTextureKey(variant: number, wallColor: WallColor, roofColor: RoofColor): string {
+  return `house-${variant}-${wallColor}-${roofColor}`;
+}
 
 // Would `house` (at its existing, fixed gx/gy) fit as `newVariant` without overlapping any
 // other house in the same region, with the same HOUSE_GAP clearance the original layout packer

@@ -25,11 +25,17 @@ cp "$CF/Trees/Medium_Spruce_Tree.png"           "$DEST/terrain/tree_spruce.png"
 cp "$CF/Outdoor decoration/Flowers.png"         "$DEST/terrain/flowers.png"
 
 H="$CF/Buildings/Buildings/Houses/Wood"
-cp "$H/House_1_Wood_Base_Red.png"   "$DEST/buildings/house_0.png"
-cp "$H/House_2_Wood_Base_Blue.png"  "$DEST/buildings/house_1.png"
-cp "$H/House_3_Wood_Green_Red.png"  "$DEST/buildings/house_2.png"
-cp "$H/House_4_Wood_Base_Black.png" "$DEST/buildings/house_3.png"
-cp "$H/House_5_Wood_Red_Blue.png"   "$DEST/buildings/house_4.png"
+# Every shape ships in all 9 wall/roof color combos; wall/roof color is picked independently
+# of shape (lib/houseCatalog.ts), so all 45 are installed, not just each shape's original combo.
+for shape in 1 2 3 4 5; do
+  for wc in Base Green Red; do
+    for rc in Black Blue Red; do
+      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
+      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+      cp "$H/House_${shape}_Wood_${wc}_${rc}.png" "$DEST/buildings/house_$((shape - 1))_${wl}_${rl}.png"
+    done
+  done
+done
 
 cp "$CF/Buildings/Houses_Interiors/Wood_Floor_Tiles.png" "$DEST/interior/floor.png"
 cp "$CF/Buildings/Houses_Interiors/Interior_Walls.png"   "$DEST/interior/walls.png"
