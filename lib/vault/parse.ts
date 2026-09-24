@@ -4,6 +4,7 @@ import {
   HOUSE_FOOTPRINT,
   REGION_MARGIN,
   HOUSE_GAP,
+  DEFAULT_MATERIAL,
   DEFAULT_WALL_COLOR,
   DEFAULT_ROOF_COLOR,
 } from '@/lib/houseCatalog';
@@ -286,6 +287,7 @@ export async function parseVault(
       const variant = hash(h.name) % 5;
       houses.push({
         id: h.id, name: h.name, gx: 0, gy: 0, variant,
+        material: DEFAULT_MATERIAL[variant],
         wallColor: DEFAULT_WALL_COLOR[variant],
         roofColor: DEFAULT_ROOF_COLOR[variant],
         rooms,

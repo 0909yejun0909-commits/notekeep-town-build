@@ -33,7 +33,7 @@ export function buildHouses(
     const gy = originGy + house.gy;
 
     const img = scene.add
-      .image(gx * TILE, gy * TILE, houseTextureKey(house.variant, house.wallColor, house.roofColor))
+      .image(gx * TILE, gy * TILE, houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor))
       .setOrigin(0, 0)
       .setDepth((gy + h) * TILE);
     houseImages.set(house.id, img);

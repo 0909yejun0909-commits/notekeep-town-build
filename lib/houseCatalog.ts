@@ -1,4 +1,4 @@
-import type { House, RoofColor, WallColor } from './types';
+import type { House, MaterialId, RoofColor, WallColor } from './types';
 
 // Building sprite size in tiles per variant, and the lower door tile, from the manifest.
 // The single source of truth — lib/vault/parse.ts and game/tilemap.ts both import from here
@@ -13,15 +13,20 @@ export const HOUSE_VARIANTS = [0, 1, 2, 3, 4] as const;
 export const REGION_MARGIN = 2;
 export const HOUSE_GAP = 3;
 
-// Every shape ships in all 9 wall/roof color combinations — color is independent of shape and
-// never changes a house's footprint or door tile, only which of the 45 pre-rendered sprites
-// (installed by scripts/install-assets.sh) gets loaded.
+// Every shape ships in all 9 wall/roof color combinations of the Wood material — color is
+// independent of shape and never changes a house's footprint or door tile, only which of the
+// installed sprites (scripts/install-assets.sh) gets loaded.
 export const WALL_COLORS: readonly WallColor[] = ['base', 'green', 'red'];
 export const ROOF_COLORS: readonly RoofColor[] = ['black', 'blue', 'red'];
+export const MATERIALS: readonly MaterialId[] = ['wood', 'stone', 'limestone'];
 
-// Each shape's original fixed color combo, from before wall/roof color became independently
-// pickable — the default for a house with no saved override, so an un-customized town looks
-// exactly as it did before this feature.
+// Each shape's original fixed material/color combo, from before wall/roof color became
+// independently pickable — the default for a house with no saved override, so an un-customized
+// town looks exactly as it did before this feature (always Wood; the feature predates Stone
+// and Limestone).
+export const DEFAULT_MATERIAL: Record<number, MaterialId> = {
+  0: 'wood', 1: 'wood', 2: 'wood', 3: 'wood', 4: 'wood',
+};
 export const DEFAULT_WALL_COLOR: Record<number, WallColor> = {
   0: 'base', 1: 'base', 2: 'green', 3: 'base', 4: 'red',
 };
@@ -29,8 +34,25 @@ export const DEFAULT_ROOF_COLOR: Record<number, RoofColor> = {
   0: 'red', 1: 'blue', 2: 'red', 3: 'black', 4: 'blue',
 };
 
-export function houseTextureKey(variant: number, wallColor: WallColor, roofColor: RoofColor): string {
-  return `house-${variant}-${wallColor}-${roofColor}`;
+// Not every material ships every wall color for every shape (Kenmi's own asset coverage, not a
+// design choice): Limestone only ships one wall look per shape, and Stone's shape index 3
+// (its "House_4") only ships the base wall look. Every material+shape combo that supports a
+// wall color supports it in all 3 roof colors — roof coverage never needs filtering.
+const STONE_BASE_ONLY_SHAPES = new Set([3]);
+
+export function availableWallColors(material: MaterialId, shape: number): readonly WallColor[] {
+  if (material === 'limestone') return ['base'];
+  if (material === 'stone' && STONE_BASE_ONLY_SHAPES.has(shape)) return ['base'];
+  return WALL_COLORS;
+}
+
+export function houseTextureKey(
+  variant: number,
+  material: MaterialId,
+  wallColor: WallColor,
+  roofColor: RoofColor,
+): string {
+  return `house-${variant}-${material}-${wallColor}-${roofColor}`;
 }
 
 // Would `house` (at its existing, fixed gx/gy) fit as `newVariant` without overlapping any

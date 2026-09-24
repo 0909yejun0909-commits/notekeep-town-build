@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import type { House, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
+import type { House, MaterialId, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
 import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
-import { DEFAULT_WALL_COLOR, DEFAULT_ROOF_COLOR } from '@/lib/houseCatalog';
+import { DEFAULT_MATERIAL, DEFAULT_WALL_COLOR, DEFAULT_ROOF_COLOR, availableWallColors } from '@/lib/houseCatalog';
 import { bus } from '@/game/bus';
 
 const REGION_PAD = 6;
@@ -22,11 +22,18 @@ export default class OverworldScene extends Phaser.Scene {
   private onCommitExterior = ({
     houseId,
     variant,
+    material,
     wallColor,
     roofColor,
-  }: { houseId: string; variant: number; wallColor: WallColor; roofColor: RoofColor }) => {
+  }: {
+    houseId: string;
+    variant: number;
+    material: MaterialId;
+    wallColor: WallColor;
+    roofColor: RoofColor;
+  }) => {
     if (!this.fingerprint) return;
-    saveExteriorOverride(this.fingerprint, houseId, variant, wallColor, roofColor);
+    saveExteriorOverride(this.fingerprint, houseId, variant, material, wallColor, roofColor);
     // Preserve the player's position across the restart, the same way exiting a house does via
     // the registry's one-shot `returnTile` — otherwise the player would visually teleport back
     // to the first house's entry every time they customize a building elsewhere on the map.
@@ -60,7 +67,14 @@ export default class OverworldScene extends Phaser.Scene {
           const saved = getExteriorOverride(this.fingerprint, house.id);
           if (saved !== null) {
             house.variant = saved.variant;
-            house.wallColor = saved.wallColor ?? DEFAULT_WALL_COLOR[saved.variant];
+            house.material = saved.material ?? DEFAULT_MATERIAL[saved.variant];
+            // A saved wallColor is only structurally valid (one of the 3 known colors), not
+            // necessarily available for this material+shape combo — Limestone and Stone's
+            // shape 3 only ship a subset. Fall back to 'base', always available everywhere.
+            const wallColor = saved.wallColor ?? DEFAULT_WALL_COLOR[saved.variant];
+            house.wallColor = availableWallColors(house.material, house.variant).includes(wallColor)
+              ? wallColor
+              : 'base';
             house.roofColor = saved.roofColor ?? DEFAULT_ROOF_COLOR[saved.variant];
           }
         }
@@ -181,6 +195,7 @@ export default class OverworldScene extends Phaser.Scene {
     bus.emit('open-exterior-editor', {
       houseId: house.id,
       currentVariant: house.variant,
+      currentMaterial: house.material,
       currentWallColor: house.wallColor,
       currentRoofColor: house.roofColor,
       siblingHouses: region.houses.map((h) => ({ id: h.id, gx: h.gx, gy: h.gy, variant: h.variant })),

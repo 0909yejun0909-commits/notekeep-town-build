@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
-import { HOUSE_VARIANTS, WALL_COLORS, ROOF_COLORS, canPlaceHouseVariant } from '@/lib/houseCatalog';
-import type { RoofColor, WallColor } from '@/lib/types';
+import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, canPlaceHouseVariant } from '@/lib/houseCatalog';
+import type { MaterialId, RoofColor, WallColor } from '@/lib/types';
 
-function assetPath(variant: number, wallColor: WallColor, roofColor: RoofColor): string {
-  return `/assets/buildings/house_${variant}_${wallColor}_${roofColor}.png`;
+function assetPath(variant: number, material: MaterialId, wallColor: WallColor, roofColor: RoofColor): string {
+  return `/assets/buildings/house_${variant}_${material}_${wallColor}_${roofColor}.png`;
 }
+
+const MATERIAL_LABEL: Record<MaterialId, string> = { wood: 'Wood', stone: 'Stone', limestone: 'Limestone' };
 
 type Session = {
   houseId: string;
   currentVariant: number;
+  currentMaterial: MaterialId;
   currentWallColor: WallColor;
   currentRoofColor: RoofColor;
   siblingHouses: Array<{ id: string; gx: number; gy: number; variant: number }>;
@@ -20,15 +23,16 @@ type Session = {
 };
 
 // Approximate swatch colors for the wall/roof color rows — the live thumbnail preview below
-// (built from the real installed sprite for the current shape+wallColor+roofColor) is the
-// authoritative preview; these chips are just quick-pick affordances, so each also carries a
-// text label rather than relying on the color alone.
+// (built from the real installed sprite for the current shape+material+wallColor+roofColor) is
+// the authoritative preview; these chips are just quick-pick affordances, so each also carries
+// a text label (title attribute) rather than relying on the color alone.
 const WALL_SWATCH: Record<WallColor, string> = { base: '#c9924f', green: '#4c8c4a', red: '#a4402a' };
 const ROOF_SWATCH: Record<RoofColor, string> = { black: '#2b2b2b', blue: '#3a6ea5', red: '#8a2f22' };
 
 export default function ExteriorEditor() {
   const [session, setSession] = useState<Session | null>(null);
   const [variant, setVariant] = useState(0);
+  const [material, setMaterial] = useState<MaterialId>('wood');
   const [wallColor, setWallColor] = useState<WallColor>('base');
   const [roofColor, setRoofColor] = useState<RoofColor>('black');
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +41,7 @@ export default function ExteriorEditor() {
     const onOpen = (payload: Session) => {
       setSession(payload);
       setVariant(payload.currentVariant);
+      setMaterial(payload.currentMaterial);
       setWallColor(payload.currentWallColor);
       setRoofColor(payload.currentRoofColor);
       setError(null);
@@ -63,6 +68,9 @@ export default function ExteriorEditor() {
     bus.emit('close-exterior-editor', undefined);
   }
 
+  // Not every material+shape combo ships every wall color (Limestone is one look per shape;
+  // Stone's shape index 3 is base-only) — 'base' is always available everywhere, so any pick
+  // that would leave the current wall color unavailable falls back to it instead of blocking.
   function pickVariant(next: number) {
     if (!session) return;
     if (next === variant) return;
@@ -73,18 +81,26 @@ export default function ExteriorEditor() {
     }
     setError(null);
     setVariant(next);
+    if (!availableWallColors(material, next).includes(wallColor)) setWallColor('base');
+  }
+
+  function pickMaterial(next: MaterialId) {
+    if (next === material) return;
+    setMaterial(next);
+    if (!availableWallColors(next, variant).includes(wallColor)) setWallColor('base');
   }
 
   function save() {
     if (!session) return;
-    bus.emit('commit-exterior-variant', { houseId: session.houseId, variant, wallColor, roofColor });
+    bus.emit('commit-exterior-variant', { houseId: session.houseId, variant, material, wallColor, roofColor });
     setSession(null);
     bus.emit('close-exterior-editor', undefined);
   }
 
   if (!session) return null;
 
-  const previewSrc = assetPath(variant, wallColor, roofColor);
+  const previewSrc = assetPath(variant, material, wallColor, roofColor);
+  const wallChoices = availableWallColors(material, variant);
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70" onClick={close}>
@@ -109,7 +125,7 @@ export default function ExteriorEditor() {
           <img
             key={previewSrc}
             src={previewSrc}
-            alt={`Building style ${variant}, ${wallColor} walls, ${roofColor} roof`}
+            alt={`Building style ${variant}, ${material}, ${wallColor} walls, ${roofColor} roof`}
             style={{ imageRendering: 'pixelated', maxWidth: 160, maxHeight: 160 }}
           />
         </div>
@@ -125,7 +141,7 @@ export default function ExteriorEditor() {
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={assetPath(v, wallColor, roofColor)}
+                  src={assetPath(v, material, wallColor, roofColor)}
                   alt={`Building style ${v}`}
                   style={{ imageRendering: 'pixelated', maxWidth: 56, maxHeight: 56 }}
                 />
@@ -135,9 +151,26 @@ export default function ExteriorEditor() {
         </div>
 
         <div className="flex gap-2">
+          <span className="w-16 shrink-0 text-xs uppercase text-neutral-400">Material</span>
+          <div className="flex gap-2">
+            {MATERIALS.map((m) => (
+              <button
+                key={m}
+                className={`rounded border px-2 py-1 text-xs capitalize ${
+                  m === material ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'
+                }`}
+                onClick={() => pickMaterial(m)}
+              >
+                {MATERIAL_LABEL[m]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-2">
           <span className="w-16 shrink-0 text-xs uppercase text-neutral-400">Walls</span>
           <div className="flex gap-2">
-            {WALL_COLORS.map((c) => (
+            {wallChoices.map((c) => (
               <button
                 key={c}
                 className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${
