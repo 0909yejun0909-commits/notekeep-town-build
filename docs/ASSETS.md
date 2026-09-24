@@ -70,12 +70,16 @@ cp "$KENMI/Cute_Fantasy_Volcano/Tiles/Volcano_Tiles.png"             "$DEST/terr
 cp "$KENMI/Cute_Fantasy_Christmass/Decorations/Christmass_Grass.png" "$DEST/terrain/snow.png"
 
 H="$CF/Buildings/Buildings/Houses"
+RECOLOR="$(cd "$(dirname "$0")" && pwd)/recolor-stone-houses.py"
 # Every shape ships in Wood, Stone, and Limestone; material/wall/roof color are all picked
 # independently (lib/houseCatalog.ts), so every combo Kenmi actually ships gets installed, not
 # just each shape's original fixed combo. Coverage isn't uniform, though — Wood ships all 9
-# wall/roof combos per shape, but Stone's shape index 3 (its "House_4") only ships the base
-# wall look, and Limestone ships only one wall look per shape (all 3 roof colors). See
-# lib/houseCatalog.ts's availableWallColors for the same rule the game enforces at runtime.
+# wall/roof combos per shape, but Stone and Limestone are both single-tone materials with no
+# separately-colorable wall area, so only the base wall look is installed for each (all 3 roof
+# colors). Stone's Base art still ships with a colored plaster gable from Kenmi (a half-timber
+# look) — recolor-stone-houses.py recolors it to match the stone foundation so Stone renders as
+# a single uniform material. See lib/houseCatalog.ts's availableWallColors for the same rule the
+# game enforces at runtime. Requires Python 3 + Pillow (`pip install Pillow`).
 for shape in 1 2 3 4 5; do
   idx=$((shape - 1))
 
@@ -87,17 +91,15 @@ for shape in 1 2 3 4 5; do
     done
   done
 
-  for wc in Base Green Red; do
-    if [ "$idx" = "3" ] && [ "$wc" != "Base" ]; then continue; fi
-    for rc in Black Blue Red; do
-      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
-      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
-      src="$H/Stone/House_${shape}_Stone_${wc}_${rc}.png"
-      # House_2_Stone_Base_Black.png ships from Kenmi with a typo'd filename (missing the
-      # underscore before "png") — the only mis-named file in the whole pack.
-      if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_${wc}_${rc}png.png"; fi
-      cp "$src" "$DEST/buildings/house_${idx}_stone_${wl}_${rl}.png"
-    done
+  for rc in Black Blue Red; do
+    rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+    src="$H/Stone/House_${shape}_Stone_Base_${rc}.png"
+    # House_2_Stone_Base_Black.png ships from Kenmi with a typo'd filename (missing the
+    # underscore before "png") — the only mis-named file in the whole pack.
+    if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_Base_${rc}png.png"; fi
+    dst="$DEST/buildings/house_${idx}_stone_base_${rl}.png"
+    cp "$src" "$dst"
+    python3 "$RECOLOR" "$H/Stone" "$dst" "$shape" "$rc"
   done
 
   for rc in Black Blue Red; do
@@ -313,11 +315,14 @@ FILE: public/assets/terrain/flowers.png      (texture key: flowers)
 
 Separate files, not a spritesheet. Each of the 5 shapes (`variant` 0-4) ships in 3 materials —
 `wood`/`stone`/`limestone` — and material/wall/roof color are all picked independently of shape
-(`lib/houseCatalog.ts`) and never change a shape's footprint or door tile, only which of the 99
+(`lib/houseCatalog.ts`) and never change a shape's footprint or door tile, only which of the 75
 installed files loads. Filename is `house_{variant}_{material}_{wallColor}_{roofColor}.png`.
 Coverage isn't uniform: `wood` ships all 3 wallColors (`base`/`green`/`red`) x all 3 roofColors
-(`black`/`blue`/`red`) for every shape; `stone` does too, except shape index 3 (its "House_4"),
-which only ships `base` walls; `limestone` only ships `base` walls for every shape. Every combo
+(`black`/`blue`/`red`) for every shape; `stone` and `limestone` are both single-tone materials
+with no separately-colorable wall area, so only `base` walls are installed for either, across
+all 3 roof colors. (Stone's Base art ships from Kenmi with a colored plaster gable — a
+half-timber look — recolored to match its stone foundation by
+`scripts/recolor-stone-houses.py` so it renders as a single uniform material.) Every combo
 that exists ships all 3 roof colors — `availableWallColors(material, shape)` is the one place
 this rule lives, and both the editor UI and `scripts/install-assets.sh` read it (well, the
 script encodes it directly, since it runs before any TypeScript exists to import). Door tile is

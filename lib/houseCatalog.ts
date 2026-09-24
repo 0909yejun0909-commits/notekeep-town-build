@@ -34,15 +34,14 @@ export const DEFAULT_ROOF_COLOR: Record<number, RoofColor> = {
   0: 'red', 1: 'blue', 2: 'red', 3: 'black', 4: 'blue',
 };
 
-// Not every material ships every wall color for every shape (Kenmi's own asset coverage, not a
-// design choice): Limestone only ships one wall look per shape, and Stone's shape index 3
-// (its "House_4") only ships the base wall look. Every material+shape combo that supports a
-// wall color supports it in all 3 roof colors — roof coverage never needs filtering.
-const STONE_BASE_ONLY_SHAPES = new Set([3]);
-
-export function availableWallColors(material: MaterialId, shape: number): readonly WallColor[] {
-  if (material === 'limestone') return ['base'];
-  if (material === 'stone' && STONE_BASE_ONLY_SHAPES.has(shape)) return ['base'];
+// Limestone and Stone are both single-tone materials with no separately-colorable wall area:
+// Limestone ships only one wall look per shape from Kenmi, and Stone's "green"/"red" plaster
+// variants were recolored to match its stone-gray foundation (scripts/install-assets.sh), so
+// every shape's Stone sprite is uniformly gray and only the base wall look is kept installed.
+// Every material+shape combo that supports a wall color supports it in all 3 roof colors — roof
+// coverage never needs filtering.
+export function availableWallColors(material: MaterialId, _shape: number): readonly WallColor[] {
+  if (material === 'limestone' || material === 'stone') return ['base'];
   return WALL_COLORS;
 }
 

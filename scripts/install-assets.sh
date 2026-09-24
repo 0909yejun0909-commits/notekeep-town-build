@@ -25,12 +25,16 @@ cp "$CF/Trees/Medium_Spruce_Tree.png"           "$DEST/terrain/tree_spruce.png"
 cp "$CF/Outdoor decoration/Flowers.png"         "$DEST/terrain/flowers.png"
 
 H="$CF/Buildings/Buildings/Houses"
+RECOLOR="$(cd "$(dirname "$0")" && pwd)/recolor-stone-houses.py"
 # Every shape ships in Wood, Stone, and Limestone; material/wall/roof color are all picked
 # independently (lib/houseCatalog.ts), so every combo Kenmi actually ships gets installed, not
 # just each shape's original fixed combo. Coverage isn't uniform, though — Wood ships all 9
-# wall/roof combos per shape, but Stone's shape index 3 (its "House_4") only ships the base
-# wall look, and Limestone ships only one wall look per shape (all 3 roof colors). See
-# lib/houseCatalog.ts's availableWallColors for the same rule the game enforces at runtime.
+# wall/roof combos per shape, but Stone and Limestone are both single-tone materials with no
+# separately-colorable wall area, so only the base wall look is installed for each (all 3 roof
+# colors). Stone's Base art still ships with a colored plaster gable from Kenmi (a half-timber
+# look) — recolor-stone-houses.py recolors it to match the stone foundation so Stone renders as
+# a single uniform material. See lib/houseCatalog.ts's availableWallColors for the same rule the
+# game enforces at runtime.
 for shape in 1 2 3 4 5; do
   idx=$((shape - 1))
 
@@ -42,17 +46,15 @@ for shape in 1 2 3 4 5; do
     done
   done
 
-  for wc in Base Green Red; do
-    if [ "$idx" = "3" ] && [ "$wc" != "Base" ]; then continue; fi
-    for rc in Black Blue Red; do
-      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
-      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
-      src="$H/Stone/House_${shape}_Stone_${wc}_${rc}.png"
-      # House_2_Stone_Base_Black.png ships from Kenmi with a typo'd filename (missing the
-      # underscore before "png") — the only mis-named file in the whole pack.
-      if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_${wc}_${rc}png.png"; fi
-      cp "$src" "$DEST/buildings/house_${idx}_stone_${wl}_${rl}.png"
-    done
+  for rc in Black Blue Red; do
+    rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+    src="$H/Stone/House_${shape}_Stone_Base_${rc}.png"
+    # House_2_Stone_Base_Black.png ships from Kenmi with a typo'd filename (missing the
+    # underscore before "png") — the only mis-named file in the whole pack.
+    if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_Base_${rc}png.png"; fi
+    dst="$DEST/buildings/house_${idx}_stone_base_${rl}.png"
+    cp "$src" "$dst"
+    python3 "$RECOLOR" "$H/Stone" "$dst" "$shape" "$rc"
   done
 
   for rc in Black Blue Red; do
