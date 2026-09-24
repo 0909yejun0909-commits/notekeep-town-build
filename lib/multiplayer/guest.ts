@@ -45,21 +45,25 @@ export async function joinRoom(
     throw new JoinError('broken-link');
   }
 
+  // Read the local copy before joining: once in the room, nothing may await before the
+  // listeners below are attached, or the presence of people already there is lost.
+  const local = new Map<string, FileSystemFileHandle>();
+  if (localDir) await walk(localDir, '', local);
+  const resolveLocal = makeLinkResolver([...local.keys()]);
+  // Notes by exact path only — a same-named file elsewhere in the guest's copy is a
+  // different note. Embeds resolve by name, the way Obsidian does.
+  const readLocalNote = async (id: string): Promise<File | null> => (await local.get(id)?.getFile()) ?? null;
+  const readLocalEmbed = async (link: string): Promise<File | null> => {
+    const path = resolveLocal(link);
+    return (path && (await local.get(path)?.getFile())) || null;
+  };
+
   let room: Room;
   try {
     room = await Room.join(RELAY_URL, invite.roomId, key);
   } catch (err) {
     throw new JoinError(err instanceof RoomError ? err.reason : 'relay-unreachable');
   }
-
-  const local = new Map<string, FileSystemFileHandle>();
-  if (localDir) await walk(localDir, '', local);
-  const resolveLocal = makeLinkResolver([...local.keys()]);
-  const readLocal = async (link: string): Promise<File | null> => {
-    const path = resolveLocal(link);
-    const handle = path ? local.get(path) : undefined;
-    return handle ? handle.getFile() : null;
-  };
 
   const pending = new Map<string, { resolve: (r: NoteResponse) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   let reqCounter = 0;
@@ -77,14 +81,14 @@ export async function joinRoom(
   const makeHandle = (p: WorldPayload): VaultHandle => ({
     world: p.world,
     readNote: async (id) => {
-      const file = await readLocal(id);
+      const file = await readLocalNote(id);
       if (file) return file.text();
       const res = await ask(id, 'text');
       if (!res.ok) throw new Error(res.error, { cause: 'host' });
       return res.text ?? '';
     },
     readBinary: async (path) => {
-      const file = await readLocal(path);
+      const file = await readLocalEmbed(path);
       if (file) return file;
       const res = await ask(path, 'binary');
       if (!res.ok) throw new Error(res.error, { cause: 'host' });
