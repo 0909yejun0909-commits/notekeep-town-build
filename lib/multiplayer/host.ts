@@ -42,6 +42,7 @@ export async function startHosting(vault: VaultHandle, name: string, share: Shar
   const room = await Room.create(RELAY_URL, key);
   const invite = `${location.origin}${location.pathname}?room=${room.roomId}#key=${await exportRoomKey(key)}`;
   const noteIds = noteIdsOf(vault.world);
+  const allowedMedia = new Set<string>();
   let current = share;
 
   const sendWorld = (to: string) => {
@@ -53,7 +54,7 @@ export async function startHosting(vault: VaultHandle, name: string, share: Shar
     if (e.msg.t === 'hello') sendWorld(e.from);
     if (e.msg.t !== 'note-req') return;
     const { reqId } = e.msg;
-    const reply = await resolveNoteRequest(vault, current, noteIds, e.msg);
+    const reply = await resolveNoteRequest(vault, current, noteIds, allowedMedia, e.msg);
     const res: NoteResponse = !reply.ok
       ? { t: 'note-res', reqId, ok: false, error: reply.error }
       : 'text' in reply

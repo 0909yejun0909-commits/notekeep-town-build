@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "relay": "node relay/server.mts",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"relay/*.test.mts\" \"lib/**/*.test.mts\""
+    "test": "node --import ./scripts/test-alias.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"relay/*.test.mts\" \"lib/**/*.test.mts\""
   },
   "dependencies": {
     "next": "16.3.5",
