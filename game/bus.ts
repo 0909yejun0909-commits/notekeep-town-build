@@ -11,6 +11,15 @@ type BusEvents = {
   'open-interior-editor': { houseId: string; layout: InteriorLayout };
   'close-interior-editor': undefined;
   'commit-interior-layout': { houseId: string; layout: InteriorLayout };
+  'open-exterior-editor': {
+    houseId: string;
+    currentVariant: number;
+    siblingHouses: Array<{ id: string; gx: number; gy: number; variant: number }>;
+    gx: number;
+    gy: number;
+  };
+  'close-exterior-editor': undefined;
+  'commit-exterior-variant': { houseId: string; variant: number };
 };
 
 type Callback<K extends keyof BusEvents> = (payload: BusEvents[K]) => void;
