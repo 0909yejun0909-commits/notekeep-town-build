@@ -1,4 +1,4 @@
-import type { InteriorLayout, NoteRef } from '@/lib/types';
+import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
 
 type BusEvents = {
   'enter-house': { houseId: string };
@@ -14,12 +14,21 @@ type BusEvents = {
   'open-exterior-editor': {
     houseId: string;
     currentVariant: number;
+    currentMaterial: MaterialId;
+    currentWallColor: WallColor;
+    currentRoofColor: RoofColor;
     siblingHouses: Array<{ id: string; gx: number; gy: number; variant: number }>;
     gx: number;
     gy: number;
   };
   'close-exterior-editor': undefined;
-  'commit-exterior-variant': { houseId: string; variant: number };
+  'commit-exterior-variant': {
+    houseId: string;
+    variant: number;
+    material: MaterialId;
+    wallColor: WallColor;
+    roofColor: RoofColor;
+  };
 };
 
 type Callback<K extends keyof BusEvents> = (payload: BusEvents[K]) => void;

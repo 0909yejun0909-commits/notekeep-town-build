@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { FurnitureId } from '@/lib/types';
 import { CATALOG } from '@/lib/catalog';
+import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
 
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
 //   this.add.image(px, py, 'furn_bed', 'bed')
@@ -55,8 +56,17 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('terrain-path', 'assets/terrain/fill_path.png');
     this.load.image('terrain-water', 'assets/terrain/fill_water.png');
 
-    for (let n = 0; n <= 4; n++) {
-      this.load.image(`house-${n}`, `assets/buildings/house_${n}.png`);
+    for (const shape of HOUSE_VARIANTS) {
+      for (const material of MATERIALS) {
+        for (const wallColor of availableWallColors(material, shape)) {
+          for (const roofColor of ROOF_COLORS) {
+            this.load.image(
+              houseTextureKey(shape, material, wallColor, roofColor),
+              `assets/buildings/house_${shape}_${material}_${wallColor}_${roofColor}.png`,
+            );
+          }
+        }
+      }
     }
 
     this.load.spritesheet('interior-floor', 'assets/interior/floor.png', { frameWidth: 16, frameHeight: 16 });

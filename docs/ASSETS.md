@@ -69,12 +69,42 @@ cp "$KENMI/Cute_Fantasy_Desert/Tiles/Desert_Beach_Tiles_1.png"       "$DEST/terr
 cp "$KENMI/Cute_Fantasy_Volcano/Tiles/Volcano_Tiles.png"             "$DEST/terrain/volcano.png"
 cp "$KENMI/Cute_Fantasy_Christmass/Decorations/Christmass_Grass.png" "$DEST/terrain/snow.png"
 
-H="$CF/Buildings/Buildings/Houses/Wood"
-cp "$H/House_1_Wood_Base_Red.png"   "$DEST/buildings/house_0.png"
-cp "$H/House_2_Wood_Base_Blue.png"  "$DEST/buildings/house_1.png"
-cp "$H/House_3_Wood_Green_Red.png"  "$DEST/buildings/house_2.png"
-cp "$H/House_4_Wood_Base_Black.png" "$DEST/buildings/house_3.png"
-cp "$H/House_5_Wood_Red_Blue.png"   "$DEST/buildings/house_4.png"
+H="$CF/Buildings/Buildings/Houses"
+# Every shape ships in Wood, Stone, and Limestone; material/wall/roof color are all picked
+# independently (lib/houseCatalog.ts), so every combo Kenmi actually ships gets installed, not
+# just each shape's original fixed combo. Coverage isn't uniform, though — Wood ships all 9
+# wall/roof combos per shape, but Stone's shape index 3 (its "House_4") only ships the base
+# wall look, and Limestone ships only one wall look per shape (all 3 roof colors). See
+# lib/houseCatalog.ts's availableWallColors for the same rule the game enforces at runtime.
+for shape in 1 2 3 4 5; do
+  idx=$((shape - 1))
+
+  for wc in Base Green Red; do
+    for rc in Black Blue Red; do
+      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
+      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+      cp "$H/Wood/House_${shape}_Wood_${wc}_${rc}.png" "$DEST/buildings/house_${idx}_wood_${wl}_${rl}.png"
+    done
+  done
+
+  for wc in Base Green Red; do
+    if [ "$idx" = "3" ] && [ "$wc" != "Base" ]; then continue; fi
+    for rc in Black Blue Red; do
+      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
+      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+      src="$H/Stone/House_${shape}_Stone_${wc}_${rc}.png"
+      # House_2_Stone_Base_Black.png ships from Kenmi with a typo'd filename (missing the
+      # underscore before "png") — the only mis-named file in the whole pack.
+      if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_${wc}_${rc}png.png"; fi
+      cp "$src" "$DEST/buildings/house_${idx}_stone_${wl}_${rl}.png"
+    done
+  done
+
+  for rc in Black Blue Red; do
+    rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+    cp "$H/Limestone/House_${shape}_Limestone_Base_${rc}.png" "$DEST/buildings/house_${idx}_limestone_base_${rl}.png"
+  done
+done
 
 cp "$CF/Buildings/Houses_Interiors/Wood_Floor_Tiles.png" "$DEST/interior/floor.png"
 cp "$CF/Buildings/Houses_Interiors/Interior_Walls.png"   "$DEST/interior/walls.png"
@@ -281,16 +311,26 @@ FILE: public/assets/terrain/flowers.png      (texture key: flowers)
 
 ## Buildings
 
-Five separate files, not a spritesheet. `variant` (0-4) maps straight to the filename.
-Door tile is given in tiles from the sprite's top-left; it is the **lower** of the two door
-tiles, so the player walks onto the tile directly below it.
+Separate files, not a spritesheet. Each of the 5 shapes (`variant` 0-4) ships in 3 materials —
+`wood`/`stone`/`limestone` — and material/wall/roof color are all picked independently of shape
+(`lib/houseCatalog.ts`) and never change a shape's footprint or door tile, only which of the 99
+installed files loads. Filename is `house_{variant}_{material}_{wallColor}_{roofColor}.png`.
+Coverage isn't uniform: `wood` ships all 3 wallColors (`base`/`green`/`red`) x all 3 roofColors
+(`black`/`blue`/`red`) for every shape; `stone` does too, except shape index 3 (its "House_4"),
+which only ships `base` walls; `limestone` only ships `base` walls for every shape. Every combo
+that exists ships all 3 roof colors — `availableWallColors(material, shape)` is the one place
+this rule lives, and both the editor UI and `scripts/install-assets.sh` read it (well, the
+script encodes it directly, since it runs before any TypeScript exists to import). Door tile is
+given in tiles from the sprite's top-left; it is the **lower** of the two door tiles, so the
+player walks onto the tile directly below it. Dimensions and door tile are the same across
+every material/color combo of a given shape — only listing one row each below.
 
 ```text
-  public/assets/buildings/house_0.png    96x128    6 x 8 tiles    door tile (2, 6)
-  public/assets/buildings/house_1.png   144x128    9 x 8 tiles    door tile (2, 6)
-  public/assets/buildings/house_2.png   144x128    9 x 8 tiles    door tile (5, 6)
-  public/assets/buildings/house_3.png   112x96     7 x 6 tiles    door tile (2, 4)
-  public/assets/buildings/house_4.png   192x128   12 x 8 tiles    door tile (5, 6)
+  public/assets/buildings/house_0_*.png    96x128    6 x 8 tiles    door tile (2, 6)
+  public/assets/buildings/house_1_*.png   144x128    9 x 8 tiles    door tile (2, 6)
+  public/assets/buildings/house_2_*.png   144x128    9 x 8 tiles    door tile (5, 6)
+  public/assets/buildings/house_3_*.png   112x96     7 x 6 tiles    door tile (2, 4)
+  public/assets/buildings/house_4_*.png   192x128   12 x 8 tiles    door tile (5, 6)
 
   Every house has one empty tile row at the bottom (shadow space), so the building's
   solid rows end at the door row. Collide everything except the entry tile below the door.

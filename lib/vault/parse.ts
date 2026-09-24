@@ -1,6 +1,13 @@
 import type { House, NoteRef, Region, Room, WorldModel } from '@/lib/types';
 import { BIOMES, FOOTPRINT, FURNITURE, hash } from '@/lib/types';
-import { HOUSE_FOOTPRINT, HOUSE_DOOR, REGION_MARGIN, HOUSE_GAP } from '@/lib/houseCatalog';
+import {
+  HOUSE_FOOTPRINT,
+  REGION_MARGIN,
+  HOUSE_GAP,
+  DEFAULT_MATERIAL,
+  DEFAULT_WALL_COLOR,
+  DEFAULT_ROOF_COLOR,
+} from '@/lib/houseCatalog';
 
 export const MAX_NOTES_PER_ROOM = 30;
 
@@ -277,7 +284,14 @@ export async function parseVault(
           rooms.push(part);
         }
       }
-      houses.push({ id: h.id, name: h.name, gx: 0, gy: 0, variant: hash(h.name) % 5, rooms });
+      const variant = hash(h.name) % 5;
+      houses.push({
+        id: h.id, name: h.name, gx: 0, gy: 0, variant,
+        material: DEFAULT_MATERIAL[variant],
+        wallColor: DEFAULT_WALL_COLOR[variant],
+        roofColor: DEFAULT_ROOF_COLOR[variant],
+        rooms,
+      });
     }
     const { pos } = layoutRegion(houses);
     houses.forEach((h, i) => { h.gx = pos[i][0]; h.gy = pos[i][1]; });

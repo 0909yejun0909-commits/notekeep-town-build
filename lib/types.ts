@@ -12,10 +12,20 @@ export type NoteRef = {
 
 export type Room = { id: string; name: string; notes: NoteRef[] };
 
+export type WallColor = 'base' | 'green' | 'red';
+export type RoofColor = 'black' | 'blue' | 'red';
+export type MaterialId = 'wood' | 'stone' | 'limestone';
+
 export type House = {
   id: string; name: string;
   gx: number; gy: number;   // grid position inside its region
-  variant: number;          // which building sprite, 0-4
+  variant: number;          // which building sprite shape, 0-4
+  material: MaterialId;     // independent of shape — every shape has all 3
+  // Not every material+shape combo ships every wall color (see
+  // lib/houseCatalog.ts's availableWallColors) — always valid for the house's own
+  // current material+variant, since the editor filters and OverworldScene defaults safely.
+  wallColor: WallColor;
+  roofColor: RoofColor;     // independent of shape and material — every combo has all 3
   rooms: Room[];
 };
 

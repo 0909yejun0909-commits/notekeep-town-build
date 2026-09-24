@@ -1,6 +1,6 @@
 import type { Region } from '@/lib/types';
 import { hash } from '@/lib/types';
-import { HOUSE_FOOTPRINT, HOUSE_DOOR } from '@/lib/houseCatalog';
+import { HOUSE_FOOTPRINT, HOUSE_DOOR, houseTextureKey } from '@/lib/houseCatalog';
 
 const TILE = 16;
 
@@ -33,7 +33,7 @@ export function buildHouses(
     const gy = originGy + house.gy;
 
     const img = scene.add
-      .image(gx * TILE, gy * TILE, `house-${house.variant}`)
+      .image(gx * TILE, gy * TILE, houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor))
       .setOrigin(0, 0)
       .setDepth((gy + h) * TILE);
     houseImages.set(house.id, img);

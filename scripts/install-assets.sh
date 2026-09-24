@@ -24,12 +24,42 @@ cp "$CF/Trees/Medium_Oak_Tree.png"              "$DEST/terrain/tree_oak.png"
 cp "$CF/Trees/Medium_Spruce_Tree.png"           "$DEST/terrain/tree_spruce.png"
 cp "$CF/Outdoor decoration/Flowers.png"         "$DEST/terrain/flowers.png"
 
-H="$CF/Buildings/Buildings/Houses/Wood"
-cp "$H/House_1_Wood_Base_Red.png"   "$DEST/buildings/house_0.png"
-cp "$H/House_2_Wood_Base_Blue.png"  "$DEST/buildings/house_1.png"
-cp "$H/House_3_Wood_Green_Red.png"  "$DEST/buildings/house_2.png"
-cp "$H/House_4_Wood_Base_Black.png" "$DEST/buildings/house_3.png"
-cp "$H/House_5_Wood_Red_Blue.png"   "$DEST/buildings/house_4.png"
+H="$CF/Buildings/Buildings/Houses"
+# Every shape ships in Wood, Stone, and Limestone; material/wall/roof color are all picked
+# independently (lib/houseCatalog.ts), so every combo Kenmi actually ships gets installed, not
+# just each shape's original fixed combo. Coverage isn't uniform, though — Wood ships all 9
+# wall/roof combos per shape, but Stone's shape index 3 (its "House_4") only ships the base
+# wall look, and Limestone ships only one wall look per shape (all 3 roof colors). See
+# lib/houseCatalog.ts's availableWallColors for the same rule the game enforces at runtime.
+for shape in 1 2 3 4 5; do
+  idx=$((shape - 1))
+
+  for wc in Base Green Red; do
+    for rc in Black Blue Red; do
+      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
+      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+      cp "$H/Wood/House_${shape}_Wood_${wc}_${rc}.png" "$DEST/buildings/house_${idx}_wood_${wl}_${rl}.png"
+    done
+  done
+
+  for wc in Base Green Red; do
+    if [ "$idx" = "3" ] && [ "$wc" != "Base" ]; then continue; fi
+    for rc in Black Blue Red; do
+      wl=$(echo "$wc" | tr '[:upper:]' '[:lower:]')
+      rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+      src="$H/Stone/House_${shape}_Stone_${wc}_${rc}.png"
+      # House_2_Stone_Base_Black.png ships from Kenmi with a typo'd filename (missing the
+      # underscore before "png") — the only mis-named file in the whole pack.
+      if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_${wc}_${rc}png.png"; fi
+      cp "$src" "$DEST/buildings/house_${idx}_stone_${wl}_${rl}.png"
+    done
+  done
+
+  for rc in Black Blue Red; do
+    rl=$(echo "$rc" | tr '[:upper:]' '[:lower:]')
+    cp "$H/Limestone/House_${shape}_Limestone_Base_${rc}.png" "$DEST/buildings/house_${idx}_limestone_base_${rl}.png"
+  done
+done
 
 cp "$CF/Buildings/Houses_Interiors/Wood_Floor_Tiles.png" "$DEST/interior/floor.png"
 cp "$CF/Buildings/Houses_Interiors/Interior_Walls.png"   "$DEST/interior/walls.png"

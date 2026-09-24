@@ -1,9 +1,14 @@
 import Phaser from 'phaser';
 import { hash } from '@/lib/types';
+import {
+  HOUSE_FOOTPRINT,
+  DEFAULT_MATERIAL,
+  DEFAULT_WALL_COLOR,
+  DEFAULT_ROOF_COLOR,
+  houseTextureKey,
+} from '@/lib/houseCatalog';
 
 const TILE = 16;
-const HOUSE_W: Record<number, number> = { 0: 6, 1: 9, 2: 9, 3: 7, 4: 12 };
-const HOUSE_H: Record<number, number> = { 0: 8, 1: 8, 2: 8, 3: 6, 4: 8 };
 const STREET = [0, 3, 1, 2, 4];
 
 export default class TitleScene extends Phaser.Scene {
@@ -41,15 +46,17 @@ export default class TitleScene extends Phaser.Scene {
     const street: number[] = [];
     let total = -gap;
     for (const v of STREET) {
-      const w = HOUSE_W[v] * TILE + gap;
-      if (total + w > width - 4 * TILE) break;
+      const [w] = HOUSE_FOOTPRINT[v];
+      if (total + w * TILE + gap > width - 4 * TILE) break;
       street.push(v);
-      total += w;
+      total += w * TILE + gap;
     }
     let x = Math.floor((width - total) / 2);
     for (const v of street) {
-      this.add.image(x, baseY - HOUSE_H[v] * TILE, `house-${v}`).setOrigin(0, 0);
-      x += HOUSE_W[v] * TILE + gap;
+      const [w, h] = HOUSE_FOOTPRINT[v];
+      const key = houseTextureKey(v, DEFAULT_MATERIAL[v], DEFAULT_WALL_COLOR[v], DEFAULT_ROOF_COLOR[v]);
+      this.add.image(x, baseY - h * TILE, key).setOrigin(0, 0);
+      x += w * TILE + gap;
     }
 
     const treeY = baseY + TILE;
