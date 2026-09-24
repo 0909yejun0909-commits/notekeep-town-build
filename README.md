@@ -41,6 +41,36 @@ Click **"Try the demo town"** to explore a sample vault with no setup, or **"Ope
 vault"** to pick your own Obsidian vault folder (Chrome/Edge only — the File System Access
 API isn't supported in Firefox/Safari).
 
+## Studying together
+
+A host can invite friends into their town: everyone walks around as their own character
+and chats, and guests can open the host's notes. It needs one small relay server, which
+never sees note or chat contents — everything is end-to-end encrypted, and the key only
+exists in the invite link's `#fragment`, which browsers never send to any server.
+
+```bash
+npm run relay                                          # ws://localhost:8787
+echo 'NEXT_PUBLIC_RELAY_URL=ws://localhost:8787' > .env.local
+npm run dev
+```
+
+Open your vault, click **Invite friends**, and send the link. Guests can join from any
+modern browser. If they have the same vault synced locally they can pick their copy, and
+notes load from their own disk. Press **T** to chat.
+
+- **Hosting the relay:** `relay/server.mts` is a single file with one dependency (`ws`)
+  and no database. Run it anywhere with Node 22.18+ (`PORT` sets the port). Put it behind
+  TLS and use a `wss://` URL when the app itself is served over HTTPS.
+- **What guests can see:** your folder names and note titles, always. Note contents and
+  images only while you share "Town + notes" (the default); switch to "Town only" at any
+  time. Guests can't edit anything.
+- **Limits:** 16 people per session; images and notes up to 4 MB each. The session ends
+  when the host leaves.
+- Without `NEXT_PUBLIC_RELAY_URL` the app is exactly the solo game — no invite button,
+  no network traffic.
+- `npm test` runs the relay, encryption, protocol and session tests (Node's built-in
+  runner, no extra dependencies).
+
 ## How it's built
 
 - `lib/vault/` — walks the picked directory, parses folders/notes into the `WorldModel`
@@ -50,7 +80,7 @@ API isn't supported in Firefox/Safari).
 - `game/scenes/TitleScene.ts` — title screen, character customization, NPCs.
 - `components/` — React UI overlaid on the Phaser canvas (note reader, vault picker, HUD).
   All player-facing UI is React; nothing is drawn as UI inside Phaser itself.
-- `app/api/` — the one server route, for NPC dialogue.
+- `lib/multiplayer/` and `relay/` — optional study sessions (see below).
 
 `docs/` and `CLAUDE.md` are kept as-is from the original four-person build: they document the
 type contract, file ownership, and the constraints (locked Phaser version, integer pixel
