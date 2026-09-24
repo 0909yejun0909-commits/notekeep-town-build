@@ -1,21 +1,12 @@
 import type { House, NoteRef, Region, Room, WorldModel } from '@/lib/types';
 import { BIOMES, FOOTPRINT, FURNITURE, hash } from '@/lib/types';
-
-// Building sprite size in tiles per variant, and the lower door tile, from the manifest.
-export const HOUSE_FOOTPRINT: Record<number, [number, number]> = {
-  0: [6, 8], 1: [9, 8], 2: [9, 8], 3: [7, 6], 4: [12, 8],
-};
-export const HOUSE_DOOR: Record<number, [number, number]> = {
-  0: [2, 6], 1: [2, 6], 2: [5, 6], 3: [2, 4], 4: [5, 6],
-};
+import { HOUSE_FOOTPRINT, HOUSE_DOOR, REGION_MARGIN, HOUSE_GAP } from '@/lib/houseCatalog';
 
 export const MAX_NOTES_PER_ROOM = 30;
 
 const ROOT_ID = '.';
 const MAIN = 'Main';
 const ROOM_CLEAR_ROWS = 3;
-const REGION_MARGIN = 2;
-const HOUSE_GAP = 3;
 const NOTE_EXT = /\.md$/i;
 const SKIP_NOTE = /\.excalidraw\.md$/i;
 

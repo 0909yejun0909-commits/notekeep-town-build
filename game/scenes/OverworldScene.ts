@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
-import type { WorldModel } from '@/lib/types';
+import type { House, Region, WorldModel } from '@/lib/types';
 import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
+import { getExteriorVariant, saveExteriorVariant } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
 
 const REGION_PAD = 6;
@@ -14,6 +15,25 @@ export default class OverworldScene extends Phaser.Scene {
   private player: Phaser.GameObjects.Sprite | null = null;
   private doors = new Map<string, string>();
   private lastDoorKey: string | null = null;
+  private fingerprint: string | undefined;
+  private editingExterior = false;
+
+  private onCommitExterior = ({ houseId, variant }: { houseId: string; variant: number }) => {
+    if (!this.fingerprint) return;
+    saveExteriorVariant(this.fingerprint, houseId, variant);
+    // Preserve the player's position across the restart, the same way exiting a house does via
+    // the registry's one-shot `returnTile` — otherwise the player would visually teleport back
+    // to the first house's entry every time they customize a building elsewhere on the map.
+    if (this.player) {
+      const { gx, gy } = worldToTile(this.player.x, this.player.y);
+      this.game.registry.set('returnTile', { gx, gy });
+    }
+    this.scene.restart();
+  };
+
+  private onCloseExteriorEditor = () => {
+    this.editingExterior = false;
+  };
 
   constructor() {
     super('OverworldScene');
@@ -25,6 +45,17 @@ export default class OverworldScene extends Phaser.Scene {
 
     this.doors = new Map();
     this.lastDoorKey = null;
+    this.editingExterior = false;
+
+    this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
+    if (this.fingerprint) {
+      for (const region of world.regions) {
+        for (const house of region.houses) {
+          const saved = getExteriorVariant(this.fingerprint, house.id);
+          if (saved !== null) house.variant = saved;
+        }
+      }
+    }
 
     const sizes = world.regions.map((r) => regionSize(r));
     const cols = Math.max(1, Math.ceil(Math.sqrt(world.regions.length)));
@@ -54,6 +85,14 @@ export default class OverworldScene extends Phaser.Scene {
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
+
+      for (const house of region.houses) {
+        const img = result.houseImages.get(house.id);
+        if (!img) continue;
+        img
+          .setInteractive({ useHandCursor: true })
+          .on('pointerdown', () => this.openExteriorEditor(house, region));
+      }
     });
 
     const road = buildRoads(this, entries, blocked, worldW, worldH);
@@ -69,11 +108,18 @@ export default class OverworldScene extends Phaser.Scene {
     const first = entries[0];
     let spawnGx = returnTile ? returnTile.gx : first ? first.gx : Math.floor(worldW / 2);
     let spawnGy = returnTile ? returnTile.gy : first ? first.gy + 2 : Math.floor(worldH / 2);
+    // A saved returnTile can be stale after an exterior-variant commit reshapes the world —
+    // regionSize() growing or shrinking shifts every region's shared cellW/cellH origin, so a
+    // tile that was valid before the restart can now sit outside the new world. Clamp before
+    // (and after) the walkable-search loop so a shrink never strands the player off-camera.
+    spawnGx = Math.min(Math.max(spawnGx, 0), worldW - 1);
+    spawnGy = Math.min(Math.max(spawnGy, 0), worldH - 1);
     let guard = 0;
     while ((blocked.has(`${spawnGx},${spawnGy}`) || this.doors.has(`${spawnGx},${spawnGy}`)) && guard < worldH) {
       spawnGy += 1;
       guard += 1;
     }
+    spawnGy = Math.min(spawnGy, worldH - 1);
 
     const spawn = tileToWorld(spawnGx, spawnGy);
     const player = this.add.sprite(spawn.x, spawn.y, 'player');
@@ -110,10 +156,30 @@ export default class OverworldScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.RESIZE, fit);
     this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, fit));
     cam.startFollow(player, true);
+
+    bus.on('commit-exterior-variant', this.onCommitExterior);
+    bus.on('close-exterior-editor', this.onCloseExteriorEditor);
+    this.events.once('shutdown', () => {
+      bus.off('commit-exterior-variant', this.onCommitExterior);
+      bus.off('close-exterior-editor', this.onCloseExteriorEditor);
+    });
+  }
+
+  private openExteriorEditor(house: House, region: Region) {
+    if (this.editingExterior) return;
+    this.editingExterior = true;
+    bus.emit('open-exterior-editor', {
+      houseId: house.id,
+      currentVariant: house.variant,
+      siblingHouses: region.houses.map((h) => ({ id: h.id, gx: h.gx, gy: h.gy, variant: h.variant })),
+      gx: house.gx,
+      gy: house.gy,
+    });
   }
 
   update() {
     if (!this.movement || !this.player) return;
+    if (this.editingExterior) return;
     this.movement.update();
 
     const player = this.player;

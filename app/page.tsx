@@ -7,6 +7,7 @@ import NoteReader from '@/components/NoteReader';
 import Bookshelf from '@/components/Bookshelf';
 import CharacterCreator from '@/components/CharacterCreator';
 import InteriorEditor from '@/components/InteriorEditor';
+import ExteriorEditor from '@/components/ExteriorEditor';
 import { bus } from '@/game/bus';
 import type { NoteRef } from '@/lib/types';
 
@@ -58,6 +59,7 @@ function Game() {
       <Bookshelf />
       <NoteReader note={openNote} />
       <InteriorEditor />
+      <ExteriorEditor />
 
       {npcLine && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">

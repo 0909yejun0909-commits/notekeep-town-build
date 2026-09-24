@@ -1,15 +1,8 @@
 import type { Region } from '@/lib/types';
 import { hash } from '@/lib/types';
+import { HOUSE_FOOTPRINT, HOUSE_DOOR } from '@/lib/houseCatalog';
 
 const TILE = 16;
-
-export const HOUSE_DATA: Record<number, { w: number; h: number; door: [number, number] }> = {
-  0: { w: 6, h: 8, door: [2, 6] },
-  1: { w: 9, h: 8, door: [2, 6] },
-  2: { w: 9, h: 8, door: [5, 6] },
-  3: { w: 7, h: 6, door: [2, 4] },
-  4: { w: 12, h: 8, door: [5, 6] },
-};
 
 export type Entry = { gx: number; gy: number; houseId: string };
 
@@ -17,6 +10,7 @@ export type TilemapResult = {
   blocked: Set<string>;
   doors: Map<string, string>;
   entries: Entry[];
+  houseImages: Map<string, Phaser.GameObjects.Image>;
 };
 
 const key = (x: number, y: number) => `${x},${y}`;
@@ -30,31 +24,34 @@ export function buildHouses(
   const blocked = new Set<string>();
   const doors = new Map<string, string>();
   const entries: Entry[] = [];
+  const houseImages = new Map<string, Phaser.GameObjects.Image>();
 
   for (const house of region.houses) {
-    const data = HOUSE_DATA[house.variant] ?? HOUSE_DATA[0];
+    const [w, h] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
+    const [doorX, doorY] = HOUSE_DOOR[house.variant] ?? HOUSE_DOOR[0];
     const gx = originGx + house.gx;
     const gy = originGy + house.gy;
 
-    scene.add
+    const img = scene.add
       .image(gx * TILE, gy * TILE, `house-${house.variant}`)
       .setOrigin(0, 0)
-      .setDepth((gy + data.h) * TILE);
+      .setDepth((gy + h) * TILE);
+    houseImages.set(house.id, img);
 
-    for (let y = 0; y < data.h - 1; y++) {
-      for (let x = 0; x < data.w; x++) {
+    for (let y = 0; y < h - 1; y++) {
+      for (let x = 0; x < w; x++) {
         blocked.add(key(gx + x, gy + y));
       }
     }
 
-    const entryX = gx + data.door[0];
-    const entryY = gy + data.door[1] + 1;
+    const entryX = gx + doorX;
+    const entryY = gy + doorY + 1;
     blocked.delete(key(entryX, entryY));
     doors.set(key(entryX, entryY), house.id);
     entries.push({ gx: entryX, gy: entryY, houseId: house.id });
   }
 
-  return { blocked, doors, entries };
+  return { blocked, doors, entries, houseImages };
 }
 
 // grass_meadow.png, read off the sheet: 3x3 sand-on-grass block at 80, inner corners at 128.
