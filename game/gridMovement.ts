@@ -24,6 +24,7 @@ const DELTA: Record<Direction, [number, number]> = {
 
 export class GridMovement {
   enabled = true;
+  onStep: ((gx: number, gy: number, facing: Direction) => void) | null = null;
 
   private scene: Phaser.Scene;
   private sprite: Phaser.GameObjects.Sprite;
@@ -78,6 +79,7 @@ export class GridMovement {
 
     if (!dir) return;
 
+    const turned = dir !== this.facing;
     this.facing = dir;
     const [dx, dy] = DELTA[dir];
     const { gx, gy } = this.getTile();
@@ -89,10 +91,12 @@ export class GridMovement {
 
     if (!this.isWalkable(targetGx, targetGy)) {
       this.sprite.play(`idle-${animDir}`, true);
+      if (turned) this.onStep?.(gx, gy, dir);
       return;
     }
 
     this.moving = true;
+    this.onStep?.(targetGx, targetGy, dir);
     this.sprite.play(`walk-${animDir}`, true);
 
     const target = tileToWorld(targetGx, targetGy);

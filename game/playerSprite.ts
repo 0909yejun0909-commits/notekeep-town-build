@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 
 // One fixed outfit, no customiser. Layers share the base's grid and frame
 // indices, so they animate for free — never call .play() on them.
-export function dressPlayer(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite) {
+export function dressPlayer(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite): () => void {
   const keys = ['player-shoes', 'player-pants', 'player-shirt', 'player-hair'];
 
   const layers = keys.map((key) => {
@@ -36,4 +36,10 @@ export function dressPlayer(scene: Phaser.Scene, sprite: Phaser.GameObjects.Spri
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
   });
+
+  // For avatars that leave mid-scene; everything else is torn down with the scene.
+  return () => {
+    scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
+    layers.forEach((layer) => layer.destroy());
+  };
 }
