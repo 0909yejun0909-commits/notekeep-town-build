@@ -5,8 +5,7 @@ import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/t
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
-import { getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
-import { DEFAULT_MATERIAL, DEFAULT_WALL_COLOR, DEFAULT_ROOF_COLOR, availableWallColors } from '@/lib/houseCatalog';
+import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
 
 const REGION_PAD = 6;
@@ -65,18 +64,7 @@ export default class OverworldScene extends Phaser.Scene {
       for (const region of world.regions) {
         for (const house of region.houses) {
           const saved = getExteriorOverride(this.fingerprint, house.id);
-          if (saved !== null) {
-            house.variant = saved.variant;
-            house.material = saved.material ?? DEFAULT_MATERIAL[saved.variant];
-            // A saved wallColor is only structurally valid (one of the 3 known colors), not
-            // necessarily available for this material+shape combo — Limestone and Stone's
-            // shape 3 only ship a subset. Fall back to 'base', always available everywhere.
-            const wallColor = saved.wallColor ?? DEFAULT_WALL_COLOR[saved.variant];
-            house.wallColor = availableWallColors(house.material, house.variant).includes(wallColor)
-              ? wallColor
-              : 'base';
-            house.roofColor = saved.roofColor ?? DEFAULT_ROOF_COLOR[saved.variant];
-          }
+          if (saved !== null) applyExteriorOverride(house, saved);
         }
       }
     }

@@ -1,26 +1,40 @@
 'use client';
 
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
-import type { VaultHandle, WorldModel } from '@/lib/types';
+import type { InteriorLayout, VaultHandle, WorldModel } from '@/lib/types';
 import { makeLinkResolver, parseVault } from '@/lib/vault/parse';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 
 const HEAD_BYTES = 2048;
 
-function publishWorld(world: WorldModel, fingerprint: string) {
+export function publishWorld(
+  world: WorldModel,
+  fingerprint: string | null,
+  guest?: { layouts: Record<string, InteriorLayout> },
+) {
   const attempt = () => {
     const game = (window as any).__game;
     if (!game?.registry) return false;
+    if (guest) {
+      // No fingerprint: a guest's own saved customizations must never repaint the host's town.
+      game.registry.set('role', 'guest');
+      game.registry.set('sessionLayouts', guest.layouts);
+      game.registry.remove('vaultFingerprint');
+    } else {
+      game.registry.remove('role');
+      game.registry.remove('sessionLayouts');
+      game.registry.set('vaultFingerprint', fingerprint);
+    }
+    // Last: TitleScene starts the overworld the moment this lands.
     game.registry.set('world', world);
-    game.registry.set('vaultFingerprint', fingerprint);
     return true;
   };
   if (attempt()) return;
   const timer = setInterval(() => { if (attempt()) clearInterval(timer); }, 100);
 }
 
-async function walk(
+export async function walk(
   dir: FileSystemDirectoryHandle,
   prefix: string,
   out: Map<string, FileSystemFileHandle>,
