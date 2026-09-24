@@ -108,11 +108,18 @@ export default class OverworldScene extends Phaser.Scene {
     const first = entries[0];
     let spawnGx = returnTile ? returnTile.gx : first ? first.gx : Math.floor(worldW / 2);
     let spawnGy = returnTile ? returnTile.gy : first ? first.gy + 2 : Math.floor(worldH / 2);
+    // A saved returnTile can be stale after an exterior-variant commit reshapes the world —
+    // regionSize() growing or shrinking shifts every region's shared cellW/cellH origin, so a
+    // tile that was valid before the restart can now sit outside the new world. Clamp before
+    // (and after) the walkable-search loop so a shrink never strands the player off-camera.
+    spawnGx = Math.min(Math.max(spawnGx, 0), worldW - 1);
+    spawnGy = Math.min(Math.max(spawnGy, 0), worldH - 1);
     let guard = 0;
     while ((blocked.has(`${spawnGx},${spawnGy}`) || this.doors.has(`${spawnGx},${spawnGy}`)) && guard < worldH) {
       spawnGy += 1;
       guard += 1;
     }
+    spawnGy = Math.min(spawnGy, worldH - 1);
 
     const spawn = tileToWorld(spawnGx, spawnGy);
     const player = this.add.sprite(spawn.x, spawn.y, 'player');
