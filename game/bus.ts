@@ -8,6 +8,7 @@ type BusEvents = {
   'open-shelf': { houseId: string };
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
+  'world-updated': { exteriorChanged: boolean };
   'open-interior-editor': { houseId: string; layout: InteriorLayout };
   'close-interior-editor': undefined;
   'commit-interior-layout': { houseId: string; layout: InteriorLayout };

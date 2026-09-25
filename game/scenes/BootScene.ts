@@ -15,6 +15,7 @@ import {
   shoesAssetPath,
   shoesTextureKey,
 } from '@/lib/characterCatalog';
+import { createSceneryAnims, preloadScenery } from '@/game/sceneryAssets';
 import { loadTownBiome } from '@/lib/biome';
 
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
@@ -120,6 +121,8 @@ export default class BootScene extends Phaser.Scene {
       this.load.spritesheet(shoesTextureKey(color), shoesAssetPath(color), { frameWidth: 64, frameHeight: 64 });
     }
 
+    preloadScenery(this);
+
     this.load.image('ui-book', 'assets/ui/book.png');
     this.load.image('ui-frames', 'assets/ui/frames.png');
   }
@@ -164,6 +167,7 @@ export default class BootScene extends Phaser.Scene {
       });
     }
 
+    createSceneryAnims(this);
     // Set before any scene reads it, so the picker's later writes arrive as changedata events.
     this.game.registry.set('townBiome', loadTownBiome());
 

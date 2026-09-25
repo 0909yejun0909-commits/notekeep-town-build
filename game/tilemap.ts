@@ -1,22 +1,7 @@
 import type { Region, TownBiome } from '@/lib/types';
-import { hash } from '@/lib/types';
 import { HOUSE_FOOTPRINT, HOUSE_DOOR, houseTextureKey } from '@/lib/houseCatalog';
-import {
-  CAMPFIRE,
-  CAMPFIRE_ANIM,
-  CANDY_CANE,
-  FIRE_GLOW,
-  ICE_ROAD,
-  PRESENT,
-  PRESENT_FRAMES,
-  SNOWMAN,
-  SNOW_DECOR,
-  WREATH,
-  XMAS_TREE,
-  snowDecorFrame,
-  snowyHouse,
-  snowyTree,
-} from '@/game/winterArt';
+import { skin } from '@/game/biomeArt';
+import { WREATH } from '@/game/winterArt';
 
 const TILE = 16;
 
@@ -51,7 +36,7 @@ export function buildHouses(
 
     const texture = houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor);
     const img = scene.add
-      .image(gx * TILE, gy * TILE, biome === 'snow' ? snowyHouse(scene, texture) : texture)
+      .image(gx * TILE, gy * TILE, skin(scene, biome, texture))
       .setOrigin(0, 0)
       .setDepth((gy + h) * TILE);
     houseImages.set(house.id, img);
@@ -76,28 +61,6 @@ export function buildHouses(
   }
 
   return { blocked, doors, entries, houseImages };
-}
-
-// grass_meadow.png, read off the sheet: 3x3 sand-on-grass block at 80, inner corners at 128.
-//   80 81 82      128: grass in SE corner   129: grass in SW corner
-//   96 97 98      144: grass in NE corner   145: grass in NW corner
-//  112 113 114
-function roadFrame(road: Set<string>, x: number, y: number): number {
-  const r = (dx: number, dy: number) => road.has(key(x + dx, y + dy));
-  const n = r(0, -1), s = r(0, 1), w = r(-1, 0), e = r(1, 0);
-  if (!n && !w) return 80;
-  if (!n && !e) return 82;
-  if (!s && !w) return 112;
-  if (!s && !e) return 114;
-  if (!n) return 81;
-  if (!s) return 113;
-  if (!w) return 96;
-  if (!e) return 98;
-  if (!r(1, 1)) return 128;
-  if (!r(-1, 1)) return 129;
-  if (!r(1, -1)) return 144;
-  if (!r(-1, -1)) return 145;
-  return 97;
 }
 
 class MinHeap {
@@ -137,15 +100,16 @@ class MinHeap {
 
 // Roads are two tiles wide: every path cell stamps a 2x2 block with itself as the top-left.
 // A cell is routable only if its whole stamp is inside the world and clear of houses.
+// `extraRoad` (town squares) counts as road from the start, so paths are drawn through it.
+// Drawing is game/ground.ts's job; this only decides which tiles are road.
 export function buildRoads(
-  scene: Phaser.Scene,
   entries: Entry[],
   blocked: Set<string>,
   worldW: number,
   worldH: number,
-  biome: TownBiome = 'forest',
+  extraRoad: Set<string> = new Set(),
 ): Set<string> {
-  const road = new Set<string>();
+  const road = new Set<string>(extraRoad);
   if (entries.length === 0) return road;
 
   const stampOk = (x: number, y: number) =>
@@ -228,187 +192,5 @@ export function buildRoads(
     else stamp(anchors[j].x, anchors[j].y);
   }
 
-  const roadTexture = biome === 'snow' ? ICE_ROAD : 'grass-edges';
-  for (const k of road) {
-    const [x, y] = k.split(',').map(Number);
-    scene.add
-      .image(x * TILE, y * TILE, roadTexture, roadFrame(road, x, y))
-      .setOrigin(0, 0)
-      .setDepth(-900);
-  }
-
   return road;
-}
-
-export function scatterDecoration(
-  scene: Phaser.Scene,
-  region: Region,
-  originGx: number,
-  originGy: number,
-  width: number,
-  height: number,
-  blocked: Set<string>,
-  doors: Map<string, string>,
-  road: Set<string>,
-  biome: TownBiome = 'forest',
-) {
-  const clear = (k: string) => !blocked.has(k) && !doors.has(k) && !road.has(k);
-  const snow = biome === 'snow';
-
-  if (snow) placeWinterLandmarks(scene, region, originGx, originGy, width, height, blocked, clear);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const gx = originGx + x;
-      const gy = originGy + y;
-      const k = key(gx, gy);
-      if (!clear(k)) continue;
-
-      const flowerRoll = hash(`${region.id}:flower:${gx}:${gy}`);
-      if (flowerRoll % 23 === 0) {
-        const frameRoll = hash(`${region.id}:flowerframe:${gx}:${gy}`);
-        scene.add
-          .image(
-            gx * TILE + TILE / 2,
-            gy * TILE + TILE / 2,
-            snow ? SNOW_DECOR : 'flowers',
-            snow ? snowDecorFrame(frameRoll) : frameRoll % 100,
-          )
-          .setDepth(-500);
-        continue;
-      }
-
-      const treeRoll = hash(`${region.id}:tree:${gx}:${gy}`);
-      if (treeRoll % 61 === 0 && x < width - 1 && y < height - 1) {
-        const otherKey = key(gx + 1, gy);
-        const below = key(gx, gy + 1);
-        const belowOther = key(gx + 1, gy + 1);
-        if (!clear(otherKey) || !clear(below) || !clear(belowOther)) continue;
-
-        // Snow leans toward spruce, three to one.
-        const speciesRoll = hash(`${region.id}:species:${gx}:${gy}`);
-        const species = speciesRoll % (snow ? 4 : 2) === 0 ? 'tree-oak' : 'tree-spruce';
-        const frame = 1 + (hash(`${region.id}:treeframe:${gx}:${gy}`) % 2);
-
-        scene.add
-          .image(gx * TILE, (gy + 2) * TILE, snow ? snowyTree(scene, species) : species, frame)
-          .setOrigin(0, 1)
-          .setDepth((gy + 2) * TILE);
-
-        blocked.add(k);
-        blocked.add(otherKey);
-        blocked.add(below);
-        blocked.add(belowOther);
-      }
-    }
-  }
-}
-
-// First spot in the region, scanning from a hashed start, where an fw x fh footprint plus a
-// `margin`-tile ring around it is all clear — the ring keeps a landmark from walling off a path.
-function findSpot(
-  region: Region,
-  salt: string,
-  originGx: number,
-  originGy: number,
-  width: number,
-  height: number,
-  fw: number,
-  fh: number,
-  margin: number,
-  clear: (k: string) => boolean,
-): [number, number] | null {
-  const n = width * height;
-  const start = hash(`${region.id}:${salt}`) % n;
-  for (let i = 0; i < n; i++) {
-    const idx = (start + i) % n;
-    const x = idx % width, y = Math.floor(idx / width);
-    if (x - margin < 0 || y - margin < 0 || x + fw + margin > width || y + fh + margin > height) continue;
-    let ok = true;
-    for (let dy = -margin; dy < fh + margin && ok; dy++) {
-      for (let dx = -margin; dx < fw + margin && ok; dx++) {
-        if (!clear(key(originGx + x + dx, originGy + y + dy))) ok = false;
-      }
-    }
-    if (ok) return [originGx + x, originGy + y];
-  }
-  return null;
-}
-
-function blockTiles(blocked: Set<string>, gx: number, gy: number, fw: number, fh: number) {
-  for (let dy = 0; dy < fh; dy++) for (let dx = 0; dx < fw; dx++) blocked.add(key(gx + dx, gy + dy));
-}
-
-// Christmas dressing for one region: candy canes flanking each door, presents stacked by some
-// houses, then a campfire, a decorated tree and a snowman or two out in the open.
-function placeWinterLandmarks(
-  scene: Phaser.Scene,
-  region: Region,
-  originGx: number,
-  originGy: number,
-  width: number,
-  height: number,
-  blocked: Set<string>,
-  clear: (k: string) => boolean,
-) {
-  for (const house of region.houses) {
-    const [w, h] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
-    const [doorX, doorY] = HOUSE_DOOR[house.variant] ?? HOUSE_DOOR[0];
-    const hx = originGx + house.gx, hy = originGy + house.gy;
-    const entryX = hx + doorX, entryY = hy + doorY + 1;
-
-    for (const cx of [entryX - 2, entryX + 1]) {
-      if (!clear(key(cx, entryY))) continue;
-      scene.add
-        .image(cx * TILE + TILE / 2, (entryY + 1) * TILE, CANDY_CANE)
-        .setOrigin(0.5, 1)
-        .setDepth((entryY + 1) * TILE + 1);
-      blocked.add(key(cx, entryY));
-    }
-
-    const gifts = hash(`${house.id}:gifts`) % 4;
-    const spots: [number, number][] = [[hx + w, hy + h - 2], [hx + w, hy + h - 3], [hx - 1, hy + h - 2]];
-    spots.slice(0, gifts).forEach(([gx, gy], i) => {
-      if (!clear(key(gx, gy))) return;
-      scene.add
-        .image(gx * TILE, gy * TILE, PRESENT, hash(`${house.id}:gift:${i}`) % PRESENT_FRAMES)
-        .setOrigin(0, 0)
-        .setDepth((gy + 1) * TILE);
-      blocked.add(key(gx, gy));
-    });
-  }
-
-  const fire = findSpot(region, 'campfire', originGx, originGy, width, height, 1, 1, 1, clear);
-  if (fire) {
-    const [gx, gy] = fire;
-    const cx = gx * TILE + TILE / 2, cy = gy * TILE + TILE / 2;
-    const glow = scene.add.image(cx, cy, FIRE_GLOW).setDepth(-400);
-    scene.tweens.add({ targets: glow, alpha: 0.65, scale: 0.92, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    scene.add.sprite(cx, cy, CAMPFIRE).setDepth((gy + 1) * TILE).play(CAMPFIRE_ANIM);
-    blocked.add(key(gx, gy));
-  }
-
-  if (scene.textures.exists(XMAS_TREE)) {
-    const tree = findSpot(region, 'xmas-tree', originGx, originGy, width, height, 2, 2, 1, clear);
-    if (tree) {
-      const [gx, gy] = tree;
-      scene.add
-        .image(gx * TILE, (gy + 2) * TILE, XMAS_TREE)
-        .setOrigin(0, 1)
-        .setDepth((gy + 2) * TILE);
-      blockTiles(blocked, gx, gy, 2, 2);
-    }
-  }
-
-  const snowmen = 1 + (hash(`${region.id}:snowmen`) % 2);
-  for (let i = 0; i < snowmen; i++) {
-    const spot = findSpot(region, `snowman:${i}`, originGx, originGy, width, height, 1, 1, 1, clear);
-    if (!spot) break;
-    const [gx, gy] = spot;
-    scene.add
-      .image(gx * TILE + TILE / 2, (gy + 1) * TILE, SNOWMAN)
-      .setOrigin(0.5, 1)
-      .setDepth((gy + 1) * TILE);
-    blocked.add(key(gx, gy));
-  }
 }

@@ -1,7 +1,7 @@
 export type BiomeId = 'meadow' | 'forest' | 'desert' | 'volcano' | 'snow';
 // The whole town's look, picked by the player (components/BiomePicker.tsx). Separate from
 // Region.biome, which is hash-derived per region and not rendered.
-export type TownBiome = Extract<BiomeId, 'forest' | 'snow'>;
+export type TownBiome = Extract<BiomeId, 'forest' | 'snow' | 'desert'>;
 export type FurnitureId =
   'desk' | 'shelf' | 'bed' | 'chest' | 'plant' | 'painting' | 'lamp' | 'rug';
 

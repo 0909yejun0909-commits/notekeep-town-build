@@ -1,7 +1,7 @@
 import type { TownBiome } from './types';
 
-export const TOWN_BIOMES: readonly TownBiome[] = ['forest', 'snow'];
-export const TOWN_BIOME_LABEL: Record<TownBiome, string> = { forest: 'Forest', snow: 'Snow' };
+export const TOWN_BIOMES: readonly TownBiome[] = ['forest', 'snow', 'desert'];
+export const TOWN_BIOME_LABEL: Record<TownBiome, string> = { forest: 'Forest', snow: 'Snow', desert: 'Desert' };
 export const DEFAULT_TOWN_BIOME: TownBiome = 'forest';
 
 const KEY = 'notekeep-town:biome';

@@ -14,6 +14,11 @@ const WINTER_DIALOGUE: Record<string, string> = {
   bartender_katy: "Hot cocoa's on the house tonight. Come warm up by the fire!",
 };
 
+const DESERT_DIALOGUE: Record<string, string> = {
+  farmer_bob: "Hot one today. Keep your notes in the shade or the ink'll run.",
+  bartender_katy: 'Cactus lemonade, fresh from the oasis. Best cure for a long day of reading.',
+};
+
 const NPC_IDS = ['farmer_bob', 'bartender_katy'] as const;
 const TILE = 16;
 const TALK_RANGE = TILE * 1.5;
@@ -75,7 +80,8 @@ function ensureTalkHandler(scene: Phaser.Scene): LiveNpc[] {
       }
     }
     if (!nearest) return;
-    const lines = scene.game.registry.get('townBiome') === 'snow' ? WINTER_DIALOGUE : DIALOGUE;
+    const biome = scene.game.registry.get('townBiome');
+    const lines = biome === 'snow' ? WINTER_DIALOGUE : biome === 'desert' ? DESERT_DIALOGUE : DIALOGUE;
     bus.emit('talk-npc', { npcId: nearest.npcId, line: lines[nearest.npcId] });
   };
   keyboard?.on('keydown-SPACE', onSpace);

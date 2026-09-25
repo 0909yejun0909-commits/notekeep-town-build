@@ -1,18 +1,32 @@
 import Phaser from 'phaser';
 import type { Appearance, House, MaterialId, Region, RoofColor, TownBiome, WallColor, WorldModel } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
-import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
-import { SNOW_BACKGROUND, SNOW_GROUND, ensureWinterTextures, startSnowfall } from '@/game/winterArt';
 import { regionSize } from '@/lib/vault/parse';
-import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
+import { buildHouses, buildRoads, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
-import { getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
-import { DEFAULT_MATERIAL, DEFAULT_WALL_COLOR, DEFAULT_ROOF_COLOR, availableWallColors } from '@/lib/houseCatalog';
+import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
+import { attachRemotePlayers } from '@/game/remotePlayers';
+import { setSelfPresence } from '@/lib/multiplayer/session';
+import { hash } from '@/lib/types';
+import { HOUSE_FOOTPRINT } from '@/lib/houseCatalog';
+import { key, type WorldGrid } from '@/game/worldGrid';
+import { buildGround, GID_WATER } from '@/game/ground';
+import { placePonds, renderWater } from '@/game/water';
+import { placePlazas, renderPlazas, renderYards } from '@/game/townProps';
+import { buildForestBorder, buildGroundCover, buildGroves } from '@/game/nature';
+import { attachDaylight } from '@/game/daylight';
+import { attachAmbience } from '@/game/ambience';
+import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
+import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
+import { ensureWinterTextures } from '@/game/winterArt';
+import { ensureDesertTextures } from '@/game/desertArt';
 
-const REGION_PAD = 6;
+const REGION_PAD = 8;
+// Solid forest around the whole town, so the map ends in trees instead of flat grass.
+const BORDER = 7;
 
 export default class OverworldScene extends Phaser.Scene {
   private movement: GridMovement | null = null;
@@ -51,6 +65,13 @@ export default class OverworldScene extends Phaser.Scene {
     this.editingExterior = false;
   };
 
+  private onWorldUpdated = ({ exteriorChanged }: { exteriorChanged: boolean }) => {
+    if (!exteriorChanged || !this.player) return;
+    const { gx, gy } = worldToTile(this.player.x, this.player.y);
+    this.game.registry.set('returnTile', { gx, gy });
+    this.scene.restart();
+  };
+
   // components/BiomePicker.tsx writes the registry; rebuild the town in place around the player.
   private onBiomeChange = () => {
     if (this.player) {
@@ -73,28 +94,19 @@ export default class OverworldScene extends Phaser.Scene {
 
     const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
     if (biome === 'snow') ensureWinterTextures(this);
+    if (biome === 'desert') ensureDesertTextures(this);
 
     this.doors = new Map();
     this.lastDoorKey = null;
     this.editingExterior = false;
 
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
+    const isGuest = this.game.registry.get('role') === 'guest';
     if (this.fingerprint) {
       for (const region of world.regions) {
         for (const house of region.houses) {
           const saved = getExteriorOverride(this.fingerprint, house.id);
-          if (saved !== null) {
-            house.variant = saved.variant;
-            house.material = saved.material ?? DEFAULT_MATERIAL[saved.variant];
-            // A saved wallColor is only structurally valid (one of the 3 known colors), not
-            // necessarily available for this material+shape combo — Limestone and Stone's
-            // shape 3 only ship a subset. Fall back to 'base', always available everywhere.
-            const wallColor = saved.wallColor ?? DEFAULT_WALL_COLOR[saved.variant];
-            house.wallColor = availableWallColors(house.material, house.variant).includes(wallColor)
-              ? wallColor
-              : 'base';
-            house.roofColor = saved.roofColor ?? DEFAULT_ROOF_COLOR[saved.variant];
-          }
+          if (saved !== null) applyExteriorOverride(house, saved);
         }
       }
     }
@@ -106,43 +118,77 @@ export default class OverworldScene extends Phaser.Scene {
     const maxH = Math.max(...sizes.map(([, h]) => h));
     const cellW = maxW + REGION_PAD;
     const cellH = maxH + REGION_PAD;
-    const worldW = cols * cellW;
-    const worldH = rows * cellH;
+    const worldW = cols * cellW + BORDER * 2;
+    const worldH = rows * cellH + BORDER * 2;
 
     this.add
-      .tileSprite(0, 0, worldW * TILE, worldH * TILE, biome === 'snow' ? SNOW_GROUND : 'terrain-grass')
+      .tileSprite(0, 0, worldW * TILE, worldH * TILE, skin(this, biome, 'terrain-grass'))
       .setOrigin(0, 0)
       .setDepth(-1000);
 
     const blocked = new Set<string>();
     const entries: Entry[] = [];
     const areas: NpcSpawnArea[] = [];
+    const grid: WorldGrid = {
+      w: worldW,
+      h: worldH,
+      seed: hash(world.name),
+      border: BORDER,
+      blocked,
+      road: new Set(),
+      water: new Set(),
+      plaza: new Set(),
+      keepClear: new Set(),
+      used: new Set(),
+      areas: [],
+      houses: [],
+      lights: [],
+      biome,
+      skin: (k) => skin(this, biome, k),
+      skinAnim: (k) => skinAnim(this, biome, k),
+    };
 
     world.regions.forEach((region, i) => {
       const [w, h] = sizes[i];
-      const originGx = (i % cols) * cellW + Math.floor(REGION_PAD / 2);
-      const originGy = Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
+      const originGx = BORDER + (i % cols) * cellW + Math.floor(REGION_PAD / 2);
+      const originGy = BORDER + Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
       areas.push({ originGx, originGy, width: w, height: h });
+      grid.areas.push({ region, originGx, originGy, width: w, height: h });
       const result = buildHouses(this, region, originGx, originGy, biome);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
+      for (const e of result.entries) {
+        const house = region.houses.find((hs) => hs.id === e.houseId)!;
+        const [hw, hh] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
+        grid.houses.push({ houseId: house.id, gx: originGx + house.gx, gy: originGy + house.gy, w: hw, h: hh, entryGx: e.gx, entryGy: e.gy });
+        grid.keepClear.add(key(e.gx, e.gy));
+        grid.keepClear.add(key(e.gx, e.gy + 1));
+      }
 
-      for (const house of region.houses) {
-        const img = result.houseImages.get(house.id);
-        if (!img) continue;
-        img
-          .setInteractive({ useHandCursor: true })
-          .on('pointerdown', () => this.openExteriorEditor(house, region));
+      if (!isGuest) {
+        for (const house of region.houses) {
+          const img = result.houseImages.get(house.id);
+          if (!img) continue;
+          img
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => this.openExteriorEditor(house, region));
+        }
       }
     });
 
-    const road = buildRoads(this, entries, blocked, worldW, worldH, biome);
-
-    world.regions.forEach((region, i) => {
-      const a = areas[i];
-      scatterDecoration(this, region, a.originGx, a.originGy, a.width, a.height, blocked, this.doors, road, biome);
-    });
+    // Order matters: each step avoids what the earlier ones claimed. Roads come after the
+    // plazas and ponds so they route around them, and everything decorative comes after roads.
+    buildForestBorder(this, grid);
+    const { plazas, anchors, wells } = placePlazas(grid);
+    placePonds(grid);
+    grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
+    const ground = buildGround(this, grid);
+    renderWater(this, grid, ground.map, GID_WATER);
+    renderPlazas(this, grid, plazas, wells);
+    renderYards(this, grid);
+    buildGroves(this, grid);
+    buildGroundCover(this, grid);
 
     // Coming back out of a house puts the player on the road in front of that door.
     const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
@@ -177,6 +223,9 @@ export default class OverworldScene extends Phaser.Scene {
     };
 
     this.movement = new GridMovement(this, player, isWalkable);
+    this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: 'overworld', gx, gy, facing });
+    setSelfPresence({ scene: 'overworld', gx: spawnGx, gy: spawnGy, facing: 'down' });
+    attachRemotePlayers(this, 'overworld', player);
 
     this.game.registry.set('player', player);
     this.game.registry.set('isWalkable', isWalkable);
@@ -184,11 +233,12 @@ export default class OverworldScene extends Phaser.Scene {
     // NPCs read isWalkable from the registry, so they spawn only after it is published.
     world.regions.forEach((region, i) => spawnNpcs(this, region, areas[i]));
 
-    // Ground-coloured backdrop so any space beyond the world reads as more of the town, and a
+    attachAmbience(this, grid, attachDaylight(this, grid));
+
+    // Woods-coloured backdrop so any space beyond the world reads as more of the ring, and a
     // world smaller than the view sits centred instead of hugging the top-left.
     const cam = this.cameras.main;
-    cam.setBackgroundColor(biome === 'snow' ? SNOW_BACKGROUND : '#3E8948');
-    if (biome === 'snow') startSnowfall(this);
+    cam.setBackgroundColor(BIOME_BACKDROP[biome]);
     const worldWidthPx = worldW * TILE;
     const worldHeightPx = worldH * TILE;
     const fit = () => {
@@ -203,9 +253,11 @@ export default class OverworldScene extends Phaser.Scene {
 
     bus.on('commit-exterior-variant', this.onCommitExterior);
     bus.on('close-exterior-editor', this.onCloseExteriorEditor);
+    bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
       bus.off('commit-exterior-variant', this.onCommitExterior);
       bus.off('close-exterior-editor', this.onCloseExteriorEditor);
+      bus.off('world-updated', this.onWorldUpdated);
     });
   }
 

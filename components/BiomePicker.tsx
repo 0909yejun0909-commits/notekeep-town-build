@@ -5,7 +5,7 @@ import { bus } from '@/game/bus';
 import { TOWN_BIOMES, TOWN_BIOME_LABEL, loadTownBiome, saveTownBiome } from '@/lib/biome';
 import type { TownBiome } from '@/lib/types';
 
-const ICON: Record<TownBiome, string> = { forest: '🌲', snow: '❄️' };
+const ICON: Record<TownBiome, string> = { forest: '🌲', snow: '❄️', desert: '🏜️' };
 
 // The town's look is standing state, so it goes through the registry (which BootScene seeds)
 // rather than the bus — Overworld and Title rebuild on its changedata event.
@@ -35,7 +35,7 @@ export default function BiomePicker() {
   }
 
   return (
-    <div className="fixed right-4 top-4 z-30 flex items-center gap-2 rounded-lg bg-neutral-900/90 px-3 py-2 text-white">
+    <div className="fixed left-4 top-4 z-30 flex items-center gap-2 rounded-lg bg-neutral-900/90 px-3 py-2 text-white">
       <span className="text-xs uppercase text-neutral-400">Town</span>
       {TOWN_BIOMES.map((b) => (
         <button

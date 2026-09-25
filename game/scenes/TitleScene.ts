@@ -1,17 +1,9 @@
 import Phaser from 'phaser';
 import { hash, type TownBiome } from '@/lib/types';
 import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
-import {
-  SNOW_BACKGROUND,
-  SNOW_DECOR,
-  SNOW_GROUND,
-  WREATH,
-  ensureWinterTextures,
-  snowDecorFrame,
-  snowyHouse,
-  snowyTree,
-  startSnowfall,
-} from '@/game/winterArt';
+import { skin } from '@/game/biomeArt';
+import { WINTER_DECOR, WREATH, ensureWinterTextures, startSnowfall, winterDecorFrame } from '@/game/winterArt';
+import { DESERT_DECOR, desertDecorFrame, desertTree, ensureDesertTextures } from '@/game/desertArt';
 import {
   HOUSE_DOOR,
   HOUSE_FOOTPRINT,
@@ -47,23 +39,27 @@ export default class TitleScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const cols = Math.ceil(width / TILE);
     const rows = Math.ceil(height / TILE);
-    const snow = ((this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME) === 'snow';
+    const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    const snow = biome === 'snow';
     if (snow) ensureWinterTextures(this);
-    this.cameras.main.setBackgroundColor(snow ? SNOW_BACKGROUND : '#000000');
-    const tree = (key: 'tree-oak' | 'tree-spruce') => (snow ? snowyTree(this, key) : key);
+    if (biome === 'desert') ensureDesertTextures(this);
+    const tree = (x: number, y: number, key: 'tree-oak' | 'tree-spruce', frame: number) => {
+      const desert = biome === 'desert' ? desertTree(this, key, (hash(`title:tree:${x}`) % 100) / 100, false) : null;
+      // Desert plants are drawn at the tree's frame size, so the same origin stands them on the ground.
+      (desert ? this.add.image(x, y, desert) : this.add.image(x, y, skin(this, biome, key), frame)).setOrigin(0, 1);
+    };
 
-    this.add.tileSprite(0, 0, cols * TILE, rows * TILE, snow ? SNOW_GROUND : 'terrain-grass').setOrigin(0, 0);
+    this.add.tileSprite(0, 0, cols * TILE, rows * TILE, skin(this, biome, 'terrain-grass')).setOrigin(0, 0);
 
     for (let gy = 0; gy < rows; gy++) {
       for (let gx = 0; gx < cols; gx++) {
         if (hash(`title:flower:${gx}:${gy}`) % 19 !== 0) continue;
         const roll = hash(`title:frame:${gx}:${gy}`);
-        this.add.image(
-          gx * TILE + TILE / 2,
-          gy * TILE + TILE / 2,
-          snow ? SNOW_DECOR : 'flowers',
-          snow ? snowDecorFrame(roll) : roll % 100,
-        );
+        const [texture, frame] =
+          biome === 'snow' ? [WINTER_DECOR, winterDecorFrame(roll)]
+          : biome === 'desert' ? [DESERT_DECOR, desertDecorFrame(roll)]
+          : ['flowers', roll % 100];
+        this.add.image(gx * TILE + TILE / 2, gy * TILE + TILE / 2, texture, frame);
       }
     }
 
@@ -81,7 +77,7 @@ export default class TitleScene extends Phaser.Scene {
     for (const v of street) {
       const [w, h] = HOUSE_FOOTPRINT[v];
       const key = houseTextureKey(v, DEFAULT_MATERIAL[v], DEFAULT_WALL_COLOR[v], DEFAULT_ROOF_COLOR[v]);
-      this.add.image(x, baseY - h * TILE, snow ? snowyHouse(this, key) : key).setOrigin(0, 0);
+      this.add.image(x, baseY - h * TILE, skin(this, biome, key)).setOrigin(0, 0);
       if (snow) {
         const [doorX, doorY] = HOUSE_DOOR[v];
         this.add.image(x + doorX * TILE + TILE / 2, baseY - h * TILE + (doorY - 1) * TILE + TILE / 2, WREATH);
@@ -90,9 +86,9 @@ export default class TitleScene extends Phaser.Scene {
     }
 
     const treeY = baseY + TILE;
-    this.add.image(TILE, treeY, tree('tree-oak'), 1).setOrigin(0, 1);
-    this.add.image(width - 3 * TILE, treeY, tree('tree-spruce'), 2).setOrigin(0, 1);
-    this.add.image(Math.floor(width / 2) - TILE, height - TILE, tree(snow ? 'tree-spruce' : 'tree-oak'), 2).setOrigin(0, 1);
+    tree(TILE, treeY, 'tree-oak', 1);
+    tree(width - 3 * TILE, treeY, 'tree-spruce', 2);
+    tree(Math.floor(width / 2) - TILE, height - TILE, snow ? 'tree-spruce' : 'tree-oak', 2);
     if (snow) startSnowfall(this);
 
     this.add
