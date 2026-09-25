@@ -9,7 +9,13 @@ import CharacterCreator from '@/components/CharacterCreator';
 import InteriorEditor from '@/components/InteriorEditor';
 import ExteriorEditor from '@/components/ExteriorEditor';
 import FastTravel from '@/components/FastTravel';
+import RoomPanel from '@/components/RoomPanel';
+import JoinScreen from '@/components/JoinScreen';
+import ChatPanel from '@/components/ChatPanel';
+import PlayerTags from '@/components/PlayerTags';
 import { bus } from '@/game/bus';
+import { readInvite, type Invite } from '@/lib/multiplayer/guest';
+import { RELAY_URL } from '@/lib/multiplayer/session';
 import type { NoteRef } from '@/lib/types';
 
 const PhaserCanvas = dynamic(() => import('@/components/PhaserCanvas'), { ssr: false });
@@ -18,6 +24,11 @@ function Game() {
   const { vault, setVault } = useVault();
   const [openNote, setOpenNote] = useState<NoteRef | null>(null);
   const [npcLine, setNpcLine] = useState<string | null>(null);
+  const [invite, setInvite] = useState<Invite | null>(null);
+
+  useEffect(() => {
+    if (RELAY_URL) setInvite(readInvite());
+  }, []);
 
   useEffect(() => {
     const onOpenNote = ({ note }: { note: NoteRef }) => setOpenNote(note);
@@ -39,7 +50,7 @@ function Game() {
     <div className="relative h-screen w-screen overflow-hidden bg-black">
       <PhaserCanvas />
 
-      {!vault && (
+      {!vault && !invite && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/40">
           <button
             className="rounded bg-white px-6 py-3 font-medium text-black"
@@ -56,12 +67,17 @@ function Game() {
         </div>
       )}
 
+      {!vault && invite && <JoinScreen invite={invite} onVault={setVault} />}
+
       <CharacterCreator visible={!vault} />
       <Bookshelf />
       <NoteReader note={openNote} />
       <InteriorEditor />
       <ExteriorEditor />
       <FastTravel />
+      <PlayerTags />
+      <ChatPanel />
+      <RoomPanel />
 
       {npcLine && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">

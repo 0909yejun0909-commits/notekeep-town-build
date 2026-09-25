@@ -16,6 +16,8 @@ import {
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
 import { CATALOG_BY_ID } from '@/lib/catalog';
+import { attachRemotePlayers } from '@/game/remotePlayers';
+import { setSelfPresence } from '@/lib/multiplayer/session';
 
 function findHouse(world: WorldModel | undefined, houseId: string): House | undefined {
   if (!world) return undefined;
@@ -70,6 +72,13 @@ export default class InteriorScene extends Phaser.Scene {
     this.scene.restart({ houseId: this.houseId });
   };
 
+  private onWorldUpdated = () => {
+    if (this.fingerprint) return;
+    const layouts = this.game.registry.get('sessionLayouts') as Record<string, InteriorLayout> | undefined;
+    const next = layouts?.[this.houseId];
+    if (next && JSON.stringify(next) !== JSON.stringify(this.layout)) this.scene.restart({ houseId: this.houseId });
+  };
+
   constructor() {
     super('InteriorScene');
   }
@@ -96,7 +105,10 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
-    const saved = this.fingerprint ? getLayout(this.fingerprint, this.houseId) : null;
+    const sessionLayouts = this.game.registry.get('sessionLayouts') as Record<string, InteriorLayout> | undefined;
+    const saved = this.fingerprint
+      ? getLayout(this.fingerprint, this.houseId)
+      : (sessionLayouts?.[this.houseId] ?? null);
     this.layout = saved ?? computeDefaultLayout(house);
     const [w, h] = ROOM_SIZES[this.layout.roomSize];
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
@@ -164,17 +176,19 @@ export default class InteriorScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(6);
 
-    this.add
-      .text(labelCenterX, 13, 'CUSTOMIZE', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffe066',
-        backgroundColor: '#000000',
-      })
-      .setOrigin(0.5, 0)
-      .setDepth(6)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.openEditor());
+    if (this.game.registry.get('role') !== 'guest') {
+      this.add
+        .text(labelCenterX, 13, 'CUSTOMIZE', {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#ffe066',
+          backgroundColor: '#000000',
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(6)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.openEditor());
+    }
 
     const allNotes = house.rooms.flatMap((r) => r.notes);
     for (const placement of this.layout.placements) {
@@ -218,6 +232,10 @@ export default class InteriorScene extends Phaser.Scene {
     dressPlayer(this, this.player, appearance);
 
     this.movement = new GridMovement(this, this.player, isWalkable);
+    const sceneId = `house:${this.houseId}` as const;
+    this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: sceneId, gx, gy, facing });
+    setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: arriveNote ? 'up' : 'down' });
+    attachRemotePlayers(this, sceneId, this.player);
 
     this.indicator = this.add
       .text(0, 0, '!', { fontFamily: 'monospace', fontSize: '14px', color: '#ffe066' })
@@ -251,11 +269,13 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('close-note', this.onCloseNote);
     bus.on('close-interior-editor', this.onCloseEditor);
     bus.on('commit-interior-layout', this.onCommitLayout);
+    bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
       bus.off('close-shelf', this.onCloseShelf);
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
       bus.off('commit-interior-layout', this.onCommitLayout);
+      bus.off('world-updated', this.onWorldUpdated);
     });
   }
 

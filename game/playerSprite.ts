@@ -10,12 +10,12 @@ import {
 
 // Layers share the base's grid and frame indices, so they animate for free — never call
 // .play() on them. `appearance` defaults to the original fixed outfit for callers that don't
-// track a per-avatar look.
+// track a per-avatar look (e.g. remote players in game/remotePlayers.ts).
 export function dressPlayer(
   scene: Phaser.Scene,
   sprite: Phaser.GameObjects.Sprite,
   appearance: Appearance = DEFAULT_APPEARANCE,
-) {
+): () => void {
   const keys = [
     shoesTextureKey(appearance.shoesColor),
     pantsTextureKey(appearance.pantsColor),
@@ -54,4 +54,10 @@ export function dressPlayer(
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
   });
+
+  // For avatars that leave mid-scene; everything else is torn down with the scene.
+  return () => {
+    scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
+    layers.forEach((layer) => layer.destroy());
+  };
 }
