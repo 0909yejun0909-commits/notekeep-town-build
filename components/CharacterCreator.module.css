@@ -1,20 +1,31 @@
-/* Decorative preview of the fixed outfit, floating above the vault buttons in
-   app/page.tsx. It never captures the pointer and never dims the screen. */
+/* Pinned near the top of the screen, clear of the "Open your vault" / "Try the demo
+   town" buttons centered in app/page.tsx — sits above their z-20 overlay so its
+   swatches are actually clickable, but only within its own box. */
 .wrapper {
   position: fixed;
   left: 50%;
-  top: calc(50% - 230px);
+  top: 20px;
   transform: translateX(-50%);
-  z-index: 10;
-  pointer-events: none;
+  z-index: 30;
+}
+
+.panel {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-radius: 8px;
+  background: rgba(23, 23, 23, 0.9);
+  padding: 12px 20px;
+  color: white;
 }
 
 .preview {
   position: relative;
   width: 64px;
   height: 64px;
-  transform: scale(4);
-  transform-origin: top center;
+  flex-shrink: 0;
+  transform: scale(2.5);
+  transform-origin: center;
   animation: bob 0.6s steps(2) infinite;
 }
 
@@ -26,11 +37,30 @@
   image-rendering: pixelated;
 }
 
+.thumb {
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+}
+
+/* Kenmi's hair sheets are 9 cols x 56 rows of 64px frames (far more than the 6 rows the
+   game actually animates) — scale the whole sheet down by 28/64 rather than hardcoding a
+   background-size, so frame (0,0) crops correctly regardless of total sheet height. */
+.thumbSheet {
+  width: 64px;
+  height: 64px;
+  transform: scale(0.4375);
+  transform-origin: top left;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  image-rendering: pixelated;
+}
+
 @keyframes bob {
   0%, 100% {
-    transform: scale(4) translateY(0);
+    transform: scale(2.5) translateY(0);
   }
   50% {
-    transform: scale(4) translateY(-1px);
+    transform: scale(2.5) translateY(-1px);
   }
 }

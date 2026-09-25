@@ -1,0 +1,25 @@
+# Deploy with `fly deploy relay --ha=false`. Rooms live in one process's memory, so the
+# relay must run as exactly one machine that never sleeps.
+app = "notekeep-town-relay"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  CLIENT_IP_HEADER = "fly-client-ip"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 2000
+    hard_limit = 2500
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

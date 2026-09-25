@@ -10,6 +10,7 @@ import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 export const CLOSE_ROOM_CLOSED = 4001;
 export const CLOSE_ROOM_FULL = 4003;
 export const CLOSE_ROOM_NOT_FOUND = 4004;
+export const CLOSE_TOO_MANY = 4029;
 
 export type RelayOptions = {
   port?: number;
@@ -17,6 +18,9 @@ export type RelayOptions = {
   maxPayload?: number;
   rateMax?: number;
   heartbeatMs?: number;
+  maxPerIp?: number;
+  // Behind a proxy every socket comes from the proxy; name the header that carries the real client.
+  ipHeader?: string;
 };
 
 type Peer = { id: string; ws: WebSocket; alive: boolean; windowStart: number; sent: number };
@@ -29,11 +33,29 @@ function send(peer: Peer, msg: object) {
 export async function createRelay(opts: RelayOptions = {}) {
   const maxPeers = opts.maxPeers ?? 16;
   const rateMax = opts.rateMax ?? 60;
+  const maxPerIp = opts.maxPerIp ?? 20;
+  const ipHeader = opts.ipHeader?.toLowerCase();
   const rooms = new Map<string, Room>();
+  const perIp = new Map<string, number>();
   const wss = new WebSocketServer({ port: opts.port ?? 8787, maxPayload: opts.maxPayload ?? 8 * 1024 * 1024 });
 
   wss.on('connection', (ws, req) => {
     ws.on('error', () => {});
+    const forwarded = ipHeader ? req.headers[ipHeader] : undefined;
+    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded) || req.socket.remoteAddress || '?';
+    const held = perIp.get(ip) ?? 0;
+    if (held >= maxPerIp) {
+      ws.send(JSON.stringify({ type: 'error', code: 'too-many-connections' }));
+      ws.close(CLOSE_TOO_MANY);
+      return;
+    }
+    perIp.set(ip, held + 1);
+    ws.on('close', () => {
+      const left = (perIp.get(ip) ?? 1) - 1;
+      if (left > 0) perIp.set(ip, left);
+      else perIp.delete(ip);
+    });
+
     const wanted = new URL(req.url ?? '/', 'http://relay').searchParams.get('room');
     const peer: Peer = { id: randomBytes(8).toString('base64url'), ws, alive: true, windowStart: Date.now(), sent: 0 };
     ws.on('pong', () => {
@@ -140,6 +162,9 @@ export async function createRelay(opts: RelayOptions = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { port } = await createRelay({ port: Number(process.env.PORT) || 8787 });
+  const { port } = await createRelay({
+    port: Number(process.env.PORT) || 8787,
+    ipHeader: process.env.CLIENT_IP_HEADER || undefined,
+  });
   console.log(`Notekeep Town relay listening on ws://localhost:${port}`);
 }

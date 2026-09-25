@@ -2,6 +2,19 @@ import Phaser from 'phaser';
 import type { FurnitureId } from '@/lib/types';
 import { CATALOG } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
+import {
+  CLOTH_COLORS,
+  HAIR_COLORS,
+  HAIR_STYLES,
+  hairAssetPath,
+  hairTextureKey,
+  pantsAssetPath,
+  pantsTextureKey,
+  shirtAssetPath,
+  shirtTextureKey,
+  shoesAssetPath,
+  shoesTextureKey,
+} from '@/lib/characterCatalog';
 import { createSceneryAnims, preloadScenery } from '@/game/sceneryAssets';
 
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
@@ -90,10 +103,22 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('water-edges', 'assets/terrain/water.png', { frameWidth: 16, frameHeight: 16 });
     this.load.spritesheet('cobble-edges', 'assets/terrain/cobble.png', { frameWidth: 16, frameHeight: 16 });
 
-    this.load.spritesheet('player-shoes', 'assets/character/shoes/black.png', { frameWidth: 64, frameHeight: 64 });
-    this.load.spritesheet('player-pants', 'assets/character/pants/brown.png', { frameWidth: 64, frameHeight: 64 });
-    this.load.spritesheet('player-shirt', 'assets/character/shirt/red.png', { frameWidth: 64, frameHeight: 64 });
-    this.load.spritesheet('player-hair', 'assets/character/hair/1_brown.png', { frameWidth: 64, frameHeight: 64 });
+    // Every hair style/color and shirt/pants/shoes color combo is preloaded up front so the
+    // in-game character picker (components/CharacterCreator.tsx) can switch textures instantly
+    // with no async load step, the same tradeoff houseCatalog's shape/material/color grid makes.
+    for (const style of HAIR_STYLES) {
+      for (const color of HAIR_COLORS) {
+        this.load.spritesheet(hairTextureKey(style, color), hairAssetPath(style, color), {
+          frameWidth: 64,
+          frameHeight: 64,
+        });
+      }
+    }
+    for (const color of CLOTH_COLORS) {
+      this.load.spritesheet(shirtTextureKey(color), shirtAssetPath(color), { frameWidth: 64, frameHeight: 64 });
+      this.load.spritesheet(pantsTextureKey(color), pantsAssetPath(color), { frameWidth: 64, frameHeight: 64 });
+      this.load.spritesheet(shoesTextureKey(color), shoesAssetPath(color), { frameWidth: 64, frameHeight: 64 });
+    }
 
     preloadScenery(this);
 

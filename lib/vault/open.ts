@@ -5,6 +5,7 @@ import type { InteriorLayout, VaultHandle, WorldModel } from '@/lib/types';
 import { makeLinkResolver, parseVault } from '@/lib/vault/parse';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
+import { loadAppearance } from '@/lib/appearance';
 
 const HEAD_BYTES = 2048;
 
@@ -26,6 +27,9 @@ export function publishWorld(
       game.registry.remove('sessionLayouts');
       game.registry.set('vaultFingerprint', fingerprint);
     }
+    // Read fresh (not cached at module load) so a change made in the picker seconds before
+    // clicking "Open your vault" / "Try the demo town" is never missed.
+    game.registry.set('appearance', loadAppearance());
     // Last: TitleScene starts the overworld the moment this lands.
     game.registry.set('world', world);
     return true;
