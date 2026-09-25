@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { Appearance, House, MaterialId, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
 import { regionSize } from '@/lib/vault/parse';
-import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
+import { buildHouses, buildRoads, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
@@ -10,8 +10,19 @@ import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from
 import { bus } from '@/game/bus';
 import { attachRemotePlayers } from '@/game/remotePlayers';
 import { setSelfPresence } from '@/lib/multiplayer/session';
+import { hash } from '@/lib/types';
+import { HOUSE_FOOTPRINT } from '@/lib/houseCatalog';
+import { key, type WorldGrid } from '@/game/worldGrid';
+import { buildGround, GID_WATER } from '@/game/ground';
+import { placePonds, renderWater } from '@/game/water';
+import { placePlazas, renderPlazas, renderYards } from '@/game/townProps';
+import { buildForestBorder, buildGroundCover, buildGroves } from '@/game/nature';
+import { attachDaylight } from '@/game/daylight';
+import { attachAmbience } from '@/game/ambience';
 
-const REGION_PAD = 6;
+const REGION_PAD = 8;
+// Solid forest around the whole town, so the map ends in trees instead of flat grass.
+const BORDER = 7;
 
 export default class OverworldScene extends Phaser.Scene {
   private movement: GridMovement | null = null;
@@ -87,8 +98,8 @@ export default class OverworldScene extends Phaser.Scene {
     const maxH = Math.max(...sizes.map(([, h]) => h));
     const cellW = maxW + REGION_PAD;
     const cellH = maxH + REGION_PAD;
-    const worldW = cols * cellW;
-    const worldH = rows * cellH;
+    const worldW = cols * cellW + BORDER * 2;
+    const worldH = rows * cellH + BORDER * 2;
 
     this.add
       .tileSprite(0, 0, worldW * TILE, worldH * TILE, 'terrain-grass')
@@ -98,16 +109,39 @@ export default class OverworldScene extends Phaser.Scene {
     const blocked = new Set<string>();
     const entries: Entry[] = [];
     const areas: NpcSpawnArea[] = [];
+    const grid: WorldGrid = {
+      w: worldW,
+      h: worldH,
+      seed: hash(world.name),
+      border: BORDER,
+      blocked,
+      road: new Set(),
+      water: new Set(),
+      plaza: new Set(),
+      keepClear: new Set(),
+      used: new Set(),
+      areas: [],
+      houses: [],
+      lights: [],
+    };
 
     world.regions.forEach((region, i) => {
       const [w, h] = sizes[i];
-      const originGx = (i % cols) * cellW + Math.floor(REGION_PAD / 2);
-      const originGy = Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
+      const originGx = BORDER + (i % cols) * cellW + Math.floor(REGION_PAD / 2);
+      const originGy = BORDER + Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
       areas.push({ originGx, originGy, width: w, height: h });
+      grid.areas.push({ region, originGx, originGy, width: w, height: h });
       const result = buildHouses(this, region, originGx, originGy);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
+      for (const e of result.entries) {
+        const house = region.houses.find((hs) => hs.id === e.houseId)!;
+        const [hw, hh] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
+        grid.houses.push({ houseId: house.id, gx: originGx + house.gx, gy: originGy + house.gy, w: hw, h: hh, entryGx: e.gx, entryGy: e.gy });
+        grid.keepClear.add(key(e.gx, e.gy));
+        grid.keepClear.add(key(e.gx, e.gy + 1));
+      }
 
       if (!isGuest) {
         for (const house of region.houses) {
@@ -128,12 +162,18 @@ export default class OverworldScene extends Phaser.Scene {
     });
     this.game.registry.set('houseDoors', houseDoors);
 
-    const road = buildRoads(this, entries, blocked, worldW, worldH);
-
-    world.regions.forEach((region, i) => {
-      const a = areas[i];
-      scatterDecoration(this, region, a.originGx, a.originGy, a.width, a.height, blocked, this.doors, road);
-    });
+    // Order matters: each step avoids what the earlier ones claimed. Roads come after the
+    // plazas and ponds so they route around them, and everything decorative comes after roads.
+    buildForestBorder(this, grid);
+    const { plazas, anchors, wells } = placePlazas(grid);
+    placePonds(grid);
+    grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
+    const ground = buildGround(this, grid);
+    renderWater(this, grid, ground.map, GID_WATER);
+    renderPlazas(this, grid, plazas, wells);
+    renderYards(this, grid);
+    buildGroves(this, grid);
+    buildGroundCover(this, grid);
 
     // Coming back out of a house puts the player on the road in front of that door.
     const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
@@ -178,10 +218,12 @@ export default class OverworldScene extends Phaser.Scene {
     // NPCs read isWalkable from the registry, so they spawn only after it is published.
     world.regions.forEach((region, i) => spawnNpcs(this, region, areas[i]));
 
-    // Grass-coloured backdrop so any space beyond the world reads as meadow, and a
+    attachAmbience(this, grid, attachDaylight(this, grid));
+
+    // Forest-coloured backdrop so any space beyond the world reads as woods, and a
     // world smaller than the view sits centred instead of hugging the top-left.
     const cam = this.cameras.main;
-    cam.setBackgroundColor('#3E8948');
+    cam.setBackgroundColor('#27503a');
     const worldWidthPx = worldW * TILE;
     const worldHeightPx = worldH * TILE;
     const fit = () => {

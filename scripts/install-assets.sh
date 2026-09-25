@@ -100,4 +100,50 @@ cp "$KENMI/Cute_Fantasy_UI/UI/Book_UI.png"             "$DEST/ui/book.png"
 cp "$KENMI/Cute_Fantasy_UI/UI/UI_Frames.png"           "$DEST/ui/frames.png"
 cp "$KENMI/Cute_Fantasy_UI/Fonts/CuteFantasy-5x9.ttf"  "$DEST/ui/cute-fantasy.ttf"
 
+# Overworld scenery (game/sceneryAssets.ts loads these; frame layouts are documented there).
+S="$DEST/scenery"
+mkdir -p "$S"
+OD="$CF/Outdoor decoration"
+AN="$OD/Outdoor_Decor_Animations"
+for n in 2 3 4; do
+  cp "$CF/Tiles/Grass/Grass_Tiles_$n.png"  "$S/grass$n.png"
+  cp "$CF/Tiles/Grass/Grass_${n}_Middle.png" "$S/fill_grass$n.png"
+done
+cp "$CF/Tiles/Water/Water_Tile_1_Anim.png" "$S/water_anim.png"
+cp "$AN/Water_Decor_Animations/Water_Plants/Lillypad_Green_1_Anim.png"  "$S/lily_1.png"
+cp "$AN/Water_Decor_Animations/Water_Plants/Lillypad_Green_2_Anim.png"  "$S/lily_2.png"
+cp "$AN/Water_Decor_Animations/Water_Plants/Lillypad_Purple_1_Anim.png" "$S/lily_3.png"
+cp "$AN/Water_Decor_Animations/Water_Plants/Lillypad_Red_1_Anim.png"    "$S/lily_4.png"
+cp "$AN/Water_Decor_Animations/Water_Plants/Cattail_1_Anim.png"         "$S/cattail_1.png"
+cp "$AN/Water_Decor_Animations/Water_Plants/Cattail_2_Anim.png"         "$S/cattail_2.png"
+cp "$AN/Water_Decor_Animations/Water_Rocks/Rock_3_Water_Anim.png"       "$S/water_rock_1.png"
+cp "$AN/Water_Decor_Animations/Water_Rocks/Rock_5_Water_Anim.png"       "$S/water_rock_2.png"
+cp "$CF/Trees/Big_Oak_Tree.png"      "$S/tree_big_oak.png"
+cp "$CF/Trees/Big_Spruce_tree.png"   "$S/tree_big_spruce.png"
+cp "$CF/Trees/Big_Birch_Tree.png"    "$S/tree_big_birch.png"
+cp "$CF/Trees/Big_Fruit_Tree.png"    "$S/tree_big_fruit.png"
+cp "$CF/Trees/Medium_Birch_Tree.png" "$S/tree_birch.png"
+cp "$CF/Trees/Medium_Fruit_Tree.png" "$S/tree_fruit.png"
+cp "$OD/Outdoor_Decor.png" "$S/decor.png"
+for n in 1 2 3 4 5; do
+  cp "$AN/Flower_Animations/Not_Potted/Flowers_${n}_Anim.png" "$S/flower_anim_$n.png"
+done
+for n in 1 2 3; do
+  cp "$AN/Grass_Animations/Grass_${n}_Anim.png" "$S/grass_anim_$n.png"
+done
+for n in 1 2 3 4 5 6; do
+  cp "$AN/Grass_Animations/Flower_Grass_${n}_Anim.png" "$S/flower_grass_$n.png"
+done
+cp "$OD/Lanter_Posts.png"  "$S/lamp_posts.png"
+cp "$AN/Other_Animations/Fountain_Anim.png"          "$S/fountain.png"
+cp "$AN/Other_Animations/Pole_and_Bunting_1_Anim.png" "$S/bunting.png"
+cp "$OD/Well.png"     "$S/well.png"
+cp "$OD/Benches.png"  "$S/benches.png"
+cp "$OD/barrels.png"  "$S/barrels.png"
+cp "$CF/Weather effects/Clouds.png"   "$S/clouds.png"
+cp "$CF/Weather effects/Wind_Anim.png" "$S/wind.png"
+cp "$CF/Animals/Butterfly/Butterfly.png" "$S/butterfly.png"
+cp "$CF/Trees/Oak_Leaf_Particle.png"   "$S/leaf_oak.png"
+cp "$CF/Trees/Birch_Leaf_Particle.png" "$S/leaf_birch.png"
+
 echo "copied $(find "$DEST" -type f | wc -l | tr -d ' ') files into $DEST"

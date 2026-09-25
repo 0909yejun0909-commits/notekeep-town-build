@@ -1,5 +1,4 @@
 import type { Region } from '@/lib/types';
-import { hash } from '@/lib/types';
 import { HOUSE_FOOTPRINT, HOUSE_DOOR, houseTextureKey } from '@/lib/houseCatalog';
 
 const TILE = 16;
@@ -54,28 +53,6 @@ export function buildHouses(
   return { blocked, doors, entries, houseImages };
 }
 
-// grass_meadow.png, read off the sheet: 3x3 sand-on-grass block at 80, inner corners at 128.
-//   80 81 82      128: grass in SE corner   129: grass in SW corner
-//   96 97 98      144: grass in NE corner   145: grass in NW corner
-//  112 113 114
-function roadFrame(road: Set<string>, x: number, y: number): number {
-  const r = (dx: number, dy: number) => road.has(key(x + dx, y + dy));
-  const n = r(0, -1), s = r(0, 1), w = r(-1, 0), e = r(1, 0);
-  if (!n && !w) return 80;
-  if (!n && !e) return 82;
-  if (!s && !w) return 112;
-  if (!s && !e) return 114;
-  if (!n) return 81;
-  if (!s) return 113;
-  if (!w) return 96;
-  if (!e) return 98;
-  if (!r(1, 1)) return 128;
-  if (!r(-1, 1)) return 129;
-  if (!r(1, -1)) return 144;
-  if (!r(-1, -1)) return 145;
-  return 97;
-}
-
 class MinHeap {
   private a: [number, number][] = [];
   get size() { return this.a.length; }
@@ -113,14 +90,16 @@ class MinHeap {
 
 // Roads are two tiles wide: every path cell stamps a 2x2 block with itself as the top-left.
 // A cell is routable only if its whole stamp is inside the world and clear of houses.
+// `extraRoad` (town squares) counts as road from the start, so paths are drawn through it.
+// Drawing is game/ground.ts's job; this only decides which tiles are road.
 export function buildRoads(
-  scene: Phaser.Scene,
   entries: Entry[],
   blocked: Set<string>,
   worldW: number,
   worldH: number,
+  extraRoad: Set<string> = new Set(),
 ): Set<string> {
-  const road = new Set<string>();
+  const road = new Set<string>(extraRoad);
   if (entries.length === 0) return road;
 
   const stampOk = (x: number, y: number) =>
@@ -203,67 +182,5 @@ export function buildRoads(
     else stamp(anchors[j].x, anchors[j].y);
   }
 
-  for (const k of road) {
-    const [x, y] = k.split(',').map(Number);
-    scene.add
-      .image(x * TILE, y * TILE, 'grass-edges', roadFrame(road, x, y))
-      .setOrigin(0, 0)
-      .setDepth(-900);
-  }
-
   return road;
-}
-
-export function scatterDecoration(
-  scene: Phaser.Scene,
-  region: Region,
-  originGx: number,
-  originGy: number,
-  width: number,
-  height: number,
-  blocked: Set<string>,
-  doors: Map<string, string>,
-  road: Set<string>,
-) {
-  const clear = (k: string) => !blocked.has(k) && !doors.has(k) && !road.has(k);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const gx = originGx + x;
-      const gy = originGy + y;
-      const k = key(gx, gy);
-      if (!clear(k)) continue;
-
-      const flowerRoll = hash(`${region.id}:flower:${gx}:${gy}`);
-      if (flowerRoll % 23 === 0) {
-        const frame = hash(`${region.id}:flowerframe:${gx}:${gy}`) % 100;
-        scene.add
-          .image(gx * TILE + TILE / 2, gy * TILE + TILE / 2, 'flowers', frame)
-          .setDepth(-500);
-        continue;
-      }
-
-      const treeRoll = hash(`${region.id}:tree:${gx}:${gy}`);
-      if (treeRoll % 61 === 0 && x < width - 1 && y < height - 1) {
-        const otherKey = key(gx + 1, gy);
-        const below = key(gx, gy + 1);
-        const belowOther = key(gx + 1, gy + 1);
-        if (!clear(otherKey) || !clear(below) || !clear(belowOther)) continue;
-
-        const species =
-          hash(`${region.id}:species:${gx}:${gy}`) % 2 === 0 ? 'tree-oak' : 'tree-spruce';
-        const frame = 1 + (hash(`${region.id}:treeframe:${gx}:${gy}`) % 2);
-
-        scene.add
-          .image(gx * TILE, (gy + 2) * TILE, species, frame)
-          .setOrigin(0, 1)
-          .setDepth((gy + 2) * TILE);
-
-        blocked.add(k);
-        blocked.add(otherKey);
-        blocked.add(below);
-        blocked.add(belowOther);
-      }
-    }
-  }
 }
