@@ -5,6 +5,7 @@ import type { VaultHandle, WorldModel } from '@/lib/types';
 import { makeLinkResolver, parseVault } from '@/lib/vault/parse';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
+import { loadAppearance } from '@/lib/appearance';
 
 const HEAD_BYTES = 2048;
 
@@ -12,6 +13,9 @@ function publishWorld(world: WorldModel, fingerprint: string) {
   const attempt = () => {
     const game = (window as any).__game;
     if (!game?.registry) return false;
+    // Read fresh (not cached at module load) so a change made in the picker seconds before
+    // clicking "Open your vault" / "Try the demo town" is never missed.
+    game.registry.set('appearance', loadAppearance());
     game.registry.set('world', world);
     game.registry.set('vaultFingerprint', fingerprint);
     return true;

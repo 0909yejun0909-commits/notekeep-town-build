@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { bus } from '@/game/bus';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
-import type { House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
+import type { Appearance, House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
+import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
 import {
   SHELF_SEGMENTS,
   SHELF_GY,
@@ -192,7 +193,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.player = this.add.sprite(spawn.x, spawn.y, 'player');
     this.player.setOrigin(0.5, 0.64);
     this.player.setDepth(10);
-    dressPlayer(this, this.player);
+    const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
+    dressPlayer(this, this.player, appearance);
 
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;

@@ -16,6 +16,18 @@ export type WallColor = 'base' | 'green' | 'red';
 export type RoofColor = 'black' | 'blue' | 'red';
 export type MaterialId = 'wood' | 'stone' | 'limestone';
 
+export type HairStyle = 1 | 2 | 3 | 4 | 5 | 6;
+export type HairColor = 'black' | 'blonde' | 'brown' | 'ginger' | 'grey';
+export type ClothColor = 'black' | 'blue' | 'brown' | 'green' | 'orange' | 'pink' | 'purple' | 'red';
+
+export type Appearance = {
+  hairStyle: HairStyle;
+  hairColor: HairColor;
+  shirtColor: ClothColor;
+  pantsColor: ClothColor;
+  shoesColor: ClothColor;
+};
+
 export type House = {
   id: string; name: string;
   gx: number; gy: number;   // grid position inside its region

@@ -1,9 +1,27 @@
 import Phaser from 'phaser';
+import type { Appearance } from '@/lib/types';
+import {
+  DEFAULT_APPEARANCE,
+  hairTextureKey,
+  pantsTextureKey,
+  shirtTextureKey,
+  shoesTextureKey,
+} from '@/lib/characterCatalog';
 
-// One fixed outfit, no customiser. Layers share the base's grid and frame
-// indices, so they animate for free — never call .play() on them.
-export function dressPlayer(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite) {
-  const keys = ['player-shoes', 'player-pants', 'player-shirt', 'player-hair'];
+// Layers share the base's grid and frame indices, so they animate for free — never call
+// .play() on them. `appearance` defaults to the original fixed outfit for callers that don't
+// track a per-avatar look.
+export function dressPlayer(
+  scene: Phaser.Scene,
+  sprite: Phaser.GameObjects.Sprite,
+  appearance: Appearance = DEFAULT_APPEARANCE,
+) {
+  const keys = [
+    shoesTextureKey(appearance.shoesColor),
+    pantsTextureKey(appearance.pantsColor),
+    shirtTextureKey(appearance.shirtColor),
+    hairTextureKey(appearance.hairStyle, appearance.hairColor),
+  ];
 
   const layers = keys.map((key) => {
     const layer = scene.add.sprite(sprite.x, sprite.y, key, sprite.frame.name);
