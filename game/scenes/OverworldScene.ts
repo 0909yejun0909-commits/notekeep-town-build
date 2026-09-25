@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import type { House, MaterialId, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
+import type { Appearance, House, MaterialId, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
+import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
 import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
@@ -149,7 +150,8 @@ export default class OverworldScene extends Phaser.Scene {
     const player = this.add.sprite(spawn.x, spawn.y, 'player');
     player.setOrigin(0.5, 0.64);
     player.setDepth(player.y);
-    dressPlayer(this, player);
+    const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
+    dressPlayer(this, player, appearance);
     this.player = player;
 
     const isWalkable = (gx: number, gy: number) => {
