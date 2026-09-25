@@ -6,9 +6,10 @@ import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/t
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
-import { getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
-import { DEFAULT_MATERIAL, DEFAULT_WALL_COLOR, DEFAULT_ROOF_COLOR, availableWallColors } from '@/lib/houseCatalog';
+import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
+import { attachRemotePlayers } from '@/game/remotePlayers';
+import { setSelfPresence } from '@/lib/multiplayer/session';
 
 const REGION_PAD = 6;
 
@@ -49,6 +50,13 @@ export default class OverworldScene extends Phaser.Scene {
     this.editingExterior = false;
   };
 
+  private onWorldUpdated = ({ exteriorChanged }: { exteriorChanged: boolean }) => {
+    if (!exteriorChanged || !this.player) return;
+    const { gx, gy } = worldToTile(this.player.x, this.player.y);
+    this.game.registry.set('returnTile', { gx, gy });
+    this.scene.restart();
+  };
+
   constructor() {
     super('OverworldScene');
   }
@@ -62,22 +70,12 @@ export default class OverworldScene extends Phaser.Scene {
     this.editingExterior = false;
 
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
+    const isGuest = this.game.registry.get('role') === 'guest';
     if (this.fingerprint) {
       for (const region of world.regions) {
         for (const house of region.houses) {
           const saved = getExteriorOverride(this.fingerprint, house.id);
-          if (saved !== null) {
-            house.variant = saved.variant;
-            house.material = saved.material ?? DEFAULT_MATERIAL[saved.variant];
-            // A saved wallColor is only structurally valid (one of the 3 known colors), not
-            // necessarily available for this material+shape combo — Limestone and Stone's
-            // shape 3 only ship a subset. Fall back to 'base', always available everywhere.
-            const wallColor = saved.wallColor ?? DEFAULT_WALL_COLOR[saved.variant];
-            house.wallColor = availableWallColors(house.material, house.variant).includes(wallColor)
-              ? wallColor
-              : 'base';
-            house.roofColor = saved.roofColor ?? DEFAULT_ROOF_COLOR[saved.variant];
-          }
+          if (saved !== null) applyExteriorOverride(house, saved);
         }
       }
     }
@@ -111,12 +109,14 @@ export default class OverworldScene extends Phaser.Scene {
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
 
-      for (const house of region.houses) {
-        const img = result.houseImages.get(house.id);
-        if (!img) continue;
-        img
-          .setInteractive({ useHandCursor: true })
-          .on('pointerdown', () => this.openExteriorEditor(house, region));
+      if (!isGuest) {
+        for (const house of region.houses) {
+          const img = result.houseImages.get(house.id);
+          if (!img) continue;
+          img
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => this.openExteriorEditor(house, region));
+        }
       }
     });
 
@@ -160,6 +160,9 @@ export default class OverworldScene extends Phaser.Scene {
     };
 
     this.movement = new GridMovement(this, player, isWalkable);
+    this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: 'overworld', gx, gy, facing });
+    setSelfPresence({ scene: 'overworld', gx: spawnGx, gy: spawnGy, facing: 'down' });
+    attachRemotePlayers(this, 'overworld', player);
 
     this.game.registry.set('player', player);
     this.game.registry.set('isWalkable', isWalkable);
@@ -185,9 +188,11 @@ export default class OverworldScene extends Phaser.Scene {
 
     bus.on('commit-exterior-variant', this.onCommitExterior);
     bus.on('close-exterior-editor', this.onCloseExteriorEditor);
+    bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
       bus.off('commit-exterior-variant', this.onCommitExterior);
       bus.off('close-exterior-editor', this.onCloseExteriorEditor);
+      bus.off('world-updated', this.onWorldUpdated);
     });
   }
 

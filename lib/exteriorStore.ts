@@ -1,5 +1,8 @@
-import type { MaterialId, RoofColor, WallColor } from './types';
-import { HOUSE_VARIANTS, MATERIALS, WALL_COLORS, ROOF_COLORS } from './houseCatalog';
+import type { House, MaterialId, RoofColor, WallColor } from './types';
+import {
+  HOUSE_VARIANTS, MATERIALS, WALL_COLORS, ROOF_COLORS,
+  DEFAULT_MATERIAL, DEFAULT_WALL_COLOR, DEFAULT_ROOF_COLOR, availableWallColors,
+} from './houseCatalog';
 
 export type ExteriorOverride = {
   variant: number;
@@ -61,4 +64,15 @@ export function saveExteriorOverride(
   } catch {
     // Storage full or unavailable (private browsing) — the choice just won't persist.
   }
+}
+
+export function applyExteriorOverride(house: House, saved: ExteriorOverride): void {
+  house.variant = saved.variant;
+  house.material = saved.material ?? DEFAULT_MATERIAL[saved.variant];
+  // A saved wallColor is only structurally valid (one of the 3 known colors), not
+  // necessarily available for this material+shape combo — Limestone and Stone's
+  // shape 3 only ship a subset. Fall back to 'base', always available everywhere.
+  const wallColor = saved.wallColor ?? DEFAULT_WALL_COLOR[saved.variant];
+  house.wallColor = availableWallColors(house.material, house.variant).includes(wallColor) ? wallColor : 'base';
+  house.roofColor = saved.roofColor ?? DEFAULT_ROOF_COLOR[saved.variant];
 }
