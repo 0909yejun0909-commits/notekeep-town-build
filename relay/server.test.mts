@@ -6,13 +6,14 @@ import {
   CLOSE_ROOM_CLOSED,
   CLOSE_ROOM_FULL,
   CLOSE_ROOM_NOT_FOUND,
+  CLOSE_TOO_MANY,
   type RelayOptions,
 } from './server.mts';
 
 type Msg = { type: string; [key: string]: unknown };
 
-function client(port: number, room: string) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/?room=${room}`);
+function client(port: number, room: string, headers: Record<string, string> = {}) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/?room=${room}`, { headers });
   const inbox: Msg[] = [];
   let wake: (() => void) | null = null;
   ws.on('message', (raw) => {
@@ -106,6 +107,33 @@ test('a full room refuses the next guest with 4003', T, async () => {
   assert.equal((await extra.next('error')).code, 'room-full');
   assert.equal(await extra.closed, CLOSE_ROOM_FULL);
   host.ws.close();
+  await relay.close();
+});
+
+test('one address cannot hold more than maxPerIp connections at once', T, async () => {
+  const { relay, host, roomId, guests: [a] } = await room({ maxPerIp: 2 }, 1);
+  const extra = client(relay.port, roomId);
+  assert.equal((await extra.next('error')).code, 'too-many-connections');
+  assert.equal(await extra.closed, CLOSE_TOO_MANY);
+  a.ws.close();
+  await host.next('peer-left');
+  const later = client(relay.port, roomId);
+  await later.next('welcome');
+  later.ws.close();
+  host.ws.close();
+  await relay.close();
+});
+
+test('behind a proxy the client address comes from the configured header', T, async () => {
+  const relay = await createRelay({ port: 0, maxPerIp: 1, ipHeader: 'fly-client-ip' });
+  const a = client(relay.port, 'new', { 'fly-client-ip': '203.0.113.1' });
+  const b = client(relay.port, 'new', { 'fly-client-ip': '203.0.113.2' });
+  await a.next('welcome');
+  await b.next('welcome');
+  const c = client(relay.port, 'new', { 'fly-client-ip': '203.0.113.1' });
+  assert.equal(await c.closed, CLOSE_TOO_MANY);
+  a.ws.close();
+  b.ws.close();
   await relay.close();
 });
 

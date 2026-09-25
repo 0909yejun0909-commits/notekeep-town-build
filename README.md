@@ -60,7 +60,11 @@ notes load from their own disk. Press **T** to chat.
 
 - **Hosting the relay:** `relay/server.mts` is a single file with one dependency (`ws`)
   and no database. Run it anywhere with Node 22.18+ (`PORT` sets the port). Put it behind
-  TLS and use a `wss://` URL when the app itself is served over HTTPS.
+  TLS and use a `wss://` URL when the app itself is served over HTTPS. Behind a proxy, set
+  `CLIENT_IP_HEADER` to the header carrying the real client address so the
+  20-connections-per-address cap works. For Fly.io: set a unique `app` name in
+  `relay/fly.toml`, then `fly launch --no-deploy --copy-config relay` once and
+  `fly deploy relay --ha=false`. Rooms live in memory, so run exactly one instance.
 - **What guests can see:** your folder names and note titles, always. Note contents and
   images only while you share "Town + notes" (the default); switch to "Town only" at any
   time. Guests can't edit anything.

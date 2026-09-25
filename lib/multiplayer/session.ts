@@ -18,6 +18,7 @@ export const END_MESSAGES: Record<SessionEnd, string> = {
   'room-not-found': 'That study session has ended or never existed.',
   'room-full': 'That study session is full (16 people).',
   'too-large': 'A message was too large for the relay.',
+  'too-many-connections': 'Too many connections from your network right now. Close a few tabs and try again.',
   'connection-lost': 'Lost the connection to the study session.',
   'relay-unreachable': "Couldn't reach the multiplayer server.",
   'broken-link': 'This invite link is broken or incomplete. Ask the host to send it again.',

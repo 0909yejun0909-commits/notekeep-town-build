@@ -9,6 +9,7 @@ export type EndReason =
   | 'room-not-found'
   | 'room-full'
   | 'too-large'
+  | 'too-many-connections'
   | 'connection-lost'
   | 'relay-unreachable';
 
@@ -38,6 +39,7 @@ function reasonFor(code: number): EndReason {
   if (code === 4003) return 'room-full';
   if (code === 4004) return 'room-not-found';
   if (code === 1009) return 'too-large';
+  if (code === 4029) return 'too-many-connections';
   return 'connection-lost';
 }
 
