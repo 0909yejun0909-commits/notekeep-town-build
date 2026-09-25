@@ -15,6 +15,7 @@ import {
   shoesAssetPath,
   shoesTextureKey,
 } from '@/lib/characterCatalog';
+import { loadTownBiome } from '@/lib/biome';
 
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
 //   this.add.image(px, py, 'furn_bed', 'bed')
@@ -162,6 +163,9 @@ export default class BootScene extends Phaser.Scene {
         repeat: -1,
       });
     }
+
+    // Set before any scene reads it, so the picker's later writes arrive as changedata events.
+    this.game.registry.set('townBiome', loadTownBiome());
 
     this.scene.start('TitleScene');
   }

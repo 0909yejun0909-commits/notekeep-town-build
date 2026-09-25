@@ -1,6 +1,22 @@
-import type { Region } from '@/lib/types';
+import type { Region, TownBiome } from '@/lib/types';
 import { hash } from '@/lib/types';
 import { HOUSE_FOOTPRINT, HOUSE_DOOR, houseTextureKey } from '@/lib/houseCatalog';
+import {
+  CAMPFIRE,
+  CAMPFIRE_ANIM,
+  CANDY_CANE,
+  FIRE_GLOW,
+  ICE_ROAD,
+  PRESENT,
+  PRESENT_FRAMES,
+  SNOWMAN,
+  SNOW_DECOR,
+  WREATH,
+  XMAS_TREE,
+  snowDecorFrame,
+  snowyHouse,
+  snowyTree,
+} from '@/game/winterArt';
 
 const TILE = 16;
 
@@ -20,6 +36,7 @@ export function buildHouses(
   region: Region,
   originGx: number,
   originGy: number,
+  biome: TownBiome = 'forest',
 ): TilemapResult {
   const blocked = new Set<string>();
   const doors = new Map<string, string>();
@@ -32,11 +49,18 @@ export function buildHouses(
     const gx = originGx + house.gx;
     const gy = originGy + house.gy;
 
+    const texture = houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor);
     const img = scene.add
-      .image(gx * TILE, gy * TILE, houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor))
+      .image(gx * TILE, gy * TILE, biome === 'snow' ? snowyHouse(scene, texture) : texture)
       .setOrigin(0, 0)
       .setDepth((gy + h) * TILE);
     houseImages.set(house.id, img);
+    if (biome === 'snow') {
+      // Hung on the upper of the two door tiles.
+      scene.add
+        .image((gx + doorX) * TILE + TILE / 2, (gy + doorY - 1) * TILE + TILE / 2, WREATH)
+        .setDepth((gy + h) * TILE + 1);
+    }
 
     for (let y = 0; y < h - 1; y++) {
       for (let x = 0; x < w; x++) {
@@ -119,6 +143,7 @@ export function buildRoads(
   blocked: Set<string>,
   worldW: number,
   worldH: number,
+  biome: TownBiome = 'forest',
 ): Set<string> {
   const road = new Set<string>();
   if (entries.length === 0) return road;
@@ -203,10 +228,11 @@ export function buildRoads(
     else stamp(anchors[j].x, anchors[j].y);
   }
 
+  const roadTexture = biome === 'snow' ? ICE_ROAD : 'grass-edges';
   for (const k of road) {
     const [x, y] = k.split(',').map(Number);
     scene.add
-      .image(x * TILE, y * TILE, 'grass-edges', roadFrame(road, x, y))
+      .image(x * TILE, y * TILE, roadTexture, roadFrame(road, x, y))
       .setOrigin(0, 0)
       .setDepth(-900);
   }
@@ -224,8 +250,12 @@ export function scatterDecoration(
   blocked: Set<string>,
   doors: Map<string, string>,
   road: Set<string>,
+  biome: TownBiome = 'forest',
 ) {
   const clear = (k: string) => !blocked.has(k) && !doors.has(k) && !road.has(k);
+  const snow = biome === 'snow';
+
+  if (snow) placeWinterLandmarks(scene, region, originGx, originGy, width, height, blocked, clear);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -236,9 +266,14 @@ export function scatterDecoration(
 
       const flowerRoll = hash(`${region.id}:flower:${gx}:${gy}`);
       if (flowerRoll % 23 === 0) {
-        const frame = hash(`${region.id}:flowerframe:${gx}:${gy}`) % 100;
+        const frameRoll = hash(`${region.id}:flowerframe:${gx}:${gy}`);
         scene.add
-          .image(gx * TILE + TILE / 2, gy * TILE + TILE / 2, 'flowers', frame)
+          .image(
+            gx * TILE + TILE / 2,
+            gy * TILE + TILE / 2,
+            snow ? SNOW_DECOR : 'flowers',
+            snow ? snowDecorFrame(frameRoll) : frameRoll % 100,
+          )
           .setDepth(-500);
         continue;
       }
@@ -250,12 +285,13 @@ export function scatterDecoration(
         const belowOther = key(gx + 1, gy + 1);
         if (!clear(otherKey) || !clear(below) || !clear(belowOther)) continue;
 
-        const species =
-          hash(`${region.id}:species:${gx}:${gy}`) % 2 === 0 ? 'tree-oak' : 'tree-spruce';
+        // Snow leans toward spruce, three to one.
+        const speciesRoll = hash(`${region.id}:species:${gx}:${gy}`);
+        const species = speciesRoll % (snow ? 4 : 2) === 0 ? 'tree-oak' : 'tree-spruce';
         const frame = 1 + (hash(`${region.id}:treeframe:${gx}:${gy}`) % 2);
 
         scene.add
-          .image(gx * TILE, (gy + 2) * TILE, species, frame)
+          .image(gx * TILE, (gy + 2) * TILE, snow ? snowyTree(scene, species) : species, frame)
           .setOrigin(0, 1)
           .setDepth((gy + 2) * TILE);
 
@@ -265,5 +301,114 @@ export function scatterDecoration(
         blocked.add(belowOther);
       }
     }
+  }
+}
+
+// First spot in the region, scanning from a hashed start, where an fw x fh footprint plus a
+// `margin`-tile ring around it is all clear — the ring keeps a landmark from walling off a path.
+function findSpot(
+  region: Region,
+  salt: string,
+  originGx: number,
+  originGy: number,
+  width: number,
+  height: number,
+  fw: number,
+  fh: number,
+  margin: number,
+  clear: (k: string) => boolean,
+): [number, number] | null {
+  const n = width * height;
+  const start = hash(`${region.id}:${salt}`) % n;
+  for (let i = 0; i < n; i++) {
+    const idx = (start + i) % n;
+    const x = idx % width, y = Math.floor(idx / width);
+    if (x - margin < 0 || y - margin < 0 || x + fw + margin > width || y + fh + margin > height) continue;
+    let ok = true;
+    for (let dy = -margin; dy < fh + margin && ok; dy++) {
+      for (let dx = -margin; dx < fw + margin && ok; dx++) {
+        if (!clear(key(originGx + x + dx, originGy + y + dy))) ok = false;
+      }
+    }
+    if (ok) return [originGx + x, originGy + y];
+  }
+  return null;
+}
+
+function blockTiles(blocked: Set<string>, gx: number, gy: number, fw: number, fh: number) {
+  for (let dy = 0; dy < fh; dy++) for (let dx = 0; dx < fw; dx++) blocked.add(key(gx + dx, gy + dy));
+}
+
+// Christmas dressing for one region: candy canes flanking each door, presents stacked by some
+// houses, then a campfire, a decorated tree and a snowman or two out in the open.
+function placeWinterLandmarks(
+  scene: Phaser.Scene,
+  region: Region,
+  originGx: number,
+  originGy: number,
+  width: number,
+  height: number,
+  blocked: Set<string>,
+  clear: (k: string) => boolean,
+) {
+  for (const house of region.houses) {
+    const [w, h] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
+    const [doorX, doorY] = HOUSE_DOOR[house.variant] ?? HOUSE_DOOR[0];
+    const hx = originGx + house.gx, hy = originGy + house.gy;
+    const entryX = hx + doorX, entryY = hy + doorY + 1;
+
+    for (const cx of [entryX - 2, entryX + 1]) {
+      if (!clear(key(cx, entryY))) continue;
+      scene.add
+        .image(cx * TILE + TILE / 2, (entryY + 1) * TILE, CANDY_CANE)
+        .setOrigin(0.5, 1)
+        .setDepth((entryY + 1) * TILE + 1);
+      blocked.add(key(cx, entryY));
+    }
+
+    const gifts = hash(`${house.id}:gifts`) % 4;
+    const spots: [number, number][] = [[hx + w, hy + h - 2], [hx + w, hy + h - 3], [hx - 1, hy + h - 2]];
+    spots.slice(0, gifts).forEach(([gx, gy], i) => {
+      if (!clear(key(gx, gy))) return;
+      scene.add
+        .image(gx * TILE, gy * TILE, PRESENT, hash(`${house.id}:gift:${i}`) % PRESENT_FRAMES)
+        .setOrigin(0, 0)
+        .setDepth((gy + 1) * TILE);
+      blocked.add(key(gx, gy));
+    });
+  }
+
+  const fire = findSpot(region, 'campfire', originGx, originGy, width, height, 1, 1, 1, clear);
+  if (fire) {
+    const [gx, gy] = fire;
+    const cx = gx * TILE + TILE / 2, cy = gy * TILE + TILE / 2;
+    const glow = scene.add.image(cx, cy, FIRE_GLOW).setDepth(-400);
+    scene.tweens.add({ targets: glow, alpha: 0.65, scale: 0.92, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    scene.add.sprite(cx, cy, CAMPFIRE).setDepth((gy + 1) * TILE).play(CAMPFIRE_ANIM);
+    blocked.add(key(gx, gy));
+  }
+
+  if (scene.textures.exists(XMAS_TREE)) {
+    const tree = findSpot(region, 'xmas-tree', originGx, originGy, width, height, 2, 2, 1, clear);
+    if (tree) {
+      const [gx, gy] = tree;
+      scene.add
+        .image(gx * TILE, (gy + 2) * TILE, XMAS_TREE)
+        .setOrigin(0, 1)
+        .setDepth((gy + 2) * TILE);
+      blockTiles(blocked, gx, gy, 2, 2);
+    }
+  }
+
+  const snowmen = 1 + (hash(`${region.id}:snowmen`) % 2);
+  for (let i = 0; i < snowmen; i++) {
+    const spot = findSpot(region, `snowman:${i}`, originGx, originGy, width, height, 1, 1, 1, clear);
+    if (!spot) break;
+    const [gx, gy] = spot;
+    scene.add
+      .image(gx * TILE + TILE / 2, (gy + 1) * TILE, SNOWMAN)
+      .setOrigin(0.5, 1)
+      .setDepth((gy + 1) * TILE);
+    blocked.add(key(gx, gy));
   }
 }

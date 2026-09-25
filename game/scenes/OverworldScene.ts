@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
-import type { Appearance, House, MaterialId, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
+import type { Appearance, House, MaterialId, Region, RoofColor, TownBiome, WallColor, WorldModel } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
+import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
+import { SNOW_BACKGROUND, SNOW_GROUND, ensureWinterTextures, startSnowfall } from '@/game/winterArt';
 import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, scatterDecoration, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
@@ -49,13 +51,28 @@ export default class OverworldScene extends Phaser.Scene {
     this.editingExterior = false;
   };
 
+  // components/BiomePicker.tsx writes the registry; rebuild the town in place around the player.
+  private onBiomeChange = () => {
+    if (this.player) {
+      const { gx, gy } = worldToTile(this.player.x, this.player.y);
+      this.game.registry.set('returnTile', { gx, gy });
+    }
+    this.scene.restart();
+  };
+
   constructor() {
     super('OverworldScene');
   }
 
   create() {
+    this.game.registry.events.on('changedata-townBiome', this.onBiomeChange);
+    this.events.once('shutdown', () => this.game.registry.events.off('changedata-townBiome', this.onBiomeChange));
+
     const world = this.game.registry.get('world') as WorldModel | undefined;
     if (!world || world.regions.length === 0) return;
+
+    const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    if (biome === 'snow') ensureWinterTextures(this);
 
     this.doors = new Map();
     this.lastDoorKey = null;
@@ -93,7 +110,7 @@ export default class OverworldScene extends Phaser.Scene {
     const worldH = rows * cellH;
 
     this.add
-      .tileSprite(0, 0, worldW * TILE, worldH * TILE, 'terrain-grass')
+      .tileSprite(0, 0, worldW * TILE, worldH * TILE, biome === 'snow' ? SNOW_GROUND : 'terrain-grass')
       .setOrigin(0, 0)
       .setDepth(-1000);
 
@@ -106,7 +123,7 @@ export default class OverworldScene extends Phaser.Scene {
       const originGx = (i % cols) * cellW + Math.floor(REGION_PAD / 2);
       const originGy = Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
       areas.push({ originGx, originGy, width: w, height: h });
-      const result = buildHouses(this, region, originGx, originGy);
+      const result = buildHouses(this, region, originGx, originGy, biome);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
@@ -120,11 +137,11 @@ export default class OverworldScene extends Phaser.Scene {
       }
     });
 
-    const road = buildRoads(this, entries, blocked, worldW, worldH);
+    const road = buildRoads(this, entries, blocked, worldW, worldH, biome);
 
     world.regions.forEach((region, i) => {
       const a = areas[i];
-      scatterDecoration(this, region, a.originGx, a.originGy, a.width, a.height, blocked, this.doors, road);
+      scatterDecoration(this, region, a.originGx, a.originGy, a.width, a.height, blocked, this.doors, road, biome);
     });
 
     // Coming back out of a house puts the player on the road in front of that door.
@@ -167,10 +184,11 @@ export default class OverworldScene extends Phaser.Scene {
     // NPCs read isWalkable from the registry, so they spawn only after it is published.
     world.regions.forEach((region, i) => spawnNpcs(this, region, areas[i]));
 
-    // Grass-coloured backdrop so any space beyond the world reads as meadow, and a
+    // Ground-coloured backdrop so any space beyond the world reads as more of the town, and a
     // world smaller than the view sits centred instead of hugging the top-left.
     const cam = this.cameras.main;
-    cam.setBackgroundColor('#3E8948');
+    cam.setBackgroundColor(biome === 'snow' ? SNOW_BACKGROUND : '#3E8948');
+    if (biome === 'snow') startSnowfall(this);
     const worldWidthPx = worldW * TILE;
     const worldHeightPx = worldH * TILE;
     const fit = () => {
