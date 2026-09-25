@@ -120,6 +120,14 @@ export default class OverworldScene extends Phaser.Scene {
       }
     });
 
+    // houseId -> door tile, so fast travel can send the player back out the right door.
+    const houseDoors = new Map<string, { gx: number; gy: number }>();
+    this.doors.forEach((houseId, key) => {
+      const [gx, gy] = key.split(',').map(Number);
+      houseDoors.set(houseId, { gx, gy });
+    });
+    this.game.registry.set('houseDoors', houseDoors);
+
     const road = buildRoads(this, entries, blocked, worldW, worldH);
 
     world.regions.forEach((region, i) => {

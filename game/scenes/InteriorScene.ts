@@ -28,6 +28,7 @@ function findHouse(world: WorldModel | undefined, houseId: string): House | unde
 
 export default class InteriorScene extends Phaser.Scene {
   private houseId!: string;
+  private arriveNoteId: string | undefined;
 
   private doorGx = 0;
   private doorGy = 0;
@@ -73,8 +74,9 @@ export default class InteriorScene extends Phaser.Scene {
     super('InteriorScene');
   }
 
-  init(data: { houseId: string }) {
+  init(data: { houseId: string; noteId?: string }) {
     this.houseId = data.houseId;
+    this.arriveNoteId = data.noteId;
     this.shelfOpen = false;
     this.noteOpen = false;
     this.exiting = false;
@@ -189,18 +191,31 @@ export default class InteriorScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(6);
 
-    const spawn = tileToWorld(this.doorGx, this.doorGy);
-    this.player = this.add.sprite(spawn.x, spawn.y, 'player');
-    this.player.setOrigin(0.5, 0.64);
-    this.player.setDepth(10);
-    const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    dressPlayer(this, this.player, appearance);
-
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
       if (gx <= 0 || gy <= 0 || gx >= w - 1 || gy >= h - 1) return false;
       return !this.blocked.has(`${gx},${gy}`);
     };
+
+    // Fast travel lands the player at the note's furniture; a note that only lives on the
+    // bookshelf lands them at the shelf instead. Anything unwalkable falls back to the door.
+    const arriveNote = this.arriveNoteId ? allNotes.find((n) => n.id === this.arriveNoteId) : undefined;
+    let [spawnGx, spawnGy] = [this.doorGx, this.doorGy];
+    if (arriveNote) {
+      const candidates = [
+        ...[...this.approach].filter(([, n]) => n.id === arriveNote.id).map(([k]) => k),
+        ...this.shelfApproach,
+      ];
+      const hit = candidates.map((k) => k.split(',').map(Number)).find(([gx, gy]) => isWalkable(gx, gy));
+      if (hit) [spawnGx, spawnGy] = hit;
+    }
+
+    const spawn = tileToWorld(spawnGx, spawnGy);
+    this.player = this.add.sprite(spawn.x, spawn.y, 'player');
+    this.player.setOrigin(0.5, 0.64);
+    this.player.setDepth(10);
+    const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
+    dressPlayer(this, this.player, appearance);
 
     this.movement = new GridMovement(this, this.player, isWalkable);
 
@@ -213,11 +228,24 @@ export default class InteriorScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 
-    this.cameras.main.setScroll(0, 0);
-    this.cameras.main.setBackgroundColor('#141018');
+    // Same pattern as OverworldScene: a room that fits the view stays pinned top-left; a room
+    // bigger than the view (large rooms in a small window) scrolls to keep the player on screen.
+    const cam = this.cameras.main;
+    const fit = () => cam.setBounds(0, 0, Math.max(w * TILE, cam.width), Math.max(h * TILE, cam.height));
+    fit();
+    this.scale.on(Phaser.Scale.Events.RESIZE, fit);
+    this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, fit));
+    cam.startFollow(this.player, true);
+    cam.setBackgroundColor('#141018');
 
-    this.prevGx = this.doorGx;
-    this.prevGy = this.doorGy;
+    this.prevGx = spawnGx;
+    this.prevGy = spawnGy;
+
+    if (arriveNote) {
+      this.player.play('idle-up');
+      this.cameras.main.fadeIn(250, 20, 16, 24);
+      this.time.delayedCall(300, () => this.openNote(arriveNote));
+    }
 
     bus.on('close-shelf', this.onCloseShelf);
     bus.on('close-note', this.onCloseNote);

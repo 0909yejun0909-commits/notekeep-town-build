@@ -49,13 +49,25 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
           game.scene.stop('InteriorScene');
           game.scene.start('OverworldScene');
         };
+        // Leaving a fast-travelled house should put the player outside *that* house, not the
+        // one they walked into last — so set returnTile from the door map Overworld publishes.
+        const onFastTravel = ({ houseId, noteId }: { houseId: string; noteId?: string }) => {
+          const doors = game.registry.get('houseDoors') as Map<string, { gx: number; gy: number }> | undefined;
+          const door = doors?.get(houseId);
+          if (door) game.registry.set('returnTile', { gx: door.gx, gy: door.gy + 1 });
+          game.scene.stop('OverworldScene');
+          game.scene.stop('InteriorScene');
+          game.scene.start('InteriorScene', { houseId, noteId });
+        };
         window.addEventListener('resize', onResize);
         bus.on('enter-house', onEnter);
         bus.on('exit-house', onExit);
+        bus.on('fast-travel', onFastTravel);
         game.events.once(Phaser.Core.Events.DESTROY, () => {
           window.removeEventListener('resize', onResize);
           bus.off('enter-house', onEnter);
           bus.off('exit-house', onExit);
+          bus.off('fast-travel', onFastTravel);
         });
       },
     },
