@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { FurnitureId } from '@/lib/types';
 import { CATALOG } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
+import { createSceneryAnims, preloadScenery } from '@/game/sceneryAssets';
 
 // Pixel rects from the asset manifest, added as a frame named by FurnitureId:
 //   this.add.image(px, py, 'furn_bed', 'bed')
@@ -94,6 +95,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('player-shirt', 'assets/character/shirt/red.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('player-hair', 'assets/character/hair/1_brown.png', { frameWidth: 64, frameHeight: 64 });
 
+    preloadScenery(this);
+
     this.load.image('ui-book', 'assets/ui/book.png');
     this.load.image('ui-frames', 'assets/ui/frames.png');
   }
@@ -137,6 +140,8 @@ export default class BootScene extends Phaser.Scene {
         repeat: -1,
       });
     }
+
+    createSceneryAnims(this);
 
     this.scene.start('TitleScene');
   }
