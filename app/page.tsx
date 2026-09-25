@@ -8,6 +8,7 @@ import Bookshelf from '@/components/Bookshelf';
 import CharacterCreator from '@/components/CharacterCreator';
 import InteriorEditor from '@/components/InteriorEditor';
 import ExteriorEditor from '@/components/ExteriorEditor';
+import FastTravel from '@/components/FastTravel';
 import RoomPanel from '@/components/RoomPanel';
 import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
@@ -73,6 +74,7 @@ function Game() {
       <NoteReader note={openNote} />
       <InteriorEditor />
       <ExteriorEditor />
+      <FastTravel />
       <PlayerTags />
       <ChatPanel />
       <RoomPanel />

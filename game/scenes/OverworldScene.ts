@@ -154,6 +154,14 @@ export default class OverworldScene extends Phaser.Scene {
       }
     });
 
+    // houseId -> door tile, so fast travel can send the player back out the right door.
+    const houseDoors = new Map<string, { gx: number; gy: number }>();
+    this.doors.forEach((houseId, key) => {
+      const [gx, gy] = key.split(',').map(Number);
+      houseDoors.set(houseId, { gx, gy });
+    });
+    this.game.registry.set('houseDoors', houseDoors);
+
     // Order matters: each step avoids what the earlier ones claimed. Roads come after the
     // plazas and ponds so they route around them, and everything decorative comes after roads.
     buildForestBorder(this, grid);
