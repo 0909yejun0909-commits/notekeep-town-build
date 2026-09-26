@@ -203,3 +203,16 @@ export const CATALOG_BY_GROUP = Object.fromEntries(
 
 // Pieces you walk over rather than around.
 export const WALKABLE: ReadonlySet<CatalogCategory> = new Set<CatalogCategory>(['rug', 'mat']);
+
+// What Space does when you stand in front of a piece (InteriorScene). A note on the
+// piece, or on another piece sharing the same approach tile, comes first.
+export type FurnitureAction = 'sit' | 'lie' | 'wardrobe';
+export const FURNITURE_ACTIONS: Partial<Record<CatalogCategory, FurnitureAction>> = {
+  sofa: 'sit',
+  armchair: 'sit',
+  chair: 'sit',
+  stool: 'sit',
+  bed: 'lie',
+  single_bed: 'lie',
+  wardrobe: 'wardrobe',
+};

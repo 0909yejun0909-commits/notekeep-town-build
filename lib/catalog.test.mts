@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { CATALOG, CATALOG_BY_ID, CATALOG_GROUPS, furnitureSheetUrl, FURNITURE_SHEETS } from './catalog.ts';
+import { CATALOG, CATALOG_BY_ID, CATALOG_GROUPS, FURNITURE_ACTIONS, furnitureSheetUrl, FURNITURE_SHEETS, WALKABLE } from './catalog.ts';
 import { FOOTPRINT, FURNITURE } from './types.ts';
 
 test('ids are unique', () => {
@@ -48,6 +48,31 @@ test('every category sits in exactly one editor tab', () => {
     }
   }
   for (const e of CATALOG) assert.ok(tabs.has(e.category), `${e.id} (${e.category}) has no tab`);
+});
+
+test('every furniture action belongs to a category the catalog actually sells', () => {
+  for (const category of Object.keys(FURNITURE_ACTIONS)) {
+    assert.ok(CATALOG.some((e) => e.category === category), category);
+  }
+});
+
+// Sitting and lying put the player on the piece and redraw part of it on top, which only
+// lines up with an upright sprite you can't walk through.
+test('pieces with an action are solid and never quarter-turned', () => {
+  for (const e of CATALOG) {
+    if (!FURNITURE_ACTIONS[e.category]) continue;
+    assert.ok(!WALKABLE.has(e.category), e.id);
+    assert.ok(!e.rotations.includes(90) && !e.rotations.includes(270), e.id);
+  }
+});
+
+test('chairs seat you, beds lie you down, wardrobes dress you', () => {
+  assert.equal(FURNITURE_ACTIONS.chair, 'sit');
+  assert.equal(FURNITURE_ACTIONS.sofa, 'sit');
+  assert.equal(FURNITURE_ACTIONS.bed, 'lie');
+  assert.equal(FURNITURE_ACTIONS.single_bed, 'lie');
+  assert.equal(FURNITURE_ACTIONS.wardrobe, 'wardrobe');
+  assert.equal(FURNITURE_ACTIONS.desk, undefined);
 });
 
 // The art is licensed and gitignored, so this only runs where install-assets.sh has been run.
