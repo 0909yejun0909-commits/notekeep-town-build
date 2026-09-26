@@ -1,0 +1,22 @@
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(24, 20, 37, 0.6);
+}
+
+.hint {
+  margin: 0;
+  color: #f6ca9f;
+  font-family: 'CuteFantasy', monospace;
+  font-size: 18px;
+  line-height: 27px;
+  text-align: center;
+}

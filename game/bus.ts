@@ -10,6 +10,10 @@ type BusEvents = {
   'talk-npc': { npcId: string; line: string };
   'world-updated': { exteriorChanged: boolean };
   'appearance-changed': undefined;
+  'open-wardrobe': undefined;
+  'close-wardrobe': undefined;
+  'open-bed-menu': { note: NoteRef };
+  'bed-menu-choice': { choice: 'read' | 'lie' | 'cancel' };
   'open-interior-editor': { houseId: string; layout: InteriorLayout };
   'close-interior-editor': undefined;
   'commit-interior-layout': { houseId: string; layout: InteriorLayout };
