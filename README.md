@@ -31,11 +31,13 @@ asset files are gitignored and not part of this repo. To run the game with real 
 
 1. Buy the packs from Kenmi's itch.io page and unzip them somewhere, e.g. `~/kenmi-art`.
 2. Run `scripts/install-assets.sh public/assets` (set `KENMI=/path/to/packs` if your packs
-   live somewhere other than `~/kenmi-art`). This copies the ~100 specific files the game
-   uses into `public/assets/`, which is gitignored.
+   live somewhere other than `~/kenmi-art`). This copies the specific files the game uses
+   into `public/assets/`, which is gitignored. It needs Python 3 with Pillow
+   (`pip install Pillow`) for two steps; on Windows, run it from Git Bash.
 3. `npm run dev` and open `http://localhost:3000`.
 
-Without the art installed, the game will still run but textures will be missing.
+Re-run step 2 whenever you pull changes that use new art. Anything missing shows as a black
+box in the game, with a banner listing which folders to reinstall.
 
 Click **"Try the demo town"** to explore a sample vault with no setup, or **"Open your
 vault"** to pick your own Obsidian vault folder (Chrome/Edge only — the File System Access

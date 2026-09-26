@@ -1,0 +1,83 @@
+/* The bottom padding keeps the menu clear of the street TitleScene draws along the
+   bottom three tiles (3 tiles x 16px x zoom 3). */
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6vh 16px 156px;
+  overflow-y: auto;
+  background: radial-gradient(ellipse at 50% 45%, rgba(24, 20, 37, 0) 35%, rgba(24, 20, 37, 0.6) 100%);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.subtitle {
+  font-size: 18px;
+  line-height: 27px;
+  text-align: center;
+}
+
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding-top: 18px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 0 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font: inherit;
+  font-size: 27px;
+  line-height: 36px;
+  color: #9a6149;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:disabled {
+  cursor: default;
+}
+
+.current {
+  color: #3f2832;
+}
+
+.status {
+  margin: 12px 0 0;
+  font-size: 18px;
+  line-height: 27px;
+  text-align: center;
+}
+
+.hint {
+  margin: 0;
+  font-size: 18px;
+  line-height: 27px;
+  text-align: center;
+}

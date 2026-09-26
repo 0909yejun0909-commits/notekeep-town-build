@@ -1,6 +1,7 @@
 import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
 
 type BusEvents = {
+  'assets-missing': { files: string[] };
   'enter-house': { houseId: string };
   'exit-house': undefined;
   'open-note': { note: NoteRef };
@@ -9,6 +10,7 @@ type BusEvents = {
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
   'world-updated': { exteriorChanged: boolean };
+  'appearance-changed': undefined;
   'open-interior-editor': { houseId: string; layout: InteriorLayout };
   'close-interior-editor': undefined;
   'commit-interior-layout': { houseId: string; layout: InteriorLayout };

@@ -55,7 +55,9 @@ export function preloadScenery(scene: Phaser.Scene) {
 export function createSceneryAnims(scene: Phaser.Scene) {
   const anims = scene.anims;
   const strip = (key: string, texture: string, start: number, end: number, frameRate: number, repeat = -1) => {
-    if (anims.exists(key)) return;
+    // A sheet that failed to load would give an animation with no frames, and play() on one
+    // throws. Without it, play() just warns and the sprite shows Phaser's missing texture.
+    if (anims.exists(key) || !scene.textures.exists(texture)) return;
     anims.create({ key, frames: anims.generateFrameNumbers(texture, { start, end }), frameRate, repeat });
   };
   for (const key of STRIPS_8) strip(key, key, 0, 7, key.startsWith('water-rock') ? 5 : 6);

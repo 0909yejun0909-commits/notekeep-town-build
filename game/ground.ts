@@ -46,8 +46,12 @@ export type Ground = { map: Phaser.Tilemaps.Tilemap; toneAt: (x: number, y: numb
 
 export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
   const map = scene.make.tilemap({ tileWidth: 16, tileHeight: 16, width: g.w, height: g.h });
+  // Art that failed to load (a partial scripts/install-assets.sh run) is skipped, not placed:
+  // putTileAt() throws on an index no tileset covers, which would take the whole town down.
+  const toneLoaded = (t: Tone) => scene.textures.exists(`grass-${t}`) && scene.textures.exists(`fill-grass-${t}`);
+  const g1 = map.addTilesetImage('g1', g.skin('grass-edges'), 16, 16, 0, 0, GID_G1);
   const ts = [
-    map.addTilesetImage('g1', g.skin('grass-edges'), 16, 16, 0, 0, GID_G1),
+    g1,
     map.addTilesetImage('g2', g.skin('grass-2'), 16, 16, 0, 0, GID_G[2]),
     map.addTilesetImage('g3', g.skin('grass-3'), 16, 16, 0, 0, GID_G[3]),
     map.addTilesetImage('g4', g.skin('grass-4'), 16, 16, 0, 0, GID_G[4]),
@@ -55,11 +59,12 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
     map.addTilesetImage('f3', g.skin('fill-grass-3'), 16, 16, 0, 0, GID_FILL[3]),
     map.addTilesetImage('f4', g.skin('fill-grass-4'), 16, 16, 0, 0, GID_FILL[4]),
   ].filter((t): t is Phaser.Tilemaps.Tileset => t !== null);
-  const pebbles = map.addTilesetImage('pebbles', g.skin('path-decor'), 16, 16, 0, 0, GID_PEBBLE)!;
-  const cobble = map.addTilesetImage('cobble', g.skin('cobble-edges'), 16, 16, 0, 0, GID_COBBLE)!;
+  const pebbles = map.addTilesetImage('pebbles', g.skin('path-decor'), 16, 16, 0, 0, GID_PEBBLE);
+  const cobble = map.addTilesetImage('cobble', g.skin('cobble-edges'), 16, 16, 0, 0, GID_COBBLE);
 
   const patchLayer = map.createBlankLayer('patches', ts)!.setDepth(-980);
-  const roadLayer = map.createBlankLayer('roads', [ts[0], pebbles, cobble])!.setDepth(-950);
+  const roadTilesets = [g1, pebbles, cobble].filter((t): t is Phaser.Tilemaps.Tileset => t !== null);
+  const roadLayer = map.createBlankLayer('roads', roadTilesets)!.setDepth(-950);
 
   // Tone patches stay a tile clear of roads and water: those tiles' baked grass fringe is
   // the base meadow colour and would show a seam against a different tone.
@@ -81,12 +86,15 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
       if (nearWet(x, y)) continue;
       // The forest floor spills a ragged few tiles past the ring so the edge isn't a ruler line.
       if (ringDistance(g, x, y) < fbm(g.seed ^ 0x13, x, y, 5) * 5 - 1.5) {
-        masks[4].add(key(x, y));
+        if (toneLoaded(4)) masks[4].add(key(x, y));
         continue;
       }
       const [main, accent] = TONES[biomeAt(x, y)];
-      if (fbm(g.seed ^ 0x51, x, y, 11) > 0.55) masks[main].add(key(x, y));
-      else if (fbm(g.seed ^ 0x77, x, y, 6) > 0.7) masks[accent].add(key(x, y));
+      if (fbm(g.seed ^ 0x51, x, y, 11) > 0.55) {
+        if (toneLoaded(main)) masks[main].add(key(x, y));
+      } else if (fbm(g.seed ^ 0x77, x, y, 6) > 0.7) {
+        if (toneLoaded(accent)) masks[accent].add(key(x, y));
+      }
     }
   }
 
@@ -114,6 +122,7 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
       if (t && !interior.has(k)) continue;
       const density = 0.015 + 0.12 * Math.max(0, fbm(g.seed ^ 0x2a, x, y, 5) - 0.45);
       if (rand01(g.seed ^ 0x3b, x, y) >= density) continue;
+      if (!t && !g1) continue;
       const frame = TUFTS[mix(g.seed ^ 0x4c, x, y) % 3];
       patchLayer.putTileAt((t ? GID_G[t] : GID_G1) + frame, x, y);
     }
@@ -123,11 +132,11 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
     const [x, y] = k.split(',').map(Number);
     return edgeFrame(g.road, x, y, ROAD_EDGES) === ROAD_EDGES.centre;
   })));
-  for (const k of g.road) {
+  for (const k of g1 ? g.road : []) {
     const [x, y] = k.split(',').map(Number);
     let frame = edgeFrame(g.road, x, y, ROAD_EDGES);
-    if (cobbleRegion.has(k)) frame = edgeFrame(cobbleRegion, x, y, COBBLE_EDGES);
-    else if (frame === ROAD_EDGES.centre && rand01(g.seed ^ 0x5d, x, y) < 0.14) {
+    if (cobble && cobbleRegion.has(k)) frame = edgeFrame(cobbleRegion, x, y, COBBLE_EDGES);
+    else if (pebbles && frame === ROAD_EDGES.centre && rand01(g.seed ^ 0x5d, x, y) < 0.14) {
       frame = GID_PEBBLE + (mix(g.seed ^ 0x6e, x, y) % 3);
     }
     roadLayer.putTileAt(frame, x, y);

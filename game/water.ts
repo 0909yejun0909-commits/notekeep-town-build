@@ -101,7 +101,16 @@ const WATER_BASE = frames3(24);
 
 export function renderWater(scene: Phaser.Scene, g: WorldGrid, map: Phaser.Tilemaps.Tilemap, gid: number) {
   if (g.water.size === 0) return;
-  const ts = map.addTilesetImage('water', g.skin('water-anim'), 16, 16, 0, 0, gid)!;
+  const ts = map.addTilesetImage('water', g.skin('water-anim'), 16, 16, 0, 0, gid);
+  if (!ts) {
+    // The animated sheet didn't load (a partial scripts/install-assets.sh run): plain water,
+    // from the original install, still shows where the pond is. It stays blocked either way.
+    for (const k of g.water) {
+      const [x, y] = k.split(',').map(Number);
+      scene.add.image(x * TILE, y * TILE, 'terrain-water').setOrigin(0, 0).setDepth(-930);
+    }
+    return;
+  }
   // Snow freezes the ponds over: no ripples, no lily pads.
   const frozen = g.biome === 'snow';
   const layer = map.createBlankLayer('water', ts)!.setDepth(-930);

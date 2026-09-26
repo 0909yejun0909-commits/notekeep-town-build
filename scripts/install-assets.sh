@@ -4,6 +4,19 @@ KENMI="${KENMI:-$HOME/kenmi-art}"
 CF="$KENMI/Cute_Fantasy"
 DEST="${1:-public/assets}"
 
+# Two steps below need Python 3 with Pillow. On Windows `python3` is often missing or is the
+# Microsoft Store placeholder, so try the usual names, and if none works skip those two steps
+# instead of stopping: everything after them (the overworld scenery) would otherwise never be
+# copied, and the game draws every missing sprite as a black box.
+PY=""
+for cand in python3 python "py -3"; do
+  if $cand -c "import PIL" >/dev/null 2>&1; then PY="$cand"; break; fi
+done
+if [ -z "$PY" ]; then
+  echo "warning: no Python 3 with Pillow found (install Python 3, then: pip install Pillow)." >&2
+  echo "         Copying everything else; Stone houses keep Kenmi's plaster gable and the title menu's panel art is skipped." >&2
+fi
+
 mkdir -p "$DEST"/{terrain,buildings,interior,furniture,character/hair,character/shirt,character/pants,character/shoes,npc,ui}
 
 cp "$CF/Tiles/Grass/Grass_Tiles_1.png"          "$DEST/terrain/grass_meadow.png"
@@ -54,7 +67,7 @@ for shape in 1 2 3 4 5; do
     if [ ! -f "$src" ]; then src="$H/Stone/House_${shape}_Stone_Base_${rc}png.png"; fi
     dst="$DEST/buildings/house_${idx}_stone_base_${rl}.png"
     cp "$src" "$dst"
-    python3 "$RECOLOR" "$H/Stone" "$dst" "$shape" "$rc"
+    if [ -n "$PY" ]; then $PY "$RECOLOR" "$H/Stone" "$dst" "$shape" "$rc"; fi
   done
 
   for rc in Black Blue Red; do
@@ -99,6 +112,7 @@ done
 cp "$KENMI/Cute_Fantasy_UI/UI/Book_UI.png"             "$DEST/ui/book.png"
 cp "$KENMI/Cute_Fantasy_UI/UI/UI_Frames.png"           "$DEST/ui/frames.png"
 cp "$KENMI/Cute_Fantasy_UI/Fonts/CuteFantasy-5x9.ttf"  "$DEST/ui/cute-fantasy.ttf"
+if [ -n "$PY" ]; then $PY "$(cd "$(dirname "$0")" && pwd)/crop-ui.py" "$KENMI/Cute_Fantasy_UI/UI" "$DEST/ui"; fi
 
 # Overworld scenery (game/sceneryAssets.ts loads these; frame layouts are documented there).
 S="$DEST/scenery"
@@ -147,3 +161,7 @@ cp "$CF/Trees/Oak_Leaf_Particle.png"   "$S/leaf_oak.png"
 cp "$CF/Trees/Birch_Leaf_Particle.png" "$S/leaf_birch.png"
 
 echo "copied $(find "$DEST" -type f | wc -l | tr -d ' ') files into $DEST"
+if [ -z "$PY" ]; then
+  echo "incomplete: rerun after installing Python 3 and Pillow to finish the Stone houses and title menu." >&2
+  exit 1
+fi

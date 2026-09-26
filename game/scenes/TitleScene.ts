@@ -12,48 +12,106 @@ import {
   DEFAULT_ROOF_COLOR,
   houseTextureKey,
 } from '@/lib/houseCatalog';
+import { loadAppearance } from '@/lib/appearance';
+import { dressPlayer } from '@/game/playerSprite';
+import { bus } from '@/game/bus';
 
 const TILE = 16;
-const STREET = [0, 3, 1, 2, 4];
+// Tiles kept free of houses either side of centre, where the React title menu sits.
+const CLEAR = 6;
+const GAP = 2;
+const LEFT_STREET = [3, 0, 2];
+const RIGHT_STREET = [1, 4, 0];
+const MS_PER_TILE = 220;
 
 export default class TitleScene extends Phaser.Scene {
   constructor() {
     super('TitleScene');
   }
 
+  // A meadow street behind the title menu, with the player's hero strolling along it.
+  // Rebuilt from scratch on resize, when the hero's outfit changes and when the biome does.
   create() {
-    const draw = () => this.drawBackdrop();
-    draw();
-    this.scale.on(Phaser.Scale.Events.RESIZE, draw);
-    this.game.registry.events.on('changedata-townBiome', draw);
-    this.events.once('shutdown', () => {
-      this.scale.off(Phaser.Scale.Events.RESIZE, draw);
-      this.game.registry.events.off('changedata-townBiome', draw);
+    const restart = () => this.scene.restart();
+    this.scale.on(Phaser.Scale.Events.RESIZE, restart);
+    bus.on('appearance-changed', restart);
+    this.game.registry.events.on('changedata-townBiome', restart);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, restart);
+      bus.off('appearance-changed', restart);
+      this.game.registry.events.off('changedata-townBiome', restart);
     });
-  }
 
-  // A little meadow with a street of houses, so the vault picker sits over the
-  // game instead of a black void. Redrawn on resize.
-  private drawBackdrop() {
-    this.children.removeAll(true);
+    const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    if (biome === 'snow') ensureWinterTextures(this);
+    if (biome === 'desert') ensureDesertTextures(this);
+
     const { width, height } = this.scale;
     const cols = Math.ceil(width / TILE);
     const rows = Math.ceil(height / TILE);
-    const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
-    const snow = biome === 'snow';
-    if (snow) ensureWinterTextures(this);
-    if (biome === 'desert') ensureDesertTextures(this);
-    const tree = (x: number, y: number, key: 'tree-oak' | 'tree-spruce', frame: number) => {
-      const desert = biome === 'desert' ? desertTree(this, key, (hash(`title:tree:${x}`) % 100) / 100, false) : null;
-      // Desert plants are drawn at the tree's frame size, so the same origin stands them on the ground.
-      (desert ? this.add.image(x, y, desert) : this.add.image(x, y, skin(this, biome, key), frame)).setOrigin(0, 1);
-    };
+    const roadGy = Math.floor(height / TILE) - 3;
+    const roadTop = roadGy * TILE;
+    const centre = Math.floor(cols / 2);
 
     this.add.tileSprite(0, 0, cols * TILE, rows * TILE, skin(this, biome, 'terrain-grass')).setOrigin(0, 0);
 
-    for (let gy = 0; gy < rows; gy++) {
+    const road = skin(this, biome, 'grass-edges');
+    for (let gx = 0; gx < cols; gx++) {
+      this.add.image(gx * TILE, roadTop, road, 81).setOrigin(0, 0);
+      this.add.image(gx * TILE, roadTop + TILE, road, 113).setOrigin(0, 0);
+    }
+
+    // A house sprite's bottom row is its doorstep, so it overlaps the road's grassy top row.
+    const houses: Array<[number, number, number, number]> = [];
+    const place = (variant: number, gx: number) => {
+      const [w, h] = HOUSE_FOOTPRINT[variant];
+      const key = houseTextureKey(variant, DEFAULT_MATERIAL[variant], DEFAULT_WALL_COLOR[variant], DEFAULT_ROOF_COLOR[variant]);
+      this.add.image(gx * TILE, roadTop + TILE, skin(this, biome, key)).setOrigin(0, 1).setDepth(roadTop + TILE);
+      if (biome === 'snow') {
+        const [doorX, doorY] = HOUSE_DOOR[variant];
+        const top = roadTop + TILE - h * TILE;
+        this.add.image((gx + doorX) * TILE + TILE / 2, top + (doorY - 1) * TILE + TILE / 2, WREATH).setDepth(roadTop + TILE + 1);
+      }
+      houses.push([gx, roadGy + 1 - h, w, h]);
+    };
+    const tree = (gx: number, bottom: number, i: number) => {
+      const [key, frame] = i % 2 ? ['tree-spruce', 2] : ['tree-oak', 1];
+      // Desert plants are drawn at the tree's frame size, so the same origin stands them on the ground.
+      const desert = biome === 'desert' ? desertTree(this, key, (hash(`title:plant:${gx}:${i}`) % 100) / 100, false) : null;
+      (desert ? this.add.image(gx * TILE, bottom, desert) : this.add.image(gx * TILE, bottom, skin(this, biome, key), frame))
+        .setOrigin(0, 1)
+        .setDepth(bottom);
+    };
+
+    let edge = centre - CLEAR;
+    LEFT_STREET.forEach((variant, i) => {
+      if (edge <= 0) return;
+      const gx = edge - HOUSE_FOOTPRINT[variant][0];
+      place(variant, gx);
+      tree(gx - GAP, roadTop + 8, i);
+      edge = gx - GAP;
+    });
+    edge = centre + CLEAR;
+    RIGHT_STREET.forEach((variant, i) => {
+      if (edge >= cols) return;
+      place(variant, edge);
+      edge += HOUSE_FOOTPRINT[variant][0];
+      tree(edge, roadTop + 8, i + 1);
+      edge += GAP;
+    });
+
+    // A loose tree line along the top edge, as if the town sits at the edge of a wood.
+    for (let gx = -1; gx < cols; gx += 2) {
+      if (hash(`title:wood:${gx}`) % 3 === 0) continue;
+      tree(gx, 2 * TILE + (hash(`title:wood-y:${gx}`) % 2) * 8, hash(`title:wood-kind:${gx}`));
+    }
+
+    const underHouse = (gx: number, gy: number) =>
+      houses.some(([hx, hy, w, h]) => gx >= hx && gx < hx + w && gy >= hy && gy < hy + h);
+    for (let gy = 3; gy < rows; gy++) {
+      if (gy === roadGy || gy === roadGy + 1) continue;
       for (let gx = 0; gx < cols; gx++) {
-        if (hash(`title:flower:${gx}:${gy}`) % 19 !== 0) continue;
+        if (hash(`title:flower:${gx}:${gy}`) % 17 !== 0 || underHouse(gx, gy)) continue;
         const roll = hash(`title:frame:${gx}:${gy}`);
         const [texture, frame] =
           biome === 'snow' ? [WINTER_DECOR, winterDecorFrame(roll)]
@@ -63,54 +121,34 @@ export default class TitleScene extends Phaser.Scene {
       }
     }
 
-    const baseY = Math.floor(height * 0.78);
-    const gap = 3 * TILE;
-    const street: number[] = [];
-    let total = -gap;
-    for (const v of STREET) {
-      const [w] = HOUSE_FOOTPRINT[v];
-      if (total + w * TILE + gap > width - 4 * TILE) break;
-      street.push(v);
-      total += w * TILE + gap;
+    const feetY = roadTop + TILE + 6;
+    const hero = this.add.sprite(centre * TILE - 3 * TILE, feetY, 'player');
+    hero.setOrigin(0.5, 0.64).setDepth(feetY);
+    dressPlayer(this, hero, loadAppearance());
+    hero.play('idle-down');
+    this.time.delayedCall(1200, () => this.stroll(hero));
+    if (biome === 'snow') startSnowfall(this);
+  }
+
+  private stroll(hero: Phaser.GameObjects.Sprite) {
+    const target = Phaser.Math.Between(TILE, this.scale.width - TILE);
+    const dx = target - hero.x;
+    if (Math.abs(dx) < 3 * TILE) {
+      this.time.delayedCall(300, () => this.stroll(hero));
+      return;
     }
-    let x = Math.floor((width - total) / 2);
-    for (const v of street) {
-      const [w, h] = HOUSE_FOOTPRINT[v];
-      const key = houseTextureKey(v, DEFAULT_MATERIAL[v], DEFAULT_WALL_COLOR[v], DEFAULT_ROOF_COLOR[v]);
-      this.add.image(x, baseY - h * TILE, skin(this, biome, key)).setOrigin(0, 0);
-      if (snow) {
-        const [doorX, doorY] = HOUSE_DOOR[v];
-        this.add.image(x + doorX * TILE + TILE / 2, baseY - h * TILE + (doorY - 1) * TILE + TILE / 2, WREATH);
-      }
-      x += w * TILE + gap;
-    }
-
-    const treeY = baseY + TILE;
-    tree(TILE, treeY, 'tree-oak', 1);
-    tree(width - 3 * TILE, treeY, 'tree-spruce', 2);
-    tree(Math.floor(width / 2) - TILE, height - TILE, snow ? 'tree-spruce' : 'tree-oak', 2);
-    if (snow) startSnowfall(this);
-
-    this.add
-      .text(Math.floor(width / 2), Math.floor(height * 0.2), 'Notekeep Town', {
-        fontFamily: 'monospace',
-        fontSize: '28px',
-        fontStyle: 'bold',
-        color: '#fff7e6',
-        stroke: '#3f2832',
-        strokeThickness: 6,
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(Math.floor(width / 2), Math.floor(height * 0.2) + 30, 'Your notes, as a town you can walk around', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#fff7e6',
-        stroke: '#3f2832',
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5);
+    hero.setFlipX(dx < 0);
+    hero.play('walk-right', true);
+    this.tweens.add({
+      targets: hero,
+      x: target,
+      duration: (Math.abs(dx) / TILE) * MS_PER_TILE,
+      onComplete: () => {
+        hero.setFlipX(false);
+        hero.play('idle-down', true);
+        this.time.delayedCall(Phaser.Math.Between(1500, 3500), () => this.stroll(hero));
+      },
+    });
   }
 
   update() {
