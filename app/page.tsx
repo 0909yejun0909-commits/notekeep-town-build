@@ -2,10 +2,10 @@
 
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import { VaultProvider, useVault, openVault, openDemoVault } from '@/lib/vault/open';
+import { VaultProvider, useVault } from '@/lib/vault/open';
 import NoteReader from '@/components/NoteReader';
 import Bookshelf from '@/components/Bookshelf';
-import CharacterCreator from '@/components/CharacterCreator';
+import TitleMenu from '@/components/TitleMenu';
 import InteriorEditor from '@/components/InteriorEditor';
 import ExteriorEditor from '@/components/ExteriorEditor';
 import RoomPanel from '@/components/RoomPanel';
@@ -49,26 +49,9 @@ function Game() {
     <div className="relative h-screen w-screen overflow-hidden bg-black">
       <PhaserCanvas />
 
-      {!vault && !invite && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/40">
-          <button
-            className="rounded bg-white px-6 py-3 font-medium text-black"
-            onClick={async () => setVault(await openVault())}
-          >
-            Open your vault
-          </button>
-          <button
-            className="rounded border border-white px-6 py-3 font-medium text-white"
-            onClick={async () => setVault(await openDemoVault())}
-          >
-            Try the demo town
-          </button>
-        </div>
-      )}
-
+      {!vault && !invite && <TitleMenu onVault={setVault} />}
       {!vault && invite && <JoinScreen invite={invite} onVault={setVault} />}
 
-      <CharacterCreator visible={!vault} />
       <Bookshelf />
       <NoteReader note={openNote} />
       <InteriorEditor />

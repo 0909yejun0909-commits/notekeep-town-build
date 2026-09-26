@@ -1,0 +1,65 @@
+/* Kenmi UI pieces cut out by scripts/crop-ui.py, drawn at 2x-5x. The
+   CuteFantasy font is a 5x9 pixel face, so sizes stay on multiples of 9px. */
+
+/* Sliced pieces sit at fractional positions (the font's advances aren't whole pixels), so
+   Chrome leaves hairline gaps between border-image slices. The parchment gets a solid
+   backing inset past its outline so those gaps show parchment, not the meadow. Never add
+   a CSS filter here either: re-rasterizing makes the same seams far more visible. */
+.parchment {
+  border-style: solid;
+  border-width: 27px;
+  border-image: url('/assets/ui/parchment.png') 9 fill / 27px stretch;
+  background: linear-gradient(#f6ca9f, #f6ca9f) 6px 6px / calc(100% - 12px) calc(100% - 12px) no-repeat border-box;
+  image-rendering: pixelated;
+  box-shadow: 0 6px 0 rgba(24, 20, 37, 0.35);
+  color: #3f2832;
+  font-family: 'CuteFantasy', monospace;
+}
+
+/* 3-sliced at 5x: the ribbon's columns 24-39 are identical, so only they stretch. The
+   line box covers the band (source rows 0-15); the padding is the tails below it. */
+.ribbon {
+  display: inline-block;
+  height: 100px;
+  border-style: solid;
+  border-width: 0 120px;
+  border-image: url('/assets/ui/ribbon.png') 0 24 fill / 0 120px stretch;
+  image-rendering: pixelated;
+  padding-bottom: 20px;
+  color: #3f2832;
+  font-family: 'CuteFantasy', monospace;
+  font-size: 54px;
+  line-height: 80px;
+  white-space: nowrap;
+}
+
+.cursor {
+  display: inline-block;
+  width: 14px;
+  height: 24px;
+  background: url('/assets/ui/cursor.png') 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  animation: nudge 0.8s steps(1) infinite;
+}
+
+.cursorIdle {
+  visibility: hidden;
+}
+
+/* Cream text with a one-font-pixel outline (2px at 18px), for words on the meadow. */
+.outlined {
+  font-family: 'CuteFantasy', monospace;
+  color: #fff7e6;
+  text-shadow:
+    2px 0 0 #3f2832, -2px 0 0 #3f2832, 0 2px 0 #3f2832, 0 -2px 0 #3f2832,
+    2px 2px 0 #3f2832, -2px 2px 0 #3f2832, 2px -2px 0 #3f2832, -2px -2px 0 #3f2832;
+}
+
+@keyframes nudge {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+}
