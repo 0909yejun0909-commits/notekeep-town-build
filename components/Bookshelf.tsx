@@ -3,15 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { House, NoteRef, WorldModel } from '@/lib/types';
 import { hash } from '@/lib/types';
-import { useVault } from '@/lib/vault/open';
+import { replaceWorld, useVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
+import { MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
+import { useWallet } from '@/lib/walletStore';
+import Coin from './Coin';
 import styles from './Bookshelf.module.css';
 
 type Folder = { name: string; folders: Map<string, Folder>; notes: NoteRef[] };
 
 type Item =
   | { kind: 'folder'; name: string; folder: Folder; count: number }
-  | { kind: 'note'; name: string; note: NoteRef };
+  | { kind: 'note'; name: string; note: NoteRef }
+  | { kind: 'new'; name: string };
+
+const NEW_BOOK: Item = { kind: 'new', name: 'New note' };
 
 const COLORS = [
   '#b4202a', '#3e6fb0', '#3e8948', '#825e80', '#b86f50',
@@ -66,8 +72,15 @@ function itemsOf(folder: Folder): Item[] {
   return [...folders, ...notes];
 }
 
+function keyOf(item: Item): string {
+  return item.kind === 'note' ? item.note.id : item.kind === 'folder' ? 'folder:' + item.name : 'new';
+}
+
 function bookStyle(item: Item): React.CSSProperties {
-  const key = item.kind === 'note' ? item.note.id : 'folder:' + item.name;
+  if (item.kind === 'new') {
+    return { ['--w' as string]: '46px', ['--h' as string]: '184px', ['--c' as string]: '#f4e4c1' };
+  }
+  const key = keyOf(item);
   const h = hash(key);
   if (item.kind === 'folder') {
     return {
@@ -107,17 +120,26 @@ function packRows(items: Item[]): Item[][] {
 }
 
 export default function Bookshelf() {
-  const { vault } = useVault();
+  const { vault, setVault } = useVault();
+  const wallet = useWallet();
   const [houseId, setHouseId] = useState<string | null>(null);
   const [path, setPath] = useState<string[]>([]);
+  const [naming, setNaming] = useState(false);
+  const [title, setTitle] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const noteOpen = useRef(false);
 
   useEffect(() => {
     const onOpen = ({ houseId }: { houseId: string }) => {
       setHouseId(houseId);
       setPath([]);
+      setNaming(false);
     };
-    const onClose = () => setHouseId(null);
+    const onClose = () => {
+      setHouseId(null);
+      setNaming(false);
+    };
     const onNoteOpen = () => { noteOpen.current = true; };
     const onNoteClose = () => { noteOpen.current = false; };
     bus.on('open-shelf', onOpen);
@@ -154,9 +176,34 @@ export default function Bookshelf() {
     if (!next) break;
     folder = next;
   }
-  const rows = packRows(itemsOf(folder));
+  const canCreate = !!vault?.createNote;
+  const rows = packRows(canCreate ? [...itemsOf(folder), NEW_BOOK] : itemsOf(folder));
 
   const close = () => bus.emit('close-shelf', undefined);
+
+  const startNaming = () => {
+    setTitle('');
+    setCreateError(null);
+    setNaming(true);
+  };
+
+  const create = async () => {
+    if (!vault?.createNote || !house || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const folderPath = [house.id === '.' ? '' : house.id, ...path].filter(Boolean).join('/');
+      const { world, note } = await vault.createNote(folderPath, title);
+      setVault({ ...vault, world });
+      replaceWorld(world);
+      setNaming(false);
+      bus.emit('open-note', { note });
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not create the note.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <div className={styles.backdrop} onClick={close}>
@@ -190,16 +237,24 @@ export default function Bookshelf() {
             <div key={ri} className={styles.row}>
               {row.map((item) => (
                 <button
-                  key={item.kind === 'note' ? item.note.id : 'folder:' + item.name}
-                  className={`${styles.book} ${item.kind === 'folder' ? styles.folder : ''}`}
+                  key={keyOf(item)}
+                  className={`${styles.book} ${item.kind === 'folder' ? styles.folder : ''} ${item.kind === 'new' ? styles.newBook : ''}`}
                   style={bookStyle(item)}
-                  title={item.kind === 'note' ? item.note.preview || item.name : `${item.name} (${item.count})`}
+                  title={
+                    item.kind === 'note'
+                      ? item.note.preview || item.name
+                      : item.kind === 'folder'
+                        ? `${item.name} (${item.count})`
+                        : 'Write a new note on this shelf'
+                  }
                   onClick={() => {
                     if (item.kind === 'folder') setPath((p) => [...p, item.name]);
-                    else bus.emit('open-note', { note: item.note });
+                    else if (item.kind === 'note') bus.emit('open-note', { note: item.note });
+                    else startNaming();
                   }}
                 >
                   <span className={styles.band} />
+                  {item.kind === 'new' && <span className={styles.plus}>+</span>}
                   <span className={styles.title}>{item.name}</span>
                   <span className={styles.bandBottom} />
                   {item.kind === 'folder' && <span className={styles.count}>{item.count}</span>}
@@ -210,6 +265,48 @@ export default function Bookshelf() {
         </div>
 
         <div className={styles.hint}>Click a folder to open it. Click a book to read. Esc goes back.</div>
+
+        {naming && (
+          <div className={styles.namerBackdrop} onClick={() => setNaming(false)}>
+            <form
+              className={styles.namer}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void create();
+              }}
+            >
+              <div className={styles.namerTitle}>New note in {path.length ? path[path.length - 1] : tree.name}</div>
+              <input
+                className={styles.input}
+                autoFocus
+                value={title}
+                maxLength={120}
+                placeholder="Title"
+                spellCheck={false}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  // Keep Phaser's and the shelf's window-level key handlers out of the text box.
+                  e.stopPropagation();
+                  if (e.key === 'Escape') setNaming(false);
+                }}
+                onKeyUp={(e) => e.stopPropagation()}
+              />
+              {createError && <div className={styles.namerError}>{createError}</div>}
+              {wallet.active && (
+                <div className={styles.namerReward}>
+                  <Coin size={18} /> Write {MIN_WORDS}+ words in it to earn {NOTE_REWARD} coins.
+                </div>
+              )}
+              <div className={styles.namerActions}>
+                <button type="button" className={styles.btn} onClick={() => setNaming(false)}>Cancel</button>
+                <button type="submit" className={styles.btn} disabled={creating || !title.trim()}>
+                  {creating ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );

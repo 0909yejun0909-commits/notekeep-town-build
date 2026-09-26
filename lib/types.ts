@@ -56,6 +56,10 @@ export type VaultHandle = {
   readBinary: (path: string) => Promise<Blob>;
   // Optional: absent means the vault is read-only.
   writeNote?: (id: string, content: string) => Promise<void>;
+  // Optional: absent means notes can't be added (read-only vault, multiplayer guest). Creates
+  // an empty `<title>.md` in `folder` (vault-relative, '' for the root) and returns the
+  // re-parsed world that contains it. The caller publishes that world.
+  createNote?: (folder: string, title: string) => Promise<{ world: WorldModel; note: NoteRef }>;
 };
 
 // Every piece's footprint in tiles: [cols, rows]. Both the track that PLACES
