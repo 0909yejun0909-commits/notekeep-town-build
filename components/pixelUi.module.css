@@ -46,6 +46,33 @@
   visibility: hidden;
 }
 
+/* A menu entry on parchment: a .cursor span, then the label. The one the cursor is on
+   gets .current. */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font: inherit;
+  font-size: 27px;
+  line-height: 36px;
+  color: #9a6149;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.current {
+  color: #3f2832;
+}
+
 /* Cream text with a one-font-pixel outline (2px at 18px), for words on the meadow. */
 .outlined {
   font-family: 'CuteFantasy', monospace;
