@@ -8,6 +8,16 @@ import {
   shoesTextureKey,
 } from '@/lib/characterCatalog';
 
+// Bottom to top, drawn over the 'player' base texture.
+export function outfitTextureKeys(appearance: Appearance): string[] {
+  return [
+    shoesTextureKey(appearance.shoesColor),
+    pantsTextureKey(appearance.pantsColor),
+    shirtTextureKey(appearance.shirtColor),
+    hairTextureKey(appearance.hairStyle, appearance.hairColor),
+  ];
+}
+
 // Layers share the base's grid and frame indices, so they animate for free — never call
 // .play() on them. `appearance` defaults to the original fixed outfit for callers that don't
 // track a per-avatar look (e.g. remote players in game/remotePlayers.ts).
@@ -16,20 +26,13 @@ export function dressPlayer(
   sprite: Phaser.GameObjects.Sprite,
   appearance: Appearance = DEFAULT_APPEARANCE,
 ): () => void {
-  const keys = [
-    shoesTextureKey(appearance.shoesColor),
-    pantsTextureKey(appearance.pantsColor),
-    shirtTextureKey(appearance.shirtColor),
-    hairTextureKey(appearance.hairStyle, appearance.hairColor),
-  ];
-
-  const layers = keys.map((key) => {
+  const layers = outfitTextureKeys(appearance).map((key) => {
     const layer = scene.add.sprite(sprite.x, sprite.y, key, sprite.frame.name);
     layer.setOrigin(sprite.originX, sprite.originY);
     return layer;
   });
 
-  // Position, facing, frame AND depth are copied every frame. The scene
+  // Position, facing, frame, visibility AND depth are copied every frame. The scene
   // re-sorts the base sprite's depth by its y each tick; if the layers kept
   // their spawn-time depth the base would draw over its own clothes as soon
   // as the player walked south.
@@ -39,6 +42,7 @@ export function dressPlayer(
       layer.x = sprite.x;
       layer.y = sprite.y;
       layer.flipX = sprite.flipX;
+      layer.visible = sprite.visible;
       layer.setFrame(sprite.frame.name);
       layer.setDepth(sprite.depth + (i + 1) * 0.01);
     }
