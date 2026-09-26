@@ -99,6 +99,7 @@ done
 cp "$KENMI/Cute_Fantasy_UI/UI/Book_UI.png"             "$DEST/ui/book.png"
 cp "$KENMI/Cute_Fantasy_UI/UI/UI_Frames.png"           "$DEST/ui/frames.png"
 cp "$KENMI/Cute_Fantasy_UI/Fonts/CuteFantasy-5x9.ttf"  "$DEST/ui/cute-fantasy.ttf"
+python3 "$(cd "$(dirname "$0")" && pwd)/crop-ui.py" "$KENMI/Cute_Fantasy_UI/UI" "$DEST/ui"
 
 # Overworld scenery (game/sceneryAssets.ts loads these; frame layouts are documented there).
 S="$DEST/scenery"
