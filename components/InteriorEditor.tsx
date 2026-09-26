@@ -2,15 +2,54 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
-import { CATALOG, CATALOG_BY_ID } from '@/lib/catalog';
+import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
+import type { CatalogGroupId } from '@/lib/catalog';
 import { canPlace, canPlaceShelf, canResize, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
-import type { CatalogItemId, FurniturePlacement, InteriorLayout } from '@/lib/types';
+import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 
-// Matches game/scenes/BootScene.ts's FURNITURE_RECT.shelf exactly — the shelf
-// isn't a CatalogEntry (it's structural, not a placeable catalog item), so its
-// sprite data is duplicated here the same way furniture sprite data is.
-const SHELF_SHEET_URL = '/assets/furniture/bookshelves.png';
-const SHELF_RECT: [number, number, number, number] = [16, 0, 32, 32];
+const SHELF_SHEET_URL = furnitureSheetUrl(SHELF_SHEET);
+
+const TIER_COLOR: Record<CatalogTier, string> = {
+  common: '#737373',
+  uncommon: '#4ade80',
+  rare: '#38bdf8',
+  treasure: '#fbbf24',
+};
+
+// A piece's sprite, scaled to fit a fixed box so every picker button is the same size.
+function Thumb({ entry }: { entry: CatalogEntry }) {
+  const [fw, fh] = entry.footprint;
+  const [rx, ry] = entry.rect;
+  return (
+    <span className="flex h-10 w-10 items-center justify-center overflow-hidden">
+      <span
+        className="shrink-0"
+        style={{
+          width: fw * 16,
+          height: fh * 16,
+          backgroundImage: `url(${entry.sheetUrl})`,
+          backgroundPosition: `-${rx}px -${ry}px`,
+          imageRendering: 'pixelated',
+          transform: `scale(${40 / (16 * Math.max(fw, fh))})`,
+        }}
+      />
+    </span>
+  );
+}
+
+function PieceButton({ entry, disabled, onClick }: { entry: CatalogEntry; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      title={disabled ? `${entry.name} - doesn't fit here` : `${entry.name} (${entry.tier})`}
+      disabled={disabled}
+      className="rounded border border-neutral-700 bg-neutral-800 p-0.5 enabled:hover:border-yellow-400 disabled:opacity-30"
+      style={{ borderBottomColor: TIER_COLOR[entry.tier], borderBottomWidth: 2 }}
+      onClick={onClick}
+    >
+      <Thumb entry={entry} />
+    </button>
+  );
+}
 
 type Session = { houseId: string };
 // A selection/move target is either one furniture placement (its index) or
@@ -25,6 +64,7 @@ export default function InteriorEditor() {
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
+  const [tab, setTab] = useState<CatalogGroupId>('living');
 
   useEffect(() => {
     const onOpen = (payload: Session & { layout: InteriorLayout }) => {
@@ -210,7 +250,7 @@ export default function InteriorEditor() {
       onClick={close}
     >
       <div
-        className="flex max-h-[90vh] flex-col gap-3 rounded bg-neutral-900 p-4 text-white"
+        className="flex max-h-[90vh] w-[500px] max-w-[95vw] flex-col gap-3 overflow-y-auto rounded bg-neutral-900 p-4 text-white"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4">
@@ -282,7 +322,7 @@ export default function InteriorEditor() {
         </div>
 
         <div
-          className="relative grid border border-neutral-700"
+          className="relative grid self-start border border-neutral-700"
           style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
         >
           {Array.from({ length: h }).map((_, gy) =>
@@ -316,7 +356,7 @@ export default function InteriorEditor() {
                     e.preventDefault();
                     onCellClick(gx, gy);
                   }}
-                  title={idx !== null ? draft.placements[idx].item : onShelf ? 'shelf' : ''}
+                  title={idx !== null ? (CATALOG_BY_ID[draft.placements[idx].item]?.name ?? '') : onShelf ? 'Bookshelf' : ''}
                 />
               );
             }),
@@ -420,23 +460,37 @@ export default function InteriorEditor() {
         {moving !== null && <span className="text-xs text-yellow-400">Drag it, or click a cell to move it there.</span>}
 
         {picking && (
-          <div className="flex flex-wrap gap-2">
-            <span className="text-xs uppercase text-neutral-400">Place:</span>
-            {CATALOG.map((entry) => (
-              <button
-                key={entry.id}
-                className="rounded border border-neutral-600 px-2 py-1 text-xs"
-                onClick={() => placeItem(entry.id)}
-              >
-                {entry.id}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-xs uppercase text-neutral-400">Place</span>
+              {CATALOG_GROUPS.map((g) => (
+                <button
+                  key={g.id}
+                  className={`rounded border px-2 py-1 text-xs ${tab === g.id ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                  onClick={() => setTab(g.id)}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex max-h-44 flex-wrap gap-1 overflow-y-auto">
+              {CATALOG_BY_GROUP[tab].map((entry) => (
+                <PieceButton
+                  key={entry.id}
+                  entry={entry}
+                  disabled={!canPlace(layout, CATALOG_BY_ID, structuralWithShelf, w, h, entry.id, picking.gx, picking.gy)}
+                  onClick={() => placeItem(entry.id)}
+                />
+              ))}
+            </div>
           </div>
         )}
 
         {selectedPlacement && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase text-neutral-400">Selected: {selectedPlacement.item}</span>
+            <span className="text-xs uppercase text-neutral-400">
+              {CATALOG_BY_ID[selectedPlacement.item]?.name ?? selectedPlacement.item}
+            </span>
             <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={rotateSelected}>
               Rotate
             </button>
@@ -449,21 +503,20 @@ export default function InteriorEditor() {
             <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={removeSelected}>
               Remove
             </button>
-            {CATALOG.filter((e) => e.category === selectedCategory && e.id !== selectedPlacement.item).map((e) => (
-              <button
-                key={e.id}
-                className="rounded border border-neutral-600 px-2 py-1 text-xs"
-                onClick={() => swapSelected(e.id)}
-              >
-                {e.id}
-              </button>
-            ))}
+            {CATALOG.some((e) => e.category === selectedCategory && e.id !== selectedPlacement.item) && (
+              <div className="flex w-full flex-wrap items-center gap-1">
+                <span className="mr-1 text-xs uppercase text-neutral-400">Swap for</span>
+                {CATALOG.filter((e) => e.category === selectedCategory && e.id !== selectedPlacement.item).map((e) => (
+                  <PieceButton key={e.id} entry={e} onClick={() => swapSelected(e.id)} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {shelfSelected && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase text-neutral-400">Selected: shelf</span>
+            <span className="text-xs uppercase text-neutral-400">Bookshelf</span>
             <button
               className={`rounded border px-2 py-1 text-xs ${moving === 'shelf' ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
               onClick={toggleMove}
