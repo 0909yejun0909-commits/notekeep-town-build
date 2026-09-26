@@ -15,7 +15,7 @@ import {
   computeDefaultLayout,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
-import { CATALOG_BY_ID } from '@/lib/catalog';
+import { CATALOG_BY_ID, SHELF_SHEET, WALKABLE, furnitureTextureKey } from '@/lib/catalog';
 import { attachRemotePlayers } from '@/game/remotePlayers';
 import { setSelfPresence } from '@/lib/multiplayer/session';
 
@@ -149,7 +149,7 @@ export default class InteriorScene extends Phaser.Scene {
     for (let s = 0; s < SHELF_SEGMENTS; s++) {
       const gx = shelfGx + s * 2;
       const img = this.add
-        .image(gx * TILE, shelfGy * TILE, 'furn_shelf', 'shelf')
+        .image(gx * TILE, shelfGy * TILE, furnitureTextureKey(SHELF_SHEET), 'shelf')
         .setOrigin(0, 0)
         .setDepth(5)
         .setInteractive({ useHandCursor: true });
@@ -274,12 +274,12 @@ export default class InteriorScene extends Phaser.Scene {
     if (!entry) return;
     const [fw, fh] = entry.footprint;
     const { gx, gy, rotation } = placement;
-    const isRug = entry.category === 'rug';
+    const walkable = WALKABLE.has(entry.category);
 
     const img = this.add
       .image(gx * TILE, gy * TILE, entry.textureKey, entry.frameKey)
       .setOrigin(0, 0)
-      .setDepth(isRug ? 2 : 5);
+      .setDepth(walkable ? 2 : 5);
 
     if (entry.rotations.length > 2) {
       img.setOrigin(0.5, 0.5).setPosition((gx + fw / 2) * TILE, (gy + fh / 2) * TILE).setAngle(rotation);
@@ -290,7 +290,7 @@ export default class InteriorScene extends Phaser.Scene {
     for (let i = 0; i < fw; i++) {
       for (let j = 0; j < fh; j++) {
         const key = `${gx + i},${gy + j}`;
-        if (!isRug) this.blocked.add(key);
+        if (!walkable) this.blocked.add(key);
       }
     }
 

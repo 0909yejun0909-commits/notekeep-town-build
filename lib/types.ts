@@ -70,21 +70,37 @@ export const BIOMES: BiomeId[] = ['meadow', 'forest', 'desert', 'volcano', 'snow
 export const FURNITURE: FurnitureId[] =
   ['desk', 'shelf', 'bed', 'chest', 'plant', 'painting', 'lamp', 'rug'];
 
+// Decoration-only kinds: placeable from the interior editor (and later the shop),
+// but the vault parser never puts a note on one — notes only land on a FurnitureId.
+export type DecorKind =
+  | 'sofa' | 'armchair' | 'chair' | 'stool' | 'fireplace' | 'clock'
+  | 'single_bed' | 'wardrobe' | 'cabinet' | 'sideboard' | 'nightstand' | 'mirror'
+  | 'table' | 'stove' | 'sink' | 'fridge' | 'barrel'
+  | 'bathtub' | 'toilet' | 'basin' | 'vanity'
+  | 'bookcase' | 'piano' | 'guitar' | 'planter' | 'mat';
+
+export type CatalogCategory = FurnitureId | DecorKind;
+
+// How special a piece is. The shop maps tiers to credit prices, so prices can be
+// tuned in one place once the earn rate is known.
+export type CatalogTier = 'common' | 'uncommon' | 'rare' | 'treasure';
+
 // A catalog item is a specific placeable variant (e.g. 'bed_blue'); `category` says
-// which of the 8 FurnitureId kinds it's a variant of, for footprint/interchange rules.
+// which kind it's a variant of. Every variant of a kind shares its footprint, which
+// is what lets the editor swap one for another in place.
 export type CatalogItemId = string;
 
 export type CatalogEntry = {
   id: CatalogItemId;
-  category: FurnitureId;
+  name: string;
+  category: CatalogCategory;
+  tier: CatalogTier;
   textureKey: string;
   frameKey: string;
   footprint: [number, number];
   rotations: Array<0 | 90 | 180 | 270>;
-  // Where to crop this item's sprite from, for rendering a real thumbnail in
-  // the editor's grid (CSS background-position, not a Phaser texture frame —
-  // duplicates BootScene.ts's pixel rects since that one carves Phaser frames
-  // and this one crops a plain <img>, and the two can't share a data format).
+  // The sprite's pixel rect on its sheet — BootScene carves the Phaser frame from
+  // it and the editor crops a CSS thumbnail from it, so it's always footprint*16.
   sheetUrl: string;
   rect: [number, number, number, number];
 };

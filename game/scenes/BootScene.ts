@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
-import type { FurnitureId } from '@/lib/types';
-import { CATALOG } from '@/lib/catalog';
+import { CATALOG, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
 import {
   CLOTH_COLORS,
@@ -16,45 +15,6 @@ import {
   shoesTextureKey,
 } from '@/lib/characterCatalog';
 import { createSceneryAnims, preloadScenery } from '@/game/sceneryAssets';
-
-// Pixel rects from the asset manifest, added as a frame named by FurnitureId:
-//   this.add.image(px, py, 'furn_bed', 'bed')
-const FURNITURE_RECT: Record<FurnitureId, [number, number, number, number]> = {
-  // docs/ASSETS.md's [72,8,32,48] included 16px of transparent padding above the
-  // sprite (verified pixel-by-pixel) — this rect is the tight 2x2-tile crop.
-  // FOOTPRINT.desk in lib/types.ts (and the catalog entry's footprint) shrank
-  // from [2,3] to [2,2] to match — the third row was an invisible, blocked
-  // tile with nothing rendered over it.
-  desk: [72, 24, 32, 32],
-  shelf: [16, 0, 32, 32],
-  bed: [0, 0, 32, 32],
-  chest: [0, 0, 16, 16],
-  plant: [32, 0, 16, 32],
-  painting: [48, 32, 16, 16],
-  lamp: [0, 0, 16, 32],
-  rug: [0, 0, 48, 48],
-};
-
-// Colour/species variants beyond the base 8 FurnitureId frames above — rects come
-// straight from docs/ASSETS.md's documented deltas, never guessed.
-const VARIANT_RECT: Record<string, [number, number, number, number]> = {
-  bed_blue: [0, 32, 32, 32],
-  bed_green: [0, 64, 32, 32],
-  bed_pink: [0, 96, 32, 32],
-  bed_yellow: [0, 128, 32, 32],
-  bed_red: [0, 160, 32, 32],
-  rug_cyan: [0, 80, 48, 48],
-  lamp_blue: [32, 0, 16, 32],
-  lamp_green: [64, 0, 16, 32],
-  lamp_pink: [96, 0, 16, 32],
-  lamp_yellow: [128, 0, 16, 32],
-  plant_a: [0, 0, 16, 32],
-  plant_b: [16, 0, 16, 32],
-  plant_c: [48, 0, 16, 32],
-  plant_d: [64, 0, 16, 32],
-  plant_e: [80, 0, 16, 32],
-  plant_f: [96, 0, 16, 32],
-};
 
 export default class BootScene extends Phaser.Scene {
   constructor() {
@@ -87,14 +47,9 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('interior-walls', 'assets/interior/walls.png', { frameWidth: 16, frameHeight: 16 });
     this.load.spritesheet('interior-doors', 'assets/interior/doors.png', { frameWidth: 16, frameHeight: 16 });
 
-    this.load.image('furn_desk', 'assets/furniture/tables.png');
-    this.load.image('furn_shelf', 'assets/furniture/bookshelves.png');
-    this.load.image('furn_bed', 'assets/furniture/beds.png');
-    this.load.image('furn_chest', 'assets/furniture/chest.png');
-    this.load.image('furn_plant', 'assets/furniture/plants.png');
-    this.load.image('furn_lamp', 'assets/furniture/lamps.png');
-    this.load.image('furn_painting', 'assets/furniture/decor.png');
-    this.load.image('furn_rug', 'assets/furniture/carpets.png');
+    for (const sheet of FURNITURE_SHEETS) {
+      this.load.image(furnitureTextureKey(sheet), `assets/furniture/${sheet}.png`);
+    }
 
     this.load.spritesheet('tree-oak', 'assets/terrain/tree_oak.png', { frameWidth: 32, frameHeight: 48 });
     this.load.spritesheet('tree-spruce', 'assets/terrain/tree_spruce.png', { frameWidth: 32, frameHeight: 48 });
@@ -127,18 +82,12 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
-    for (const [id, [x, y, w, h]] of Object.entries(FURNITURE_RECT)) {
-      const key = `furn_${id}`;
-      if (this.textures.exists(key)) this.textures.get(key).add(id, 0, x, y, w, h);
-    }
+    const shelfKey = furnitureTextureKey(SHELF_SHEET);
+    if (this.textures.exists(shelfKey)) this.textures.get(shelfKey).add('shelf', 0, ...SHELF_RECT);
     for (const entry of CATALOG) {
-      if (entry.frameKey in FURNITURE_RECT) continue; // already carved above
-      const rect = VARIANT_RECT[entry.frameKey];
-      if (!rect) continue;
-      const [x, y, w, h] = rect;
-      if (this.textures.exists(entry.textureKey)) {
-        this.textures.get(entry.textureKey).add(entry.frameKey, 0, x, y, w, h);
-      }
+      if (!this.textures.exists(entry.textureKey)) continue;
+      const [x, y, w, h] = entry.rect;
+      this.textures.get(entry.textureKey).add(entry.frameKey, 0, x, y, w, h);
     }
 
     const facings: Array<['down' | 'right' | 'up', number]> = [
