@@ -1,0 +1,40 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(462px, 100%);
+}
+
+.heading {
+  margin: 0;
+  font-size: 27px;
+  line-height: 36px;
+  text-align: center;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 18px;
+  line-height: 27px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pick {
+  font-size: 18px;
+  line-height: 27px;
+}
+
+.error {
+  margin: 0;
+  font-size: 18px;
+  line-height: 27px;
+  color: #a4402a;
+  text-align: center;
+}

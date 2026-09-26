@@ -73,6 +73,23 @@
   color: #3f2832;
 }
 
+.field {
+  width: 100%;
+  font-family: 'CuteFantasy', monospace;
+  font-size: 27px;
+  line-height: 36px;
+  color: #3f2832;
+  background: #fff7e6;
+  border: 3px solid #3f2832;
+  box-shadow: inset 0 3px 0 rgba(63, 40, 50, 0.2);
+  padding: 3px 9px;
+}
+
+.field:focus {
+  outline: none;
+  box-shadow: inset 0 3px 0 rgba(63, 40, 50, 0.2), 0 0 0 3px #e69c69;
+}
+
 /* Cream text with a one-font-pixel outline (2px at 18px), for words on the meadow. */
 .outlined {
   font-family: 'CuteFantasy', monospace;
