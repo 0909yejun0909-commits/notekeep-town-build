@@ -2,8 +2,10 @@ import Phaser from 'phaser';
 import { bus } from '@/game/bus';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
-import type { Appearance, House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
+import { lie, sit } from '@/game/furniturePoses';
+import type { Appearance, CatalogEntry, House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
+import { loadAppearance } from '@/lib/appearance';
 import {
   SHELF_SEGMENTS,
   SHELF_GY,
@@ -15,7 +17,14 @@ import {
   computeDefaultLayout,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
-import { CATALOG_BY_ID, SHELF_SHEET, WALKABLE, furnitureTextureKey } from '@/lib/catalog';
+import {
+  CATALOG_BY_ID,
+  FURNITURE_ACTIONS,
+  SHELF_SHEET,
+  WALKABLE,
+  furnitureTextureKey,
+  type FurnitureAction,
+} from '@/lib/catalog';
 import { attachRemotePlayers } from '@/game/remotePlayers';
 import { setSelfPresence } from '@/lib/multiplayer/session';
 
@@ -28,6 +37,13 @@ function findHouse(world: WorldModel | undefined, houseId: string): House | unde
   return undefined;
 }
 
+type PieceAction = {
+  action: FurnitureAction;
+  entry: CatalogEntry;
+  placement: FurniturePlacement;
+  note?: NoteRef;
+};
+
 export default class InteriorScene extends Phaser.Scene {
   private houseId!: string;
 
@@ -36,15 +52,26 @@ export default class InteriorScene extends Phaser.Scene {
   private blocked = new Set<string>();
   private shelfApproach = new Set<string>();
   private approach = new Map<string, NoteRef>();
+  private actions = new Map<string, PieceAction>();
 
   private player!: Phaser.GameObjects.Sprite;
+  private appearance!: Appearance;
+  private undress: (() => void) | null = null;
   private movement!: GridMovement;
   private indicator!: Phaser.GameObjects.Text;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private enterKey!: Phaser.Input.Keyboard.Key;
+  private standKeys: Phaser.Input.Keyboard.Key[] = [];
+
+  // Sitting or lying: how to take the pose apart, the tile to stand back up on, and which
+  // keys were already held when it began (they don't count until pressed again).
+  private pose: { undo: () => void; gx: number; gy: number; held: Set<Phaser.Input.Keyboard.Key> } | null = null;
+  private bedTarget: PieceAction | null = null;
 
   private shelfOpen = false;
   private noteOpen = false;
+  private wardrobeOpen = false;
+  private bedMenuOpen = false;
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
@@ -63,6 +90,27 @@ export default class InteriorScene extends Phaser.Scene {
 
   private onCloseEditor = () => {
     this.editingLayout = false;
+  };
+
+  // The picker already saved each change; pick it up and redress on the spot. Keys are
+  // reset because the Enter that closed the picker would otherwise reopen it next frame.
+  private onCloseWardrobe = () => {
+    this.wardrobeOpen = false;
+    this.input.keyboard?.resetKeys();
+    this.appearance = loadAppearance();
+    this.game.registry.set('appearance', this.appearance);
+    this.undress?.();
+    this.undress = dressPlayer(this, this.player, this.appearance);
+  };
+
+  private onBedMenuChoice = ({ choice }: { choice: 'read' | 'lie' | 'cancel' }) => {
+    this.bedMenuOpen = false;
+    this.input.keyboard?.resetKeys();
+    const target = this.bedTarget;
+    this.bedTarget = null;
+    if (!target) return;
+    if (choice === 'read' && target.note) this.openNote(target.note);
+    else if (choice === 'lie') this.act(target);
   };
 
   private onCommitLayout = ({ houseId, layout }: { houseId: string; layout: InteriorLayout }) => {
@@ -86,11 +134,17 @@ export default class InteriorScene extends Phaser.Scene {
     this.houseId = data.houseId;
     this.shelfOpen = false;
     this.noteOpen = false;
+    this.wardrobeOpen = false;
+    this.bedMenuOpen = false;
     this.exiting = false;
     this.editingLayout = false;
     this.blocked = new Set();
     this.shelfApproach = new Set();
     this.approach = new Map();
+    this.actions = new Map();
+    this.pose = null;
+    this.bedTarget = null;
+    this.undress = null;
   }
 
   create() {
@@ -207,8 +261,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.player = this.add.sprite(spawn.x, spawn.y, 'player');
     this.player.setOrigin(0.5, 0.64);
     this.player.setDepth(10);
-    const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    dressPlayer(this, this.player, appearance);
+    this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
+    this.undress = dressPlayer(this, this.player, this.appearance);
 
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
@@ -228,8 +282,12 @@ export default class InteriorScene extends Phaser.Scene {
       .setDepth(1000)
       .setVisible(false);
 
-    this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    const keyboard = this.input.keyboard!;
+    this.spaceKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.enterKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+    const cursors = keyboard.createCursorKeys();
+    const wasd = keyboard.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
+    this.standKeys = [cursors.up, cursors.down, cursors.left, cursors.right, ...Object.values(wasd), this.spaceKey, this.enterKey];
 
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.setBackgroundColor('#141018');
@@ -240,33 +298,85 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('close-shelf', this.onCloseShelf);
     bus.on('close-note', this.onCloseNote);
     bus.on('close-interior-editor', this.onCloseEditor);
+    bus.on('close-wardrobe', this.onCloseWardrobe);
+    bus.on('bed-menu-choice', this.onBedMenuChoice);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
       bus.off('close-shelf', this.onCloseShelf);
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
+      bus.off('close-wardrobe', this.onCloseWardrobe);
+      bus.off('bed-menu-choice', this.onBedMenuChoice);
       bus.off('commit-interior-layout', this.onCommitLayout);
       bus.off('world-updated', this.onWorldUpdated);
     });
   }
 
+  private overlayOpen() {
+    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout;
+  }
+
   private openNote(note: NoteRef) {
-    if (this.noteOpen || this.shelfOpen || this.exiting) return;
+    if (this.overlayOpen() || this.exiting) return;
     this.noteOpen = true;
     bus.emit('open-note', { note });
   }
 
   private openShelf() {
-    if (this.shelfOpen || this.exiting) return;
+    if (this.overlayOpen() || this.exiting) return;
     this.shelfOpen = true;
     bus.emit('open-shelf', { houseId: this.houseId });
   }
 
   private openEditor() {
-    if (this.shelfOpen || this.noteOpen || this.exiting || this.editingLayout) return;
+    if (this.overlayOpen() || this.exiting) return;
     this.editingLayout = true;
     bus.emit('open-interior-editor', { houseId: this.houseId, layout: this.layout });
+  }
+
+  private openBedMenu(piece: PieceAction) {
+    this.bedMenuOpen = true;
+    this.bedTarget = piece;
+    bus.emit('open-bed-menu', { note: piece.note! });
+  }
+
+  private act(piece: PieceAction) {
+    if (piece.action === 'wardrobe') {
+      this.wardrobeOpen = true;
+      bus.emit('open-wardrobe', undefined);
+      return;
+    }
+    const { gx, gy } = this.movement.getTile();
+    this.indicator.setVisible(false);
+    const undo =
+      piece.action === 'sit'
+        ? sit(this, this.player, piece.entry, piece.placement)
+        : lie(this, this.player, piece.entry, piece.placement, this.appearance);
+    this.pose = { undo, gx, gy, held: new Set(this.standKeys.filter((k) => k.isDown)) };
+  }
+
+  // Reading JustDown clears it: a Space/Enter that stood you up must not also count as a
+  // fresh press next frame, back on the approach tile, and sit you straight down again.
+  private standUp() {
+    if (!this.pose) return;
+    Phaser.Input.Keyboard.JustDown(this.spaceKey);
+    Phaser.Input.Keyboard.JustDown(this.enterKey);
+    this.pose.undo();
+    this.movement.snapTo(this.pose.gx, this.pose.gy);
+    this.player.setFlipX(false).play('idle-down', true);
+    this.pose = null;
+  }
+
+  // Keys held when the pose began are ignored until they've been let go; Phaser's own
+  // JustDown can't be used because it stays true for any press nothing has read yet.
+  private wantsToStand() {
+    const held = this.pose!.held;
+    for (const key of this.standKeys) {
+      if (!key.isDown) held.delete(key);
+      else if (!held.has(key)) return true;
+    }
+    return false;
   }
 
   private renderPlacement(placement: FurniturePlacement, allNotes: NoteRef[]) {
@@ -294,18 +404,26 @@ export default class InteriorScene extends Phaser.Scene {
       }
     }
 
+    const apKey = `${gx + Math.floor(fw / 2)},${gy + fh}`;
     const note = placement.noteId ? allNotes.find((n) => n.id === placement.noteId) : undefined;
     if (note) {
       img.setInteractive({ useHandCursor: true });
       img.on('pointerdown', () => this.openNote(note));
-      const apKey = `${gx + Math.floor(fw / 2)},${gy + fh}`;
       this.approach.set(apKey, note);
     }
+
+    const action = FURNITURE_ACTIONS[entry.category];
+    if (action && !this.actions.has(apKey)) this.actions.set(apKey, { action, entry, placement, note });
   }
 
   update() {
     if (!this.player || !this.movement) return;
-    if (this.shelfOpen || this.noteOpen || this.exiting || this.editingLayout) return;
+    if (this.overlayOpen() || this.exiting) return;
+
+    if (this.pose) {
+      if (this.wantsToStand()) this.standUp();
+      return;
+    }
 
     this.movement.update();
 
@@ -324,13 +442,17 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     const settled = !this.movement.isMoving();
-    const atShelf = settled && this.shelfApproach.has(`${gx},${gy}`);
-    const note = settled ? this.approach.get(`${gx},${gy}`) : undefined;
-    if (atShelf || note) {
+    const here = `${gx},${gy}`;
+    const atShelf = settled && this.shelfApproach.has(here);
+    const note = settled ? this.approach.get(here) : undefined;
+    const piece = settled ? this.actions.get(here) : undefined;
+    if (atShelf || note || piece) {
       this.indicator.setPosition(this.player.x, this.player.y - 34).setVisible(true);
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-        if (note) this.openNote(note);
-        else this.openShelf();
+        if (note && piece?.note === note && piece.action === 'lie') this.openBedMenu(piece);
+        else if (note) this.openNote(note);
+        else if (atShelf) this.openShelf();
+        else if (piece) this.act(piece);
       }
     } else {
       this.indicator.setVisible(false);
