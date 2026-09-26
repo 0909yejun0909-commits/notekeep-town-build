@@ -12,6 +12,7 @@ import RoomPanel from '@/components/RoomPanel';
 import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
 import PlayerTags from '@/components/PlayerTags';
+import CoinPurse from '@/components/CoinPurse';
 import { bus } from '@/game/bus';
 import { readInvite, type Invite } from '@/lib/multiplayer/guest';
 import { RELAY_URL } from '@/lib/multiplayer/session';
@@ -59,6 +60,7 @@ function Game() {
       <PlayerTags />
       <ChatPanel />
       <RoomPanel />
+      <CoinPurse />
 
       {npcLine && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">

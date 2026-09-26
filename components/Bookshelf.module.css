@@ -225,3 +225,83 @@
   text-align: center;
   opacity: 0.8;
 }
+
+/* The blank "+ New note" book: a cream spine with a dashed edge, so it reads as empty. */
+.newBook {
+  border-style: dashed;
+  color: #3f2832;
+}
+.newBook .title {
+  text-shadow: none;
+}
+.newBook .band,
+.newBook .bandBottom {
+  background: #e4a672;
+  box-shadow: none;
+}
+.plus {
+  font-size: 27px;
+  line-height: 1;
+}
+
+.namerBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 20, 24, 0.55);
+}
+
+.namer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 440px;
+  max-width: 90%;
+  padding: 16px 18px;
+  background: #f4e4c1;
+  border: 6px solid #3f2832;
+  box-shadow: inset 0 -4px 0 #e4a672, 0 8px 0 #1f1418;
+  color: #3f2832;
+  font-size: 18px;
+  line-height: 27px;
+}
+
+.namerTitle {
+  font-size: 27px;
+  line-height: 36px;
+}
+
+.input {
+  width: 100%;
+  padding: 4px 10px;
+  background: #fffaf0;
+  border: 3px solid #3f2832;
+  color: #3f2832;
+  font: inherit;
+  font-size: 27px;
+  line-height: 36px;
+  outline: none;
+}
+.input:focus {
+  box-shadow: inset 0 0 0 2px #e4a672;
+}
+
+.namerError {
+  color: #b4202a;
+}
+
+.namerReward {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9a5b00;
+}
+
+.namerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

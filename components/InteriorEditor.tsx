@@ -6,6 +6,9 @@ import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, S
 import type { CatalogGroupId } from '@/lib/catalog';
 import { canPlace, canPlaceShelf, canResize, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
+import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
+import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
+import Coin from './Coin';
 
 const SHELF_SHEET_URL = furnitureSheetUrl(SHELF_SHEET);
 
@@ -16,7 +19,17 @@ const TIER_COLOR: Record<CatalogTier, string> = {
   treasure: '#fbbf24',
 };
 
-// A piece's sprite, scaled to fit a fixed box so every picker button is the same size.
+type Session = { houseId: string };
+// A selection/move target is either one furniture placement (its index) or
+// the shelf, which isn't part of `placements` — it's always present, always
+// the same style, only its position is editable.
+type Target = number | 'shelf';
+
+function nameOf(item: CatalogItemId): string {
+  return CATALOG_BY_ID[item]?.name ?? item;
+}
+
+// A piece's sprite, scaled to fit a fixed box so every tile is the same size.
 function Thumb({ entry }: { entry: CatalogEntry }) {
   const [fw, fh] = entry.footprint;
   const [rx, ry] = entry.rect;
@@ -37,29 +50,55 @@ function Thumb({ entry }: { entry: CatalogEntry }) {
   );
 }
 
-function PieceButton({ entry, disabled, onClick }: { entry: CatalogEntry; disabled?: boolean; onClick: () => void }) {
+// `owned` null = no wallet (free placement, no badge). The bottom border is the piece's tier.
+function ShopTile({ entry, owned, balance, disabled, onClick }: {
+  entry: CatalogEntry;
+  owned: number | null;
+  balance: number;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const price = priceOf(entry.id);
+  const forSale = owned !== null && owned <= 0;
+  const short = forSale && price !== null && price > balance;
+  const title = disabled
+    ? `${entry.name} - doesn't fit here`
+    : forSale
+      ? `${entry.name} (${entry.tier}) - buy for ${price} coins`
+      : owned !== null
+        ? `${entry.name} - you have ${owned}`
+        : `${entry.name} (${entry.tier})`;
   return (
     <button
-      title={disabled ? `${entry.name} - doesn't fit here` : `${entry.name} (${entry.tier})`}
+      title={title}
       disabled={disabled}
-      className="rounded border border-neutral-700 bg-neutral-800 p-0.5 enabled:hover:border-yellow-400 disabled:opacity-30"
+      className={`flex flex-col items-center rounded border border-neutral-700 bg-neutral-800 p-0.5 text-[10px] leading-3 enabled:hover:border-yellow-400 disabled:opacity-30 ${
+        short ? 'opacity-50' : ''
+      }`}
       style={{ borderBottomColor: TIER_COLOR[entry.tier], borderBottomWidth: 2 }}
       onClick={onClick}
     >
       <Thumb entry={entry} />
+      {owned !== null &&
+        (forSale ? (
+          <span className={`flex items-center gap-0.5 ${short ? 'text-red-400' : 'text-yellow-300'}`}>
+            <Coin size={8} />
+            {price}
+          </span>
+        ) : (
+          <span className="text-emerald-300">×{owned}</span>
+        ))}
     </button>
   );
 }
 
-type Session = { houseId: string };
-// A selection/move target is either one furniture placement (its index) or
-// the shelf, which isn't part of `placements` — it's always present, always
-// the same style, only its position is editable.
-type Target = number | 'shelf';
-
 export default function InteriorEditor() {
   const [session, setSession] = useState<Session | null>(null);
   const [draft, setDraft] = useState<InteriorLayout | null>(null);
+  // The committed placements this session started from; the draft's difference from these is
+  // what Save takes out of (or puts back into) the inventory.
+  const [saved, setSaved] = useState<FurniturePlacement[]>([]);
+  const wallet = useWallet();
   const [selected, setSelected] = useState<Target | null>(null);
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +110,7 @@ export default function InteriorEditor() {
       const { layout, ...s } = payload;
       setSession(s);
       setDraft(layout);
+      setSaved(layout.placements);
       setSelected(null);
       setPicking(null);
       setError(null);
@@ -105,6 +145,7 @@ export default function InteriorEditor() {
 
   function save() {
     if (!session || !draft) return;
+    commitLayoutChange(saved, draft.placements);
     bus.emit('commit-interior-layout', { houseId: session.houseId, layout: draft });
     setSession(null);
     setDraft(null);
@@ -128,6 +169,23 @@ export default function InteriorEditor() {
   const structural = structuralOccupied(w, h);
   const structuralWithShelf = new Set(structural);
   for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
+
+  function owned(item: CatalogItemId): number {
+    return available(wallet.inventory, saved, layout.placements, item);
+  }
+
+  // Takes one piece from the inventory, buying it first if there's none left. Purchases are
+  // final even if the edit is cancelled — the piece just stays in the inventory.
+  function acquire(item: CatalogItemId): boolean {
+    if (!wallet.active || owned(item) > 0) return true;
+    const price = priceOf(item);
+    if (price === null) return false;
+    if (!buy(item)) {
+      setError(`${nameOf(item)} costs ${price} coins. Write notes to earn more!`);
+      return false;
+    }
+    return true;
+  }
 
   function cellPlacementIndex(gx: number, gy: number): number | null {
     for (let i = 0; i < layout.placements.length; i++) {
@@ -203,6 +261,7 @@ export default function InteriorEditor() {
       setError("Doesn't fit there.");
       return;
     }
+    if (!acquire(item)) return;
     const placement: FurniturePlacement = { item, gx: picking.gx, gy: picking.gy, rotation: 0 };
     setDraft({ ...draft, placements: [...draft.placements, placement] });
     setPicking(null);
@@ -235,6 +294,8 @@ export default function InteriorEditor() {
 
   function swapSelected(item: CatalogItemId) {
     if (selected === null || selected === 'shelf' || !draft) return;
+    setError(null);
+    if (!acquire(item)) return;
     const placements = draft.placements.slice();
     placements[selected] = { ...placements[selected], item, rotation: 0 };
     setDraft({ ...draft, placements });
@@ -242,6 +303,9 @@ export default function InteriorEditor() {
 
   const selectedPlacement = typeof selected === 'number' ? draft.placements[selected] : null;
   const selectedCategory = selectedPlacement ? CATALOG_BY_ID[selectedPlacement.item]?.category : null;
+  const swaps = selectedPlacement
+    ? CATALOG.filter((e) => e.category === selectedCategory && e.id !== selectedPlacement.item)
+    : [];
   const shelfSelected = selected === 'shelf';
 
   return (
@@ -250,11 +314,19 @@ export default function InteriorEditor() {
       onClick={close}
     >
       <div
-        className="flex max-h-[90vh] w-[500px] max-w-[95vw] flex-col gap-3 overflow-y-auto rounded bg-neutral-900 p-4 text-white"
+        className="flex max-h-[90vh] flex-col gap-3 rounded bg-neutral-900 p-4 text-white"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4">
-          <span className="text-sm uppercase tracking-wide text-neutral-300">Customize interior</span>
+          <span className="flex items-center gap-3 text-sm uppercase tracking-wide text-neutral-300">
+            Customize interior
+            {wallet.active && (
+              <span className="flex items-center gap-1 text-base text-yellow-300" title="Your coins">
+                <Coin size={16} />
+                {wallet.balance}
+              </span>
+            )}
+          </span>
           <div className="flex gap-2">
             <button className="rounded border border-white px-3 py-1 text-sm" onClick={close}>
               Cancel
@@ -321,32 +393,113 @@ export default function InteriorEditor() {
           ))}
         </div>
 
-        <div
-          className="relative grid self-start border border-neutral-700"
-          style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
-        >
-          {Array.from({ length: h }).map((_, gy) =>
-            Array.from({ length: w }).map((_, gx) => {
-              const idx = cellPlacementIndex(gx, gy);
-              const onShelf = isShelfCell(gx, gy);
-              const isStructural = structural.has(`${gx},${gy}`);
-              const isDoor = gx === doorGx && gy === doorGy;
-              return (
-                <button
-                  key={`${gx},${gy}`}
-                  className="border border-neutral-800 text-[8px]"
-                  style={{
-                    background: isDoor
-                      ? '#8a5a2a'
-                      : isStructural
-                        ? '#333'
-                        : idx !== null || onShelf
-                          ? '#5a7a5a'
-                          : '#1a1a1a',
-                    cursor: isStructural ? 'default' : 'pointer',
+        <div className="flex items-start gap-4">
+          <div className="flex flex-col gap-2">
+            <div
+              className="relative grid border border-neutral-700"
+              style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
+            >
+              {Array.from({ length: h }).map((_, gy) =>
+                Array.from({ length: w }).map((_, gx) => {
+                  const idx = cellPlacementIndex(gx, gy);
+                  const onShelf = isShelfCell(gx, gy);
+                  const isStructural = structural.has(`${gx},${gy}`);
+                  const isDoor = gx === doorGx && gy === doorGy;
+                  return (
+                    <button
+                      key={`${gx},${gy}`}
+                      className="border border-neutral-800 text-[8px]"
+                      style={{
+                        background: isDoor
+                          ? '#8a5a2a'
+                          : isStructural
+                            ? '#333'
+                            : idx !== null || onShelf
+                              ? '#5a7a5a'
+                              : '#1a1a1a',
+                        cursor: isStructural ? 'default' : 'pointer',
+                      }}
+                      disabled={isStructural}
+                      onClick={() => onCellClick(gx, gy)}
+                      onDragOver={(e) => {
+                        if (moving === null) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        onCellClick(gx, gy);
+                      }}
+                      title={idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? 'Bookshelf' : ''}
+                    />
+                  );
+                }),
+              )}
+
+              {draft.placements.map((p, i) => {
+                const entry = CATALOG_BY_ID[p.item];
+                if (!entry) return null;
+                const [fw, fh] = entry.footprint;
+                const [rx, ry] = entry.rect;
+                const isQuarterTurn = entry.rotations.length > 2;
+                return (
+                  <div
+                    key={i}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(i));
+                      setError(null);
+                      setPicking(null);
+                      setSelected(i);
+                      setMoving(i);
+                    }}
+                    onDragEnd={() => setMoving((m) => (m === i ? null : m))}
+                    onDragOver={(e) => {
+                      if (moving === null) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      onCellClick(p.gx, p.gy);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCellClick(p.gx, p.gy);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: p.gx * 16,
+                      top: p.gy * 16,
+                      width: fw * 16,
+                      height: fh * 16,
+                      backgroundImage: `url(${entry.sheetUrl})`,
+                      backgroundPosition: `-${rx}px -${ry}px`,
+                      imageRendering: 'pixelated',
+                      cursor: moving === i ? 'grabbing' : 'grab',
+                      outline: i === selected ? '2px solid #facc15' : undefined,
+                      outlineOffset: i === selected ? '-2px' : undefined,
+                      transform: isQuarterTurn ? `rotate(${p.rotation}deg)` : p.rotation === 180 ? 'scaleX(-1)' : undefined,
+                      transformOrigin: 'center center',
+                    }}
+                  />
+                );
+              })}
+
+              {Array.from({ length: SHELF_SEGMENTS }).map((_, s) => (
+                <div
+                  key={`shelf-${s}`}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', 'shelf');
+                    setError(null);
+                    setPicking(null);
+                    setSelected('shelf');
+                    setMoving('shelf');
                   }}
-                  disabled={isStructural}
-                  onClick={() => onCellClick(gx, gy)}
+                  onDragEnd={() => setMoving((m) => (m === 'shelf' ? null : m))}
                   onDragOver={(e) => {
                     if (moving === null) return;
                     e.preventDefault();
@@ -354,177 +507,126 @@ export default function InteriorEditor() {
                   }}
                   onDrop={(e) => {
                     e.preventDefault();
-                    onCellClick(gx, gy);
+                    onCellClick(layout.shelf.gx, layout.shelf.gy);
                   }}
-                  title={idx !== null ? (CATALOG_BY_ID[draft.placements[idx].item]?.name ?? '') : onShelf ? 'Bookshelf' : ''}
-                />
-              );
-            }),
-          )}
-
-          {draft.placements.map((p, i) => {
-            const entry = CATALOG_BY_ID[p.item];
-            if (!entry) return null;
-            const [fw, fh] = entry.footprint;
-            const [rx, ry] = entry.rect;
-            const isQuarterTurn = entry.rotations.length > 2;
-            return (
-              <div
-                key={i}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', String(i));
-                  setError(null);
-                  setPicking(null);
-                  setSelected(i);
-                  setMoving(i);
-                }}
-                onDragEnd={() => setMoving((m) => (m === i ? null : m))}
-                onDragOver={(e) => {
-                  if (moving === null) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  onCellClick(p.gx, p.gy);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCellClick(p.gx, p.gy);
-                }}
-                style={{
-                  position: 'absolute',
-                  left: p.gx * 16,
-                  top: p.gy * 16,
-                  width: fw * 16,
-                  height: fh * 16,
-                  backgroundImage: `url(${entry.sheetUrl})`,
-                  backgroundPosition: `-${rx}px -${ry}px`,
-                  imageRendering: 'pixelated',
-                  cursor: moving === i ? 'grabbing' : 'grab',
-                  outline: i === selected ? '2px solid #facc15' : undefined,
-                  outlineOffset: i === selected ? '-2px' : undefined,
-                  transform: isQuarterTurn ? `rotate(${p.rotation}deg)` : p.rotation === 180 ? 'scaleX(-1)' : undefined,
-                  transformOrigin: 'center center',
-                }}
-              />
-            );
-          })}
-
-          {Array.from({ length: SHELF_SEGMENTS }).map((_, s) => (
-            <div
-              key={`shelf-${s}`}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', 'shelf');
-                setError(null);
-                setPicking(null);
-                setSelected('shelf');
-                setMoving('shelf');
-              }}
-              onDragEnd={() => setMoving((m) => (m === 'shelf' ? null : m))}
-              onDragOver={(e) => {
-                if (moving === null) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                onCellClick(layout.shelf.gx, layout.shelf.gy);
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCellClick(layout.shelf.gx, layout.shelf.gy);
-              }}
-              style={{
-                position: 'absolute',
-                left: (layout.shelf.gx + s * 2) * 16,
-                top: layout.shelf.gy * 16,
-                width: 32,
-                height: 32,
-                backgroundImage: `url(${SHELF_SHEET_URL})`,
-                backgroundPosition: `-${SHELF_RECT[0]}px -${SHELF_RECT[1]}px`,
-                imageRendering: 'pixelated',
-                cursor: moving === 'shelf' ? 'grabbing' : 'grab',
-                outline: shelfSelected ? '2px solid #facc15' : undefined,
-                outlineOffset: shelfSelected ? '-2px' : undefined,
-              }}
-            />
-          ))}
-        </div>
-
-        {error && <span className="text-xs text-red-400">{error}</span>}
-        {moving !== null && <span className="text-xs text-yellow-400">Drag it, or click a cell to move it there.</span>}
-
-        {picking && (
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="mr-1 text-xs uppercase text-neutral-400">Place</span>
-              {CATALOG_GROUPS.map((g) => (
-                <button
-                  key={g.id}
-                  className={`rounded border px-2 py-1 text-xs ${tab === g.id ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
-                  onClick={() => setTab(g.id)}
-                >
-                  {g.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex max-h-44 flex-wrap gap-1 overflow-y-auto">
-              {CATALOG_BY_GROUP[tab].map((entry) => (
-                <PieceButton
-                  key={entry.id}
-                  entry={entry}
-                  disabled={!canPlace(layout, CATALOG_BY_ID, structuralWithShelf, w, h, entry.id, picking.gx, picking.gy)}
-                  onClick={() => placeItem(entry.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCellClick(layout.shelf.gx, layout.shelf.gy);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: (layout.shelf.gx + s * 2) * 16,
+                    top: layout.shelf.gy * 16,
+                    width: 32,
+                    height: 32,
+                    backgroundImage: `url(${SHELF_SHEET_URL})`,
+                    backgroundPosition: `-${SHELF_RECT[0]}px -${SHELF_RECT[1]}px`,
+                    imageRendering: 'pixelated',
+                    cursor: moving === 'shelf' ? 'grabbing' : 'grab',
+                    outline: shelfSelected ? '2px solid #facc15' : undefined,
+                    outlineOffset: shelfSelected ? '-2px' : undefined,
+                  }}
                 />
               ))}
             </div>
+
+            {error && <span className="text-xs text-red-400">{error}</span>}
+            {moving !== null && <span className="text-xs text-yellow-400">Drag it, or click a cell to move it there.</span>}
           </div>
-        )}
 
-        {selectedPlacement && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase text-neutral-400">
-              {CATALOG_BY_ID[selectedPlacement.item]?.name ?? selectedPlacement.item}
-            </span>
-            <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={rotateSelected}>
-              Rotate
-            </button>
-            <button
-              className={`rounded border px-2 py-1 text-xs ${moving === selected ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
-              onClick={toggleMove}
-            >
-              {moving === selected ? 'Cancel move' : 'Move'}
-            </button>
-            <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={removeSelected}>
-              Remove
-            </button>
-            {CATALOG.some((e) => e.category === selectedCategory && e.id !== selectedPlacement.item) && (
-              <div className="flex w-full flex-wrap items-center gap-1">
-                <span className="mr-1 text-xs uppercase text-neutral-400">Swap for</span>
-                {CATALOG.filter((e) => e.category === selectedCategory && e.id !== selectedPlacement.item).map((e) => (
-                  <PieceButton key={e.id} entry={e} onClick={() => swapSelected(e.id)} />
-                ))}
+          <div className="flex w-[436px] flex-col gap-3">
+            {picking && (
+              <>
+                <span className="text-xs uppercase text-neutral-400">
+                  {wallet.active ? 'Place from your inventory, or buy something new' : 'Place'}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {CATALOG_GROUPS.map((g) => (
+                    <button
+                      key={g.id}
+                      className={`rounded border px-2 py-1 text-xs ${tab === g.id ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                      onClick={() => setTab(g.id)}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex max-h-[50vh] flex-wrap content-start gap-1 overflow-y-auto pr-1">
+                  {CATALOG_BY_GROUP[tab].map((entry) => (
+                    <ShopTile
+                      key={entry.id}
+                      entry={entry}
+                      owned={wallet.active ? owned(entry.id) : null}
+                      balance={wallet.balance}
+                      disabled={!canPlace(layout, CATALOG_BY_ID, structuralWithShelf, w, h, entry.id, picking.gx, picking.gy)}
+                      onClick={() => placeItem(entry.id)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {selectedPlacement && (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs uppercase text-neutral-400">Selected: {nameOf(selectedPlacement.item)}</span>
+                  <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={rotateSelected}>
+                    Rotate
+                  </button>
+                  <button
+                    className={`rounded border px-2 py-1 text-xs ${moving === selected ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                    onClick={toggleMove}
+                  >
+                    {moving === selected ? 'Cancel move' : 'Move'}
+                  </button>
+                  <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={removeSelected}>
+                    {wallet.active ? 'Put away' : 'Remove'}
+                  </button>
+                </div>
+                {swaps.length > 0 && (
+                  <>
+                    <span className="text-xs uppercase text-neutral-400">Swap for</span>
+                    <div className="flex flex-wrap gap-1">
+                      {swaps.map((entry) => (
+                        <ShopTile
+                          key={entry.id}
+                          entry={entry}
+                          owned={wallet.active ? owned(entry.id) : null}
+                          balance={wallet.balance}
+                          onClick={() => swapSelected(entry.id)}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {shelfSelected && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs uppercase text-neutral-400">Selected: Bookshelf</span>
+                <button
+                  className={`rounded border px-2 py-1 text-xs ${moving === 'shelf' ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                  onClick={toggleMove}
+                >
+                  {moving === 'shelf' ? 'Cancel move' : 'Move'}
+                </button>
               </div>
             )}
-          </div>
-        )}
 
-        {shelfSelected && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase text-neutral-400">Bookshelf</span>
-            <button
-              className={`rounded border px-2 py-1 text-xs ${moving === 'shelf' ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
-              onClick={toggleMove}
-            >
-              {moving === 'shelf' ? 'Cancel move' : 'Move'}
-            </button>
+            {!picking && !selectedPlacement && !shelfSelected && (
+              <p className="text-sm text-neutral-400">
+                Click an empty tile to place furniture{wallet.active ? ' from your inventory, or buy something new' : ''}.
+                Click a piece to move or rotate it{wallet.active ? ', or put it back in your inventory' : ''}.
+              </p>
+            )}
+            {wallet.active && (
+              <p className="flex items-center gap-1 text-xs text-neutral-500">
+                <Coin size={10} /> Every new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins.
+              </p>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

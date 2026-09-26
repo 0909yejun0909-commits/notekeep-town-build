@@ -14,8 +14,9 @@ This grows the catalog to 114 pieces from Kenmi sheets we already license. No ne
 - **Existing kinds got more variants too.** Colour and treasure chests (iron, gold, ruby, sapphire,
   emerald), tablecloth tables, rugs, lamps and flowerpots. A note-holder can be swapped to any of
   these, and notes still only sit on the original kinds.
-- **Every entry has a `tier`**: `common | uncommon | rare | treasure`. The shop should map tiers to
-  credit prices in one place, not price 114 entries individually.
+- **Every entry has a `tier`**: `common | uncommon | rare | treasure`. The coin shop prices by tier
+  in one place (`TIER_PRICE` in `lib/wallet.ts`, see `2026-09-26-credit-economy-design.md`), not
+  per entry.
 - **Every entry has a display `name`**, shown in the editor and ready for the shop.
 - **The catalog is the only place sprite rects live.** BootScene loads every sheet in
   `FURNITURE_SHEETS` and carves each entry's frame from its `rect`. `footprint` is derived from the
@@ -36,7 +37,6 @@ This grows the catalog to 114 pieces from Kenmi sheets we already license. No ne
 
 ## Not included
 
-- Credits, prices, ownership and the shop screen itself.
 - Wall-hung art (windows, wall clocks, wall mirrors, towels): it needs a "hangs on the back wall"
   placement rule that doesn't exist yet.
 - Tabletop props (potions, candles, books): there is no "on a table" placement.
