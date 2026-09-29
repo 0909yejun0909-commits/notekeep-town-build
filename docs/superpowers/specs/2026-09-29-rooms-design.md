@@ -125,12 +125,12 @@ The same "Some furniture won't fit" style error applies: "These doors won't fit 
 - `init(data: { houseId: string; roomId?: string; fromRoomId?: string })`. A missing `roomId`
   means the entrance (so `game/config.ts`'s `enter-house` handler is unchanged).
 - Rooms other than the entrance are assigned slots in `house.rooms` order. Each doorway is drawn
-  as floor instead of wall, with the room name (cut to 10 characters, `...` after) as an 8px label
-  like EXIT. Rooms beyond capacity get no door; their notes stay reachable from the entrance
+  as floor instead of wall, with the room name as an 8px label like EXIT (cut to 6 characters on
+  the top and bottom walls, 10 on the side walls, `…` after). Rooms beyond capacity get no door; their notes stay reachable from the entrance
   bookshelf. This is a known limit that only affects houses with more than 11–23 subfolders.
-- **[+] doorway:** when rooms can be added (`registry.get('canAddRooms')`: set to `true` by
-  `openVault`/`openDemoVault`, whose handles have `createRoom`; removed by `publishWorld` for
-  guests), the house has its own folder (its id contains `/`), and a slot is left, the next slot shows a `+` doorway. Walking into it or clicking it emits
+- **[+] doorway:** when the player isn't a guest (`registry.get('role') !== 'guest'`, the same
+  check CUSTOMIZE uses; both real and demo vault handles have `createRoom`, guests' never do),
+  the house has its own folder (its id contains `/`), and a slot is left, the next slot shows a `+` doorway. Walking into it or clicking it emits
   `open-room-namer`. With no slot left, the entrance shows "Make this room bigger to add rooms"
   under the CUSTOMIZE label instead.
 - Header reads `House · N` in the entrance and `House / Room · N` in other rooms.
@@ -140,7 +140,8 @@ The same "Some furniture won't fit" style error applies: "These doors won't fit 
 - Stepping onto a room's doorway: `this.scene.restart({ houseId, roomId: slotRoom.id })`.
 - In a non-entrance room, the bottom-centre door (today's EXIT position) is labelled **BACK**;
   stepping on it restarts into the entrance with `fromRoomId`, and the player spawns on that
-  room's first `inside` tile, facing into the entrance. If that room has no slot (overflow),
+  room's first `inside` tile. Standing in front of any room door shows its full name above the
+  player, since door labels on the top and bottom walls are cut to 6 characters (2 tiles apart). If that room has no slot (overflow),
   they spawn at EXIT as usual.
 - EXIT in the entrance emits `exit-house` exactly as today.
 - Non-entrance rooms have no doors of their own besides BACK, and no [+]: rooms are one level
@@ -186,7 +187,7 @@ there. The entrance shelf still shows the whole house, as today.
 'open-shelf': { houseId: string; roomId: string };
 'open-interior-editor': { houseId: string; roomId: string; layout: InteriorLayout; doorsNeeded: number };
 'commit-interior-layout': { roomId: string; layout: InteriorLayout };
-'open-room-namer': { houseId: string; blocked: boolean };
+'open-room-namer': { houseId: string; houseName: string; blocked: boolean };
 'close-room-namer': { roomId?: string };
 ```
 
