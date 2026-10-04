@@ -161,7 +161,7 @@ export default class InteriorScene extends Phaser.Scene {
     const saved = this.fingerprint
       ? getLayout(this.fingerprint, this.houseId)
       : (sessionLayouts?.[this.houseId] ?? null);
-    this.layout = saved ?? computeDefaultLayout(house);
+    this.layout = saved ?? computeDefaultLayout(house, house.rooms[0]);
     const [w, h] = ROOM_SIZES[this.layout.roomSize];
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
     const shelfGx = this.layout.shelf.gx;

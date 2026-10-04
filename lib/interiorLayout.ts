@@ -1,5 +1,5 @@
 import { FOOTPRINT, hash } from './types';
-import type { CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout, RoomSize } from './types';
+import type { CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout, Room, RoomSize } from './types';
 
 export const SHELF_SEGMENTS = 3;
 export const SHELF_W = SHELF_SEGMENTS * 2;
@@ -97,26 +97,32 @@ export function shelfGxFor(w: number): number {
   return Math.floor((w - SHELF_W) / 2);
 }
 
-// Today's deterministic hash-derived layout — used both as the fallback when no
-// saved layout exists, and to seed the editor's first draft for an untouched house.
-export function computeDefaultLayout(house: House, roomSize: RoomSize = 'large'): InteriorLayout {
+// The deterministic hash-derived layout for one room — the fallback when nothing is saved,
+// and the editor's first draft for an untouched room. The entrance seeds from the house, so
+// an untouched house looks exactly as it did with one room, and starts large; other rooms
+// seed from themselves and start medium.
+export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
+  const entrance = room.id === house.id;
+  const roomSize: RoomSize = entrance ? 'large' : 'medium';
+  const seedId = entrance ? house.id : room.id;
+  const seedName = entrance ? house.name : room.name;
   const [w, h] = ROOM_SIZES[roomSize];
   const shelfGx = shelfGxFor(w);
   const shelfGy = SHELF_GY;
   // Both stored as indices into FLOOR_FRAMES/WALL_TRIPLES, not raw sheet frame
   // numbers — the editor UI picks a swatch by index, and InteriorScene looks the
   // actual frame number up from the same index, so both sides must agree on that.
-  const floorFrame = hash(house.id) % FLOOR_FRAMES.length;
-  const wallTriple = hash(house.name) % WALL_TRIPLES.length;
+  const floorFrame = hash(seedId) % FLOOR_FRAMES.length;
+  const wallTriple = hash(seedName) % WALL_TRIPLES.length;
 
   const occupied = structuralOccupied(w, h);
   for (const cell of shelfOccupied(shelfGx, shelfGy)) occupied.add(cell);
-  const pending = house.rooms.flatMap((r) => r.notes);
+  const pending = [...room.notes];
   const placements: FurniturePlacement[] = [];
 
   for (const type of DECOR_TYPES) {
     const [fw, fh] = FOOTPRINT[type];
-    const seed = hash(`${house.id}:${type}`);
+    const seed = hash(`${seedId}:${type}`);
     const spot = pickSpot(w, fw, fh, occupied, seed, SHELF_GY + 2, h - 3);
     if (!spot) continue;
     const [dx, dy] = spot;
@@ -185,18 +191,17 @@ export function canPlaceShelf(
   return true;
 }
 
-// Would every existing placement, and the shelf, still fit inside a room
-// resized to (newW, newH)? Used to block a shrink that would strand
-// furniture outside the new walls. Nothing moves relative to the room's
-// top-left corner, so this only needs to check bounds + the new structural
-// set — pieces can't newly overlap each other, since their relative
-// positions don't change.
+// Would every existing placement and the shelf still fit inside the room at `size`, with
+// room for `doorsNeeded` doorways? Blocks a shrink that would strand furniture outside the
+// new walls or leave a room without its door. Nothing moves relative to the room's
+// top-left corner, so pieces can't newly overlap each other.
 export function canResize(
   layout: InteriorLayout,
   catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
-  newW: number,
-  newH: number,
+  size: RoomSize,
+  doorsNeeded = 0,
 ): boolean {
+  const [newW, newH] = ROOM_SIZES[size];
   const structural = structuralOccupied(newW, newH);
 
   const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, SHELF_W, 2);
@@ -216,5 +221,65 @@ export function canResize(
     const cells = footprintCells(p.gx, p.gy, fw, fh);
     if (cells.some((c) => structural.has(c))) return false;
   }
-  return true;
+  return doorSlots({ ...layout, roomSize: size }, catalogById, doorsNeeded).length >= doorsNeeded;
+}
+
+export type DoorSide = 'top' | 'left' | 'right' | 'bottom';
+
+// A doorway on the room's perimeter, plus the tiles in front of it that must stay clear so
+// it can be walked through (two on the top wall: row 1 is the back wall's second row when
+// the shelf leans on it).
+export type DoorSlot = { gx: number; gy: number; side: DoorSide; inside: [number, number][] };
+
+// Half-width of the top-wall band kept for the house-name and CUSTOMIZE labels.
+const HEADER_HALF = 4;
+
+function doorCandidates(w: number, h: number): DoorSlot[] {
+  const [exitGx] = doorPositionFor(w, h);
+  const mid = Math.floor(w / 2);
+  const out: DoorSlot[] = [];
+  for (let gx = 2; gx <= w - 3; gx += 2) {
+    if (gx >= mid - HEADER_HALF && gx < mid + HEADER_HALF) continue;
+    out.push({ gx, gy: 0, side: 'top', inside: [[gx, 1], [gx, 2]] });
+  }
+  for (let gy = 2; gy <= h - 3; gy += 2) out.push({ gx: 0, gy, side: 'left', inside: [[1, gy]] });
+  for (let gy = 2; gy <= h - 3; gy += 2) out.push({ gx: w - 1, gy, side: 'right', inside: [[w - 2, gy]] });
+  for (let gx = 2; gx <= w - 3; gx += 2) {
+    if (Math.abs(gx - exitGx) <= 1) continue;
+    out.push({ gx, gy: h - 1, side: 'bottom', inside: [[gx, h - 2]] });
+  }
+  return out;
+}
+
+// Up to `max` doorways, top wall first, then left, right, bottom — skipping any whose inside
+// tiles the shelf (or its approach row) or a piece of furniture covers. Nothing is saved:
+// the scene and the editor both derive doors from the layout, so they always agree.
+export function doorSlots(
+  layout: InteriorLayout,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  max: number,
+): DoorSlot[] {
+  const [w, h] = ROOM_SIZES[layout.roomSize];
+  const occupied = shelfOccupied(layout.shelf.gx, layout.shelf.gy);
+  for (const p of layout.placements) {
+    const entry = catalogById[p.item];
+    if (!entry) continue;
+    for (const cell of footprintCells(p.gx, p.gy, entry.footprint[0], entry.footprint[1])) occupied.add(cell);
+  }
+  const out: DoorSlot[] = [];
+  for (const slot of doorCandidates(w, h)) {
+    if (out.length >= max) break;
+    if (slot.inside.some(([x, y]) => occupied.has(`${x},${y}`))) continue;
+    out.push(slot);
+  }
+  return out;
+}
+
+export function doorCells(slots: DoorSlot[]): Set<string> {
+  const cells = new Set<string>();
+  for (const slot of slots) {
+    cells.add(`${slot.gx},${slot.gy}`);
+    for (const [x, y] of slot.inside) cells.add(`${x},${y}`);
+  }
+  return cells;
 }

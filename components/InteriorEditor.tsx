@@ -378,8 +378,7 @@ export default function InteriorEditor() {
                 draft.roomSize === size ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'
               }`}
               onClick={() => {
-                const [newW, newH] = ROOM_SIZES[size];
-                if (!canResize(draft, CATALOG_BY_ID, newW, newH)) {
+                if (!canResize(draft, CATALOG_BY_ID, size)) {
                   setError("Something's in the way at that size — move furniture or the shelf, then try again.");
                   return;
                 }
