@@ -19,7 +19,7 @@ const TIER_COLOR: Record<CatalogTier, string> = {
   treasure: '#fbbf24',
 };
 
-type Session = { houseId: string };
+type Session = { houseId: string; roomId: string; doorsNeeded: number };
 // A selection/move target is either one furniture placement (its index) or
 // the shelf, which isn't part of `placements` — it's always present, always
 // the same style, only its position is editable.
@@ -146,7 +146,7 @@ export default function InteriorEditor() {
   function save() {
     if (!session || !draft) return;
     commitLayoutChange(saved, draft.placements);
-    bus.emit('commit-interior-layout', { houseId: session.houseId, layout: draft });
+    bus.emit('commit-interior-layout', { roomId: session.roomId, layout: draft });
     setSession(null);
     setDraft(null);
     bus.emit('close-interior-editor', undefined);

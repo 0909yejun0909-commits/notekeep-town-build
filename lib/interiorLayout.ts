@@ -233,12 +233,14 @@ export type DoorSlot = { gx: number; gy: number; side: DoorSide; inside: [number
 
 // Half-width of the top-wall band kept for the house-name and CUSTOMIZE labels.
 const HEADER_HALF = 4;
+// Top-wall doors start here: the coin purse overlay covers the room's top-left corner.
+const TOP_FIRST_GX = 4;
 
 function doorCandidates(w: number, h: number): DoorSlot[] {
   const [exitGx] = doorPositionFor(w, h);
   const mid = Math.floor(w / 2);
   const out: DoorSlot[] = [];
-  for (let gx = 2; gx <= w - 3; gx += 2) {
+  for (let gx = TOP_FIRST_GX; gx <= w - 3; gx += 2) {
     if (gx >= mid - HEADER_HALF && gx < mid + HEADER_HALF) continue;
     out.push({ gx, gy: 0, side: 'top', inside: [[gx, 1], [gx, 2]] });
   }

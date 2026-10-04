@@ -5,7 +5,7 @@ type BusEvents = {
   'exit-house': undefined;
   'open-note': { note: NoteRef };
   'close-note': undefined;
-  'open-shelf': { houseId: string };
+  'open-shelf': { houseId: string; roomId: string };
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
   'world-updated': { exteriorChanged: boolean };
@@ -14,9 +14,11 @@ type BusEvents = {
   'close-wardrobe': undefined;
   'open-bed-menu': { note: NoteRef };
   'bed-menu-choice': { choice: 'read' | 'lie' | 'cancel' };
-  'open-interior-editor': { houseId: string; layout: InteriorLayout };
+  'open-room-namer': { houseId: string; houseName: string; blocked: boolean };
+  'close-room-namer': { roomId?: string };
+  'open-interior-editor': { houseId: string; roomId: string; layout: InteriorLayout; doorsNeeded: number };
   'close-interior-editor': undefined;
-  'commit-interior-layout': { houseId: string; layout: InteriorLayout };
+  'commit-interior-layout': { roomId: string; layout: InteriorLayout };
   'open-exterior-editor': {
     houseId: string;
     currentVariant: number;

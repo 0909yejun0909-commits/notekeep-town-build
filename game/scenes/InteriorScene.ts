@@ -14,7 +14,9 @@ import {
   WALL_TRIPLES,
   ROOM_SIZES,
   doorPositionFor,
+  doorSlots,
   computeDefaultLayout,
+  type DoorSlot,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
 import {
@@ -26,7 +28,7 @@ import {
   type FurnitureAction,
 } from '@/lib/catalog';
 import { attachRemotePlayers } from '@/game/remotePlayers';
-import { setSelfPresence } from '@/lib/multiplayer/session';
+import { othersInTown, setSelfPresence } from '@/lib/multiplayer/session';
 
 function findHouse(world: WorldModel | undefined, houseId: string): House | undefined {
   if (!world) return undefined;
@@ -44,8 +46,23 @@ type PieceAction = {
   note?: NoteRef;
 };
 
+// A doorway in the entrance's wall: to another room, or (roomId null) the [+] that adds one.
+type Door = { slot: DoorSlot; roomId: string | null; name: string };
+
+function shorten(name: string, max: number): string {
+  return name.length <= max ? name : `${name.slice(0, max - 1)}…`;
+}
+
 export default class InteriorScene extends Phaser.Scene {
   private houseId!: string;
+  private houseName = '';
+  private roomId!: string;
+  private fromRoomId: string | undefined;
+  private isEntrance = true;
+  private doors = new Map<string, Door>();
+  private doorAhead = new Map<string, Door>();
+  private doorHint!: Phaser.GameObjects.Text;
+  private roomNamerOpen = false;
 
   private doorGx = 0;
   private doorGy = 0;
@@ -113,25 +130,43 @@ export default class InteriorScene extends Phaser.Scene {
     else if (choice === 'lie') this.act(target);
   };
 
-  private onCommitLayout = ({ houseId, layout }: { houseId: string; layout: InteriorLayout }) => {
-    if (houseId !== this.houseId || !this.fingerprint) return;
-    saveLayout(this.fingerprint, houseId, layout);
-    this.scene.restart({ houseId: this.houseId });
+  private onCommitLayout = ({ roomId, layout }: { roomId: string; layout: InteriorLayout }) => {
+    if (roomId !== this.roomId || !this.fingerprint) return;
+    saveLayout(this.fingerprint, roomId, layout);
+    this.scene.restart({ houseId: this.houseId, roomId });
   };
 
   private onWorldUpdated = () => {
     if (this.fingerprint) return;
     const layouts = this.game.registry.get('sessionLayouts') as Record<string, InteriorLayout> | undefined;
-    const next = layouts?.[this.houseId];
-    if (next && JSON.stringify(next) !== JSON.stringify(this.layout)) this.scene.restart({ houseId: this.houseId });
+    const next = layouts?.[this.roomId];
+    if (next && JSON.stringify(next) !== JSON.stringify(this.layout)) this.scene.restart({ houseId: this.houseId, roomId: this.roomId });
+  };
+
+  // A new room was made: go in. Cancelled: step back off the [+] so walking in reopens it.
+  private onCloseRoomNamer = ({ roomId }: { roomId?: string }) => {
+    this.roomNamerOpen = false;
+    this.input.keyboard?.resetKeys();
+    if (roomId) {
+      this.enterRoom(roomId);
+      return;
+    }
+    const plus = [...this.doors.values()].find((d) => d.roomId === null);
+    if (!plus) return;
+    const [gx, gy] = plus.slot.inside[0];
+    this.movement.snapTo(gx, gy);
+    this.prevGx = gx;
+    this.prevGy = gy;
   };
 
   constructor() {
     super('InteriorScene');
   }
 
-  init(data: { houseId: string }) {
+  init(data: { houseId: string; roomId?: string; fromRoomId?: string }) {
     this.houseId = data.houseId;
+    this.roomId = data.roomId ?? data.houseId;
+    this.fromRoomId = data.fromRoomId;
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
@@ -145,6 +180,9 @@ export default class InteriorScene extends Phaser.Scene {
     this.pose = null;
     this.bedTarget = null;
     this.undress = null;
+    this.doors = new Map();
+    this.doorAhead = new Map();
+    this.roomNamerOpen = false;
   }
 
   create() {
@@ -156,14 +194,32 @@ export default class InteriorScene extends Phaser.Scene {
       return;
     }
 
+    const room = house.rooms.find((r) => r.id === this.roomId) ?? house.rooms[0];
+    this.roomId = room.id;
+    this.houseName = house.name;
+    this.isEntrance = room.id === house.id;
+
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
     const sessionLayouts = this.game.registry.get('sessionLayouts') as Record<string, InteriorLayout> | undefined;
     const saved = this.fingerprint
-      ? getLayout(this.fingerprint, this.houseId)
-      : (sessionLayouts?.[this.houseId] ?? null);
-    this.layout = saved ?? computeDefaultLayout(house, house.rooms[0]);
+      ? getLayout(this.fingerprint, room.id)
+      : (sessionLayouts?.[room.id] ?? null);
+    this.layout = saved ?? computeDefaultLayout(house, room);
     const [w, h] = ROOM_SIZES[this.layout.roomSize];
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
+
+    // The entrance has a doorway per other room, then the [+] that adds one: only for the
+    // town's owner, and only in a house with its own folder (a "Main" house's subfolder
+    // would parse as a new house, not a room). Rooms beyond the wall's capacity get no door;
+    // their notes are still on the entrance bookshelf.
+    const others = this.isEntrance ? house.rooms.slice(1) : [];
+    const canAdd = this.isEntrance && this.game.registry.get('role') !== 'guest' && house.id.includes('/');
+    const slots = doorSlots(this.layout, CATALOG_BY_ID, others.length + (canAdd ? 1 : 0));
+    others.forEach((r, i) => {
+      if (slots[i]) this.addDoor({ slot: slots[i], roomId: r.id, name: r.name });
+    });
+    const plusSlot = canAdd ? slots[others.length] : undefined;
+    if (plusSlot) this.addDoor({ slot: plusSlot, roomId: null, name: 'New room' });
     const shelfGx = this.layout.shelf.gx;
     const shelfGy = this.layout.shelf.gy;
 
@@ -178,9 +234,9 @@ export default class InteriorScene extends Phaser.Scene {
       for (let x = 0; x < w; x++) {
         this.add.image(x * TILE, y * TILE, 'interior-floor', floorFrame).setOrigin(0, 0).setDepth(0);
 
-        const isExitDoor = x === this.doorGx && y === this.doorGy;
+        const isDoorway = (x === this.doorGx && y === this.doorGy) || this.doors.has(`${x},${y}`);
         const isPerimeter = x === 0 || y === 0 || x === w - 1 || y === h - 1;
-        if (!isPerimeter || isExitDoor) continue;
+        if (!isPerimeter || isDoorway) continue;
 
         let frame = wallMid;
         if (y === 0) frame = wallTop;
@@ -194,6 +250,7 @@ export default class InteriorScene extends Phaser.Scene {
     // just a free-standing piece like any other furniture.
     if (shelfGy === SHELF_GY) {
       for (let x = 1; x < w - 1; x++) {
+        if (this.doors.has(`${x},0`)) continue;
         this.add.image(x * TILE, SHELF_GY * TILE, 'interior-walls', wallBase).setOrigin(0, 0).setDepth(1);
         this.blocked.add(`${x},${SHELF_GY}`);
       }
@@ -219,7 +276,7 @@ export default class InteriorScene extends Phaser.Scene {
     const labelCenterX = (w / 2) * TILE;
 
     this.add
-      .text(labelCenterX, 3, `${house.name} · ${noteCount}`, {
+      .text(labelCenterX, 3, this.isEntrance ? `${house.name} · ${noteCount}` : `${house.name} / ${room.name} · ${room.notes.length}`, {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffffff',
@@ -242,13 +299,26 @@ export default class InteriorScene extends Phaser.Scene {
         .on('pointerdown', () => this.openEditor());
     }
 
+    if (canAdd && !plusSlot) {
+      this.add
+        .text(labelCenterX, 23, 'Make this room bigger to add rooms', {
+          fontFamily: 'monospace',
+          fontSize: '8px',
+          color: '#cccccc',
+          backgroundColor: '#000000',
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(6);
+    }
+    for (const door of this.doors.values()) this.drawDoorLabel(door);
+
     const allNotes = house.rooms.flatMap((r) => r.notes);
     for (const placement of this.layout.placements) {
       this.renderPlacement(placement, allNotes);
     }
 
     this.add
-      .text(this.doorGx * TILE + TILE / 2, h * TILE - 2, 'EXIT', {
+      .text(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffffff',
@@ -257,7 +327,10 @@ export default class InteriorScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(6);
 
-    const spawn = tileToWorld(this.doorGx, this.doorGy);
+    // Back from a room: stand just inside its doorway, not at the house's front door.
+    const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;
+    const [spawnGx, spawnGy] = back ? back.slot.inside[0] : [this.doorGx, this.doorGy];
+    const spawn = tileToWorld(spawnGx, spawnGy);
     this.player = this.add.sprite(spawn.x, spawn.y, 'player');
     this.player.setOrigin(0.5, 0.64);
     this.player.setDepth(10);
@@ -266,18 +339,25 @@ export default class InteriorScene extends Phaser.Scene {
 
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
+      if (this.doors.has(`${gx},${gy}`)) return true;
       if (gx <= 0 || gy <= 0 || gx >= w - 1 || gy >= h - 1) return false;
       return !this.blocked.has(`${gx},${gy}`);
     };
 
     this.movement = new GridMovement(this, this.player, isWalkable);
-    const sceneId = `house:${this.houseId}` as const;
+    const sceneId = `house:${this.roomId}` as const;
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: sceneId, gx, gy, facing });
-    setSelfPresence({ scene: sceneId, gx: this.doorGx, gy: this.doorGy, facing: 'down' });
+    setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: 'down' });
     attachRemotePlayers(this, sceneId, this.player);
 
     this.indicator = this.add
       .text(0, 0, '!', { fontFamily: 'monospace', fontSize: '14px', color: '#ffe066' })
+      .setOrigin(0.5, 1)
+      .setDepth(1000)
+      .setVisible(false);
+
+    this.doorHint = this.add
+      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff', backgroundColor: '#000000' })
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setVisible(false);
@@ -292,8 +372,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.setBackgroundColor('#141018');
 
-    this.prevGx = this.doorGx;
-    this.prevGy = this.doorGy;
+    this.prevGx = spawnGx;
+    this.prevGy = spawnGy;
 
     bus.on('close-shelf', this.onCloseShelf);
     bus.on('close-note', this.onCloseNote);
@@ -302,6 +382,7 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('bed-menu-choice', this.onBedMenuChoice);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
+    bus.on('close-room-namer', this.onCloseRoomNamer);
     this.events.once('shutdown', () => {
       bus.off('close-shelf', this.onCloseShelf);
       bus.off('close-note', this.onCloseNote);
@@ -310,11 +391,12 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('bed-menu-choice', this.onBedMenuChoice);
       bus.off('commit-interior-layout', this.onCommitLayout);
       bus.off('world-updated', this.onWorldUpdated);
+      bus.off('close-room-namer', this.onCloseRoomNamer);
     });
   }
 
   private overlayOpen() {
-    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout;
+    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout || this.roomNamerOpen;
   }
 
   private openNote(note: NoteRef) {
@@ -326,13 +408,48 @@ export default class InteriorScene extends Phaser.Scene {
   private openShelf() {
     if (this.overlayOpen() || this.exiting) return;
     this.shelfOpen = true;
-    bus.emit('open-shelf', { houseId: this.houseId });
+    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId });
   }
 
   private openEditor() {
     if (this.overlayOpen() || this.exiting) return;
     this.editingLayout = true;
-    bus.emit('open-interior-editor', { houseId: this.houseId, layout: this.layout });
+    const doorsNeeded = [...this.doors.values()].filter((d) => d.roomId !== null).length;
+    bus.emit('open-interior-editor', { houseId: this.houseId, roomId: this.roomId, layout: this.layout, doorsNeeded });
+  }
+
+  private addDoor(door: Door) {
+    this.doors.set(`${door.slot.gx},${door.slot.gy}`, door);
+    for (const [x, y] of door.slot.inside) this.doorAhead.set(`${x},${y}`, door);
+  }
+
+  private drawDoorLabel(door: Door) {
+    const { gx, gy, side } = door.slot;
+    const plus = door.roomId === null;
+    const text = plus ? '+ ROOM' : shorten(door.name, side === 'top' || side === 'bottom' ? 6 : 10);
+    const style = { fontFamily: 'monospace', fontSize: '8px', color: plus ? '#ffe066' : '#ffffff', backgroundColor: '#000000' };
+    const cx = gx * TILE + TILE / 2;
+    const cy = gy * TILE + TILE / 2;
+    const label =
+      side === 'top' ? this.add.text(cx, 3, text, style).setOrigin(0.5, 0)
+      : side === 'bottom' ? this.add.text(cx, (gy + 1) * TILE - 2, text, style).setOrigin(0.5, 1)
+      : side === 'left' ? this.add.text(TILE + 2, cy, text, style).setOrigin(0, 0.5)
+      : this.add.text(gx * TILE - 2, cy, text, style).setOrigin(1, 0.5);
+    label.setDepth(6);
+    if (plus) label.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.openRoomNamer());
+  }
+
+  private enterRoom(roomId: string) {
+    this.exiting = true;
+    this.scene.restart({ houseId: this.houseId, roomId });
+  }
+
+  private openRoomNamer() {
+    if (this.overlayOpen() || this.exiting) return;
+    this.roomNamerOpen = true;
+    this.indicator.setVisible(false);
+    this.doorHint.setVisible(false);
+    bus.emit('open-room-namer', { houseId: this.houseId, houseName: this.houseName, blocked: othersInTown() });
   }
 
   private openBedMenu(piece: PieceAction) {
@@ -430,15 +547,20 @@ export default class InteriorScene extends Phaser.Scene {
     const { gx, gy } = worldToTile(this.player.x, this.player.y);
 
     if (gx !== this.prevGx || gy !== this.prevGy) {
-      if (gx === this.doorGx && gy === this.doorGy) {
-        this.exiting = true;
-        this.prevGx = gx;
-        this.prevGy = gy;
-        bus.emit('exit-house', undefined);
-        return;
-      }
       this.prevGx = gx;
       this.prevGy = gy;
+      if (gx === this.doorGx && gy === this.doorGy) {
+        this.exiting = true;
+        if (this.isEntrance) bus.emit('exit-house', undefined);
+        else this.scene.restart({ houseId: this.houseId, fromRoomId: this.roomId });
+        return;
+      }
+      const door = this.doors.get(`${gx},${gy}`);
+      if (door) {
+        if (door.roomId === null) this.openRoomNamer();
+        else this.enterRoom(door.roomId);
+        return;
+      }
     }
 
     const settled = !this.movement.isMoving();
@@ -456,6 +578,15 @@ export default class InteriorScene extends Phaser.Scene {
       }
     } else {
       this.indicator.setVisible(false);
+    }
+
+    // Door labels are cut short; standing in front of one spells out where it goes.
+    const ahead = settled ? this.doorAhead.get(here) : undefined;
+    if (ahead && ahead.roomId !== null) {
+      const y = this.indicator.visible ? this.player.y - 50 : this.player.y - 34;
+      this.doorHint.setText(ahead.name).setPosition(this.player.x, y).setVisible(true);
+    } else {
+      this.doorHint.setVisible(false);
     }
   }
 }

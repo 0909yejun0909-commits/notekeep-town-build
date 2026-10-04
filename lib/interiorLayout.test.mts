@@ -17,10 +17,10 @@ const empty = (roomSize: RoomSize): InteriorLayout => ({
 
 const note = (id: string): NoteRef => ({ id, title: id, furniture: 'desk', gx: 0, gy: 0, preview: '' });
 
-test('an empty room has 11, 15 and 23 door slots by size', () => {
+test('an empty room has 11, 14 and 22 door slots by size', () => {
   assert.equal(doorSlots(empty('small'), CATALOG_BY_ID, 99).length, 11);
-  assert.equal(doorSlots(empty('medium'), CATALOG_BY_ID, 99).length, 15);
-  assert.equal(doorSlots(empty('large'), CATALOG_BY_ID, 99).length, 23);
+  assert.equal(doorSlots(empty('medium'), CATALOG_BY_ID, 99).length, 14);
+  assert.equal(doorSlots(empty('large'), CATALOG_BY_ID, 99).length, 22);
 });
 
 test('more rooms than slots just returns every slot there is', () => {
@@ -31,18 +31,18 @@ test('more rooms than slots just returns every slot there is', () => {
 test('slots fill the top wall, then left, right and bottom', () => {
   const slots = doorSlots(empty('large'), CATALOG_BY_ID, 99);
   assert.deepEqual(slots.slice(0, 5).map((s) => [s.side, s.gx, s.gy]), [
-    ['top', 2, 0], ['top', 4, 0], ['top', 14, 0], ['top', 16, 0], ['left', 0, 2],
+    ['top', 4, 0], ['top', 14, 0], ['top', 16, 0], ['left', 0, 2], ['left', 0, 4],
   ]);
-  assert.deepEqual(slots[0].inside, [[2, 1], [2, 2]]);
+  assert.deepEqual(slots[0].inside, [[4, 1], [4, 2]]);
   assert.deepEqual(slots.at(-1), { gx: 16, gy: 14, side: 'bottom', inside: [[16, 13]] });
   assert.equal(doorSlots(empty('large'), CATALOG_BY_ID, 3).length, 3);
 });
 
-test('no slot sits under the header labels, on EXIT or beside it', () => {
+test('no slot sits under the coin purse, the header labels, on EXIT or beside it', () => {
   const slots = doorSlots(empty('large'), CATALOG_BY_ID, 99);
   const top = slots.filter((s) => s.side === 'top').map((s) => s.gx);
   const bottom = slots.filter((s) => s.side === 'bottom').map((s) => s.gx);
-  assert.ok(top.every((gx) => gx < 6 || gx > 13));
+  assert.ok(top.every((gx) => gx >= 4 && (gx < 6 || gx > 13)));
   assert.ok(bottom.every((gx) => Math.abs(gx - 10) > 1));
 });
 
