@@ -60,6 +60,9 @@ export type VaultHandle = {
   // an empty `<title>.md` in `folder` (vault-relative, '' for the root) and returns the
   // re-parsed world that contains it. The caller publishes that world.
   createNote?: (folder: string, title: string) => Promise<{ world: WorldModel; note: NoteRef }>;
+  // Optional: absent means rooms can't be added (multiplayer guest). Creates the folder
+  // `<houseId>/<name>` and returns the re-parsed world that contains the new, empty room.
+  createRoom?: (houseId: string, name: string) => Promise<{ world: WorldModel; room: Room }>;
 };
 
 // Every piece's footprint in tiles: [cols, rows]. Both the track that PLACES

@@ -1,8 +1,9 @@
 'use client';
 
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
-import type { InteriorLayout, NoteRef, VaultHandle, WorldModel } from '@/lib/types';
+import type { InteriorLayout, NoteRef, Room, VaultHandle, WorldModel } from '@/lib/types';
 import { isNotePath, makeLinkResolver, parseVault } from '@/lib/vault/parse';
+import { foldersOf, newNotePath, newRoomPath } from '@/lib/vault/paths';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
@@ -46,18 +47,6 @@ export function replaceWorld(world: WorldModel) {
   (window as any).__game?.registry.set('world', world);
 }
 
-const BAD_TITLE_CHARS = /[\\/:*?"<>|#^[\]]/g;
-
-function newNotePath(folder: string, title: string, paths: string[]): string {
-  const clean = title.replace(BAD_TITLE_CHARS, '').trim();
-  if (!clean || clean.startsWith('.')) throw new Error('Give the note a name.');
-  if (clean.length > 120) throw new Error('That name is too long.');
-  const path = folder ? `${folder}/${clean}.md` : `${clean}.md`;
-  const lower = path.toLowerCase();
-  if (paths.some((p) => p.toLowerCase() === lower)) throw new Error(`"${clean}" is already on this shelf.`);
-  return path;
-}
-
 function findNote(world: WorldModel, id: string): NoteRef {
   for (const region of world.regions) {
     for (const house of region.houses) {
@@ -68,6 +57,16 @@ function findNote(world: WorldModel, id: string): NoteRef {
     }
   }
   throw new Error('The new note did not make it into the town.');
+}
+
+function findRoom(world: WorldModel, id: string): Room {
+  for (const region of world.regions) {
+    for (const house of region.houses) {
+      const room = house.rooms.find((r) => r.id === id);
+      if (room) return room;
+    }
+  }
+  throw new Error('The new room did not make it into the town.');
 }
 
 type PermissionHandle = FileSystemHandle & {
@@ -87,13 +86,16 @@ export async function walk(
   dir: FileSystemDirectoryHandle,
   prefix: string,
   out: Map<string, FileSystemFileHandle>,
+  folders?: string[],
 ) {
   try {
     for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
       if (name.startsWith('.')) continue;
       const path = prefix ? `${prefix}/${name}` : name;
-      if (handle.kind === 'directory') await walk(handle as FileSystemDirectoryHandle, path, out);
-      else out.set(path, handle as FileSystemFileHandle);
+      if (handle.kind === 'directory') {
+        folders?.push(path);
+        await walk(handle as FileSystemDirectoryHandle, path, out, folders);
+      } else out.set(path, handle as FileSystemFileHandle);
     }
   } catch {
     // A folder the browser cannot list (cloud placeholder, permission) is skipped, not fatal.
@@ -123,7 +125,8 @@ export async function openVault(): Promise<VaultHandle | null> {
   }
 
   const files = new Map<string, FileSystemFileHandle>();
-  await walk(dir, '', files);
+  const folders: string[] = [];
+  await walk(dir, '', files, folders);
   const paths = [...files.keys()];
   let resolve = makeLinkResolver(paths);
 
@@ -142,7 +145,7 @@ export async function openVault(): Promise<VaultHandle | null> {
     const head = await (await getFile(p)).slice(0, HEAD_BYTES).text();
     heads.set(p, head);
     return head;
-  });
+  }, folders);
   const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
   startWallet(dir.name, true, heads);
   publishWorld(world, vaultFingerprint(dir.name, houseIds));
@@ -170,8 +173,18 @@ export async function openVault(): Promise<VaultHandle | null> {
       paths.push(path);
       resolve = makeLinkResolver(paths);
       heads.set(path, '');
-      const next = await parseVault(dir.name, paths, async (p) => heads.get(p) ?? '');
+      const next = await parseVault(dir.name, paths, async (p) => heads.get(p) ?? '', folders);
       return { world: next, note: findNote(next, path) };
+    },
+    createRoom: async (houseId, name) => {
+      const path = newRoomPath(houseId, name, paths, folders);
+      await ensureWritable(dir);
+      let target = dir;
+      for (const seg of houseId.split('/')) target = await target.getDirectoryHandle(seg);
+      await target.getDirectoryHandle(path.slice(houseId.length + 1), { create: true });
+      folders.push(path);
+      const next = await parseVault(dir.name, paths, async (p) => heads.get(p) ?? '', folders);
+      return { world: next, room: findRoom(next, path) };
     },
   };
 }
@@ -180,6 +193,7 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   // Own copy so edits made in the book stick for this session without touching the module constant.
   const files: Record<string, string> = { ...DEMO_FILES };
   const paths = Object.keys(files);
+  const folders = foldersOf(paths);
   let resolve = makeLinkResolver(paths);
   const getPath = (link: string) => {
     const path = resolve(link);
@@ -189,7 +203,7 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   const getText = (link: string) => files[getPath(link)];
 
   const head = async (p: string) => getText(p).slice(0, HEAD_BYTES);
-  const world = await parseVault(DEMO_VAULT_NAME, paths, head);
+  const world = await parseVault(DEMO_VAULT_NAME, paths, head, folders);
   const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
   startWallet(DEMO_VAULT_NAME, false, new Map(paths.filter(isNotePath).map((p) => [p, files[p]])));
   publishWorld(world, vaultFingerprint(DEMO_VAULT_NAME, houseIds));
@@ -206,8 +220,14 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
       files[path] = '';
       paths.push(path);
       resolve = makeLinkResolver(paths);
-      const next = await parseVault(DEMO_VAULT_NAME, paths, head);
+      const next = await parseVault(DEMO_VAULT_NAME, paths, head, folders);
       return { world: next, note: findNote(next, path) };
+    },
+    createRoom: async (houseId, name) => {
+      const path = newRoomPath(houseId, name, paths, folders);
+      folders.push(path);
+      const next = await parseVault(DEMO_VAULT_NAME, paths, head, folders);
+      return { world: next, room: findRoom(next, path) };
     },
   };
 }
