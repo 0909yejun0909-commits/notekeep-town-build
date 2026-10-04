@@ -74,6 +74,11 @@ export function useSession(): SessionState {
   return useSyncExternalStore(subscribeSession, getSession, () => OFF);
 }
 
+// Someone else is connected to this study session, so the town must not change shape under them.
+export function othersInTown(): boolean {
+  return state.status === 'live' && state.peers.length > 0;
+}
+
 export function loadName(): string {
   if (typeof window === 'undefined') return '';
   try {

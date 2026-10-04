@@ -26,8 +26,10 @@ export function buildWorldPayload(world: WorldModel, fingerprint: string | undef
       if (fingerprint) {
         const exterior = getExteriorOverride(fingerprint, house.id);
         if (exterior) applyExteriorOverride(house, exterior);
-        const layout = getLayout(fingerprint, house.id);
-        if (layout) layouts[house.id] = layout;
+        for (const room of house.rooms) {
+          const layout = getLayout(fingerprint, room.id);
+          if (layout) layouts[room.id] = layout;
+        }
       }
       if (share === 'town') {
         for (const room of house.rooms) for (const note of room.notes) note.preview = '';
@@ -41,12 +43,14 @@ export async function startHosting(vault: VaultHandle, name: string, share: Shar
   const key = await generateRoomKey();
   const room = await Room.create(RELAY_URL, key);
   const invite = `${location.origin}${location.pathname}?room=${room.roomId}#key=${await exportRoomKey(key)}`;
-  const noteIds = noteIdsOf(vault.world);
+  // The town as it is now, not when hosting began: a note or room added since then must
+  // reach guests who join later.
+  const liveWorld = (): WorldModel => ((window as any).__game?.registry?.get('world') as WorldModel | undefined) ?? vault.world;
   const allowedMedia = new Set<string>();
   let current = share;
 
   const sendWorld = (to: string) => {
-    room.send(to, { t: 'world', ...buildWorldPayload(vault.world, hostFingerprint(), current) }).catch(() => {});
+    room.send(to, { t: 'world', ...buildWorldPayload(liveWorld(), hostFingerprint(), current) }).catch(() => {});
   };
 
   const offRoom = room.on(async (e) => {
@@ -54,7 +58,7 @@ export async function startHosting(vault: VaultHandle, name: string, share: Shar
     if (e.msg.t === 'hello') sendWorld(e.from);
     if (e.msg.t !== 'note-req') return;
     const { reqId } = e.msg;
-    const reply = await resolveNoteRequest(vault, current, noteIds, allowedMedia, e.msg);
+    const reply = await resolveNoteRequest(vault, current, noteIdsOf(liveWorld()), allowedMedia, e.msg);
     const res: NoteResponse = !reply.ok
       ? { t: 'note-res', reqId, ok: false, error: reply.error }
       : 'text' in reply

@@ -7,6 +7,7 @@ import {
   endSession,
   getSession,
   onPresence,
+  othersInTown,
   sendChat,
   setSelfPresence,
   startSession,
@@ -44,6 +45,7 @@ test('a live session announces itself, tracks peers and carries chat both ways',
   const hostRoom = await Room.create(url, key);
   let cleanedUp = false;
   startSession(hostRoom, 'host', '  Ada  ', { share: 'notes', invite: 'link' }, () => (cleanedUp = true));
+  assert.equal(othersInTown(), false);
   setSelfPresence({ scene: 'overworld', gx: 4, gy: 5, facing: 'up' });
   assert.equal(getSession().status, 'live');
   assert.equal(getSession().name, 'Ada');
@@ -57,6 +59,7 @@ test('a live session announces itself, tracks peers and carries chat both ways',
   await guest.send('all', { t: 'presence', name: 'Bo', scene: 'overworld', gx: 1, gy: 1, facing: 'down' });
   const withBo = await until((s) => s.peers.length === 1);
   assert.deepEqual(withBo.peers, [{ id: guest.selfId, name: 'Bo' }]);
+  assert.equal(othersInTown(), true);
   assert.equal(moves[0][0], guest.selfId);
 
   await guest.send('all', { t: 'chat', text: 'hello' });
@@ -71,6 +74,7 @@ test('a live session announces itself, tracks peers and carries chat both ways',
 
   guest.close();
   await until((s) => s.peers.length === 0);
+  assert.equal(othersInTown(), false);
   assert.deepEqual(moves.at(-1), [guest.selfId, null]);
 
   offMoves();
