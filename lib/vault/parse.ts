@@ -8,8 +8,7 @@ import {
   DEFAULT_WALL_COLOR,
   DEFAULT_ROOF_COLOR,
 } from '@/lib/houseCatalog';
-
-export const MAX_NOTES_PER_ROOM = 30;
+import { foldersOf } from '@/lib/vault/paths';
 
 const ROOT_ID = '.';
 const MAIN = 'Main';
@@ -213,29 +212,17 @@ export function makeLinkResolver(paths: string[]): LinkResolver {
   };
 }
 
-function splitRoom(id: string, name: string, notes: NoteRef[]): Room[] {
-  if (notes.length <= MAX_NOTES_PER_ROOM) return [{ id, name, notes }];
-  const parts = Math.ceil(notes.length / MAX_NOTES_PER_ROOM);
-  const size = Math.ceil(notes.length / parts);
-  const rooms: Room[] = [];
-  for (let i = 0; i < parts; i++) {
-    rooms.push({
-      id: `${id}#${i + 1}`,
-      name: `${name} (${i + 1} of ${parts})`,
-      notes: notes.slice(i * size, (i + 1) * size),
-    });
-  }
-  return rooms;
-}
-
 // Folder → world mapping:
 //   depth 1 folder -> Region, depth 2 -> House, depth 3+ -> Room (deeper flattens),
 //   loose .md at depth 2 -> room "Main"; loose .md above that -> house/region "Main".
-//   Rooms holding more than MAX_NOTES_PER_ROOM notes split into numbered rooms.
+//   Every house's rooms[0] is its entrance (id === house.id, "Main", the house folder's
+//   loose notes, possibly none). A depth-3 folder with no files at all is an empty room;
+//   one holding only non-notes (attachments) is not. Empty folders never make a house.
 export async function parseVault(
   name: string,
   paths: string[],
   readHead: (path: string) => Promise<string>,
+  folders: string[] = [],
 ): Promise<WorldModel> {
   const notePaths = paths.filter(isNotePath).sort(comparePaths);
   const heads = await mapLimit(notePaths, 16, async (p) => {
@@ -272,17 +259,24 @@ export async function parseVault(
     });
   });
 
+  const withFiles = new Set(foldersOf(paths));
+  for (const folder of folders) {
+    const segs = folder.split('/');
+    if (segs.length !== 3 || withFiles.has(folder) || segs.some((s) => s.startsWith('.'))) continue;
+    const house = regions.get(segs[0])?.houses.get(`${segs[0]}/${segs[1]}`);
+    if (house && !house.rooms.has(folder)) house.rooms.set(folder, { id: folder, name: segs[2], notes: [] });
+  }
+
   const world: WorldModel = { name, regions: [] };
   for (const r of regions.values()) {
     const houses: House[] = [];
     for (const h of r.houses.values()) {
-      const rooms: Room[] = [];
-      for (const rm of h.rooms.values()) {
-        for (const part of splitRoom(rm.id, rm.name, rm.notes)) {
-          const { pos } = layoutRoom(part.notes);
-          part.notes.forEach((n, i) => { n.gx = pos[i][0]; n.gy = pos[i][1]; });
-          rooms.push(part);
-        }
+      const entrance = h.rooms.get(h.id) ?? { id: h.id, name: MAIN, notes: [] };
+      const others = [...h.rooms.values()].filter((rm) => rm.id !== h.id).sort((a, b) => comparePaths(a.id, b.id));
+      const rooms: Room[] = [entrance, ...others];
+      for (const room of rooms) {
+        const { pos } = layoutRoom(room.notes);
+        room.notes.forEach((n, i) => { n.gx = pos[i][0]; n.gy = pos[i][1]; });
       }
       const variant = hash(h.name) % 5;
       houses.push({
