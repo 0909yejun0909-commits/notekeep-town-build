@@ -95,3 +95,17 @@ test('the entrance keeps the house look and starts large; other rooms start medi
   assert.equal(kitchen.floorFrame, hash('R/H/K') % FLOOR_FRAMES.length);
   assert.deepEqual(noteIds(kitchen), ['R/H/K/b.md', 'R/H/K/c.md']);
 });
+
+test('an untouched new room can be switched to any size', () => {
+  for (let i = 0; i < 40; i++) {
+    const room = { id: `R/H/Room ${i}`, name: `Room ${i}`, notes: i % 3 ? [note(`R/H/Room ${i}/n.md`)] : [] };
+    const house: House = {
+      id: 'R/H', name: 'H', gx: 0, gy: 0, variant: 0, material: 'wood', wallColor: 'base', roofColor: 'black',
+      rooms: [{ id: 'R/H', name: 'Main', notes: [] }, room],
+    };
+    const layout = computeDefaultLayout(house, room);
+    for (const size of ['small', 'medium', 'large'] as const) {
+      assert.equal(canResize(layout, CATALOG_BY_ID, size), true, `${room.id} -> ${size}`);
+    }
+  }
+});

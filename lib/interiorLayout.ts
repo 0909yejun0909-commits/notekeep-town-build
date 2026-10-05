@@ -117,13 +117,15 @@ export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
 
   const occupied = structuralOccupied(w, h);
   for (const cell of shelfOccupied(shelfGx, shelfGy)) occupied.add(cell);
+  // A new room's decor stays inside the small footprint, so it can be shrunk straight away.
+  const [fitW, fitH] = entrance ? [w, h] : ROOM_SIZES.small;
   const pending = [...room.notes];
   const placements: FurniturePlacement[] = [];
 
   for (const type of DECOR_TYPES) {
     const [fw, fh] = FOOTPRINT[type];
     const seed = hash(`${seedId}:${type}`);
-    const spot = pickSpot(w, fw, fh, occupied, seed, SHELF_GY + 2, h - 3);
+    const spot = pickSpot(fitW, fw, fh, occupied, seed, SHELF_GY + 2, fitH - 3);
     if (!spot) continue;
     const [dx, dy] = spot;
     const note = type === 'rug' ? undefined : pending.shift();
