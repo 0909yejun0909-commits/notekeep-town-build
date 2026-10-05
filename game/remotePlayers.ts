@@ -1,11 +1,10 @@
 import Phaser from 'phaser';
 import { getAnchorSource, setAnchorSource, type AvatarAnchor } from '@/game/anchors';
-import { tileToWorld, type Direction } from '@/game/gridMovement';
+import { stepMs, tileToWorld, type Direction } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import type { Presence, SceneId } from '@/lib/multiplayer/protocol';
 import { currentPresences, getSession, onPresence } from '@/lib/multiplayer/session';
 
-const STEP_MS = 150; // matches GridMovement's own tween
 const HEAD = 32; // world px from a sprite's feet to just above its head
 
 type Avatar = { sprite: Phaser.GameObjects.Sprite; undress: () => void; gx: number; gy: number; facing: Direction };
@@ -39,7 +38,9 @@ export function attachRemotePlayers(scene: Phaser.Scene, sceneId: SceneId, local
       return;
     }
 
-    const steps = Math.abs(p.gx - avatar.gx) + Math.abs(p.gy - avatar.gy);
+    const dx = p.gx - avatar.gx, dy = p.gy - avatar.gy;
+    // A diagonal is one step (GridMovement moves diagonally), not two.
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
     avatar.facing = p.facing;
     if (steps === 0) {
       animate(avatar.sprite, 'idle', p.facing);
@@ -60,7 +61,7 @@ export function attachRemotePlayers(scene: Phaser.Scene, sceneId: SceneId, local
       targets: avatar.sprite,
       x: target.x,
       y: target.y,
-      duration: STEP_MS,
+      duration: stepMs(dx, dy),
       onComplete: () => animate(avatar.sprite, 'idle', avatar.facing),
     });
   };
