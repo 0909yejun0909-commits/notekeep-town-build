@@ -33,6 +33,7 @@ export class GridMovement {
   private wasd: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
   private moving = false;
   private facing: Direction = 'down';
+  private stale: Set<Phaser.Input.Keyboard.Key> | null = null;
 
   constructor(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite, isWalkable: Walkable) {
     this.scene = scene;
@@ -68,14 +69,30 @@ export class GridMovement {
     return this.moving;
   }
 
+  // A key still held from before a scene restart only arrives as OS auto-repeats; ignore each
+  // one until it's pressed afresh, so walking out through one doorway can't carry you on
+  // through the next.
+  ignoreHeldKeys() {
+    const { left, right, up, down } = this.cursors;
+    this.stale = new Set([left, right, up, down, this.wasd.W, this.wasd.A, this.wasd.S, this.wasd.D]);
+  }
+
+  private held(key: Phaser.Input.Keyboard.Key): boolean {
+    if (this.stale?.has(key)) {
+      if (!key.isDown || (key.originalEvent as KeyboardEvent | undefined)?.repeat !== false) return false;
+      this.stale.delete(key);
+    }
+    return key.isDown;
+  }
+
   update() {
     if (this.moving || !this.enabled) return;
 
     let dir: Direction | null = null;
-    if (this.cursors.left.isDown || this.wasd.A.isDown) dir = 'left';
-    else if (this.cursors.right.isDown || this.wasd.D.isDown) dir = 'right';
-    else if (this.cursors.up.isDown || this.wasd.W.isDown) dir = 'up';
-    else if (this.cursors.down.isDown || this.wasd.S.isDown) dir = 'down';
+    if (this.held(this.cursors.left) || this.held(this.wasd.A)) dir = 'left';
+    else if (this.held(this.cursors.right) || this.held(this.wasd.D)) dir = 'right';
+    else if (this.held(this.cursors.up) || this.held(this.wasd.W)) dir = 'up';
+    else if (this.held(this.cursors.down) || this.held(this.wasd.S)) dir = 'down';
 
     if (!dir) return;
 

@@ -345,6 +345,9 @@ export default class InteriorScene extends Phaser.Scene {
     };
 
     this.movement = new GridMovement(this, this.player, isWalkable);
+    // Back from a room you're often still holding the key that walked you out, and a bottom-wall
+    // doorway is right behind you.
+    if (back) this.movement.ignoreHeldKeys();
     const sceneId = `house:${this.roomId}` as const;
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: sceneId, gx, gy, facing });
     setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: 'down' });
