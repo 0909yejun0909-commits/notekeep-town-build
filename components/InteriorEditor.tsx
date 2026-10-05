@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, canResize, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
 import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
@@ -161,12 +161,18 @@ export default function InteriorEditor() {
   // boundaries), so they read this instead.
   const layout = draft;
 
-  // The perimeter only — does NOT include the shelf's own footprint, since
-  // the shelf can move now. This is what marks a grid cell permanently
-  // unusable (disabled button); the shelf blocks furniture too, but that's
-  // handled by unioning in `shelfOccupied()` only where furniture placement
-  // is actually validated, not by disabling the underlying cell everywhere.
+  const doorsNeeded = session.doorsNeeded;
+  // Doorways to the house's other rooms and the tiles in front of them, recomputed from the
+  // draft so they shift live as the size, shelf or furniture change. Nothing may be placed
+  // on them, which keeps every door reachable.
+  const roomDoors = doorCells(doorSlots(layout, CATALOG_BY_ID, doorsNeeded));
+  const fitsDoors = (next: InteriorLayout) => doorSlots(next, CATALOG_BY_ID, doorsNeeded).length >= doorsNeeded;
+
+  // The perimeter and the doorways — cells nothing can ever occupy (disabled buttons). The
+  // shelf blocks furniture too, but it can move, so it's unioned in by `structuralWithShelf`
+  // only where furniture placement is validated.
   const structural = structuralOccupied(w, h);
+  for (const cell of roomDoors) structural.add(cell);
   const structuralWithShelf = new Set(structural);
   for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
 
@@ -221,11 +227,12 @@ export default function InteriorEditor() {
       }
       if (!draft) return;
       if (moving === 'shelf') {
-        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy)) {
+        const next = { ...draft, shelf: { gx, gy } };
+        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy) || !fitsDoors(next)) {
           setError("Doesn't fit there.");
           return;
         }
-        setDraft({ ...draft, shelf: { gx, gy } });
+        setDraft(next);
         setSelected('shelf');
         setMoving(null);
         return;
@@ -382,6 +389,10 @@ export default function InteriorEditor() {
                   setError("Something's in the way at that size — move furniture or the shelf, then try again.");
                   return;
                 }
+                if (!canResize(draft, CATALOG_BY_ID, size, doorsNeeded)) {
+                  setError("These doors won't fit at that size.");
+                  return;
+                }
                 setError(null);
                 setPicking(null);
                 setDraft({ ...draft, roomSize: size });
@@ -404,12 +415,13 @@ export default function InteriorEditor() {
                   const onShelf = isShelfCell(gx, gy);
                   const isStructural = structural.has(`${gx},${gy}`);
                   const isDoor = gx === doorGx && gy === doorGy;
+                  const isRoomDoor = roomDoors.has(`${gx},${gy}`);
                   return (
                     <button
                       key={`${gx},${gy}`}
                       className="border border-neutral-800 text-[8px]"
                       style={{
-                        background: isDoor
+                        background: isDoor || isRoomDoor
                           ? '#8a5a2a'
                           : isStructural
                             ? '#333'
@@ -429,7 +441,7 @@ export default function InteriorEditor() {
                         e.preventDefault();
                         onCellClick(gx, gy);
                       }}
-                      title={idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? 'Bookshelf' : ''}
+                      title={isRoomDoor ? 'Doorway' : idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? 'Bookshelf' : ''}
                     />
                   );
                 }),
