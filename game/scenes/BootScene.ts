@@ -22,6 +22,8 @@ export default class BootScene extends Phaser.Scene {
   }
 
   preload() {
+    // Phaser text keeps whatever font was ready when it was drawn; start the pixel font now.
+    void document.fonts?.load("9px 'CuteFantasy'");
     this.load.spritesheet('player', 'assets/character/base.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('farmer_bob', 'assets/npc/farmer_bob.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('bartender_katy', 'assets/npc/bartender_katy.png', { frameWidth: 64, frameHeight: 64 });

@@ -49,8 +49,16 @@ type PieceAction = {
 // A doorway in the entrance's wall to one of the house's other rooms.
 type Door = { slot: DoorSlot; roomId: string; name: string };
 
+// CuteFantasy has no ellipsis, so cut names end in two dots.
 function shorten(name: string, max: number): string {
-  return name.length <= max ? name : `${name.slice(0, max - 1)}…`;
+  return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
+}
+
+// In-room labels use the game's pixel font, boxed in the bookshelf's dark wood. Its glyphs sit
+// off the 9px grid, so they're drawn at the camera's 3x zoom (resolution) rather than scaled
+// up from 9px, which smears them.
+function labelStyle(color = '#f4e4c1'): Phaser.Types.GameObjects.Text.TextStyle {
+  return { fontFamily: 'CuteFantasy', fontSize: '9px', color, backgroundColor: '#3f2832', padding: { x: 2, y: 1 }, resolution: 3 };
 }
 
 export default class InteriorScene extends Phaser.Scene {
@@ -261,23 +269,13 @@ export default class InteriorScene extends Phaser.Scene {
     const labelCenterX = (w / 2) * TILE;
 
     this.add
-      .text(labelCenterX, 3, this.isEntrance ? `${house.name} · ${noteCount}` : `${house.name} / ${room.name} · ${room.notes.length}`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-      })
+      .text(labelCenterX, 2, this.isEntrance ? `${house.name} (${noteCount})` : `${house.name} / ${room.name} (${room.notes.length})`, labelStyle())
       .setOrigin(0.5, 0)
       .setDepth(6);
 
     if (this.game.registry.get('role') !== 'guest') {
       this.add
-        .text(labelCenterX, 13, 'CUSTOMIZE', {
-          fontFamily: 'monospace',
-          fontSize: '8px',
-          color: '#ffe066',
-          backgroundColor: '#000000',
-        })
+        .text(labelCenterX, 15, 'CUSTOMIZE', labelStyle('#ffe066'))
         .setOrigin(0.5, 0)
         .setDepth(6)
         .setInteractive({ useHandCursor: true })
@@ -292,12 +290,7 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     this.add
-      .text(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffffff',
-        backgroundColor: '#000000',
-      })
+      .text(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', labelStyle())
       .setOrigin(0.5, 1)
       .setDepth(6);
 
@@ -328,13 +321,13 @@ export default class InteriorScene extends Phaser.Scene {
     attachRemotePlayers(this, sceneId, this.player);
 
     this.indicator = this.add
-      .text(0, 0, '!', { fontFamily: 'monospace', fontSize: '14px', color: '#ffe066' })
+      .text(0, 0, '!', { fontFamily: 'CuteFantasy', fontSize: '18px', color: '#ffe066', resolution: 3 })
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setVisible(false);
 
     this.doorHint = this.add
-      .text(0, 0, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff', backgroundColor: '#000000' })
+      .text(0, 0, '', labelStyle())
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setVisible(false);
@@ -407,11 +400,11 @@ export default class InteriorScene extends Phaser.Scene {
   private drawDoorLabel(door: Door) {
     const { gx, gy, side } = door.slot;
     const text = shorten(door.name, side === 'top' || side === 'bottom' ? 6 : 10);
-    const style = { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff', backgroundColor: '#000000' };
+    const style = labelStyle();
     const cx = gx * TILE + TILE / 2;
     const cy = gy * TILE + TILE / 2;
     const label =
-      side === 'top' ? this.add.text(cx, 3, text, style).setOrigin(0.5, 0)
+      side === 'top' ? this.add.text(cx, 2, text, style).setOrigin(0.5, 0)
       : side === 'bottom' ? this.add.text(cx, (gy + 1) * TILE - 2, text, style).setOrigin(0.5, 1)
       : side === 'left' ? this.add.text(TILE + 2, cy, text, style).setOrigin(0, 0.5)
       : this.add.text(gx * TILE - 2, cy, text, style).setOrigin(1, 0.5);
