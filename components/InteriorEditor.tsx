@@ -8,6 +8,8 @@ import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, structuralOcc
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
 import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
+import { useSession } from '@/lib/multiplayer/session';
+import { replaceWorld, useVault } from '@/lib/vault/open';
 import Coin from './Coin';
 
 const SHELF_SHEET_URL = furnitureSheetUrl(SHELF_SHEET);
@@ -19,7 +21,9 @@ const TIER_COLOR: Record<CatalogTier, string> = {
   treasure: '#fbbf24',
 };
 
-type Session = { houseId: string; roomId: string; doorsNeeded: number };
+type Session = { houseId: string; roomId: string; doorsNeeded: number; roomNames: string[]; canAddRooms: boolean };
+
+const CROWDED = "You can't add rooms while friends are in your town.";
 // A selection/move target is either one furniture placement (its index) or
 // the shelf, which isn't part of `placements` — it's always present, always
 // the same style, only its position is editable.
@@ -104,6 +108,14 @@ export default function InteriorEditor() {
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
   const [tab, setTab] = useState<CatalogGroupId>('living');
+  const { vault, setVault } = useVault();
+  const study = useSession();
+  // Rooms made during this edit: they exist on disk already, so their doorways join the draft.
+  const [added, setAdded] = useState<string[]>([]);
+  const [naming, setNaming] = useState(false);
+  const [roomName, setRoomName] = useState('');
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const [creatingRoom, setCreatingRoom] = useState(false);
 
   useEffect(() => {
     const onOpen = (payload: Session & { layout: InteriorLayout }) => {
@@ -115,6 +127,9 @@ export default function InteriorEditor() {
       setPicking(null);
       setError(null);
       setMoving(null);
+      setAdded([]);
+      setNaming(false);
+      setRoomError(null);
     };
     bus.on('open-interior-editor', onOpen);
     return () => bus.off('open-interior-editor', onOpen);
@@ -126,6 +141,10 @@ export default function InteriorEditor() {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.stopPropagation();
+        if (naming) {
+          setNaming(false);
+          return;
+        }
         if (moving !== null) {
           setMoving(null);
           return;
@@ -135,7 +154,7 @@ export default function InteriorEditor() {
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [session, moving]);
+  }, [session, moving, naming]);
 
   function close() {
     setSession(null);
@@ -161,7 +180,7 @@ export default function InteriorEditor() {
   // boundaries), so they read this instead.
   const layout = draft;
 
-  const doorsNeeded = session.doorsNeeded;
+  const doorsNeeded = session.doorsNeeded + added.length;
   // Doorways to the house's other rooms and the tiles in front of them, recomputed from the
   // draft so they shift live as the size, shelf or furniture change. Nothing may be placed
   // on them, which keeps every door reachable.
@@ -175,6 +194,35 @@ export default function InteriorEditor() {
   for (const cell of roomDoors) structural.add(cell);
   const structuralWithShelf = new Set(structural);
   for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
+
+  const crowded = study.status === 'live' && study.peers.length > 0;
+  const addBlocked = crowded
+    ? CROWDED
+    : doorSlots(layout, CATALOG_BY_ID, doorsNeeded + 1).length <= doorsNeeded
+      ? 'Make the room bigger or clear a wall to fit another door.'
+      : null;
+
+  async function addRoom() {
+    if (!session || !vault?.createRoom || creatingRoom) return;
+    // Someone may have joined while the name was being typed.
+    if (study.status === 'live' && study.peers.length > 0) {
+      setRoomError(CROWDED);
+      return;
+    }
+    setCreatingRoom(true);
+    setRoomError(null);
+    try {
+      const { world, room } = await vault.createRoom(session.houseId, roomName);
+      setVault({ ...vault, world });
+      replaceWorld(world);
+      setAdded((a) => [...a, room.name]);
+      setNaming(false);
+    } catch (err) {
+      setRoomError(err instanceof Error ? err.message : 'Could not add the room.');
+    } finally {
+      setCreatingRoom(false);
+    }
+  }
 
   function owned(item: CatalogItemId): number {
     return available(wallet.inventory, saved, layout.placements, item);
@@ -402,6 +450,56 @@ export default function InteriorEditor() {
             </button>
           ))}
         </div>
+        {session.canAddRooms && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase text-neutral-400">Rooms</span>
+            {[...session.roomNames, ...added].map((name) => (
+              <span key={name} className="rounded border border-neutral-700 px-2 py-1 text-xs">{name}</span>
+            ))}
+            {naming ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void addRoom();
+                }}
+              >
+                <input
+                  autoFocus
+                  className="rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-xs"
+                  value={roomName}
+                  maxLength={60}
+                  placeholder="Room name"
+                  spellCheck={false}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  // Keep typed keys away from Phaser's window listeners.
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onKeyUp={(e) => e.stopPropagation()}
+                />
+                <button type="submit" className="rounded border border-neutral-600 px-2 py-1 text-xs" disabled={creatingRoom || !roomName.trim()}>
+                  {creatingRoom ? 'Creating…' : 'Create'}
+                </button>
+                <button type="button" className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={() => setNaming(false)}>
+                  Never mind
+                </button>
+              </form>
+            ) : (
+              <button
+                className="rounded border border-neutral-600 px-2 py-1 text-xs disabled:opacity-40"
+                disabled={!!addBlocked}
+                title={addBlocked ?? 'Makes a new folder in this house'}
+                onClick={() => {
+                  setRoomName('');
+                  setRoomError(null);
+                  setNaming(true);
+                }}
+              >
+                + Add room
+              </button>
+            )}
+            {(roomError || addBlocked) && <span className="text-xs text-red-400">{roomError ?? addBlocked}</span>}
+          </div>
+        )}
 
         <div className="flex items-start gap-4">
           <div className="flex flex-col gap-2">

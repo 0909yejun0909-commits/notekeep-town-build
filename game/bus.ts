@@ -14,9 +14,15 @@ type BusEvents = {
   'close-wardrobe': undefined;
   'open-bed-menu': { note: NoteRef };
   'bed-menu-choice': { choice: 'read' | 'lie' | 'cancel' };
-  'open-room-namer': { houseId: string; houseName: string; blocked: boolean };
-  'close-room-namer': { roomId?: string };
-  'open-interior-editor': { houseId: string; roomId: string; layout: InteriorLayout; doorsNeeded: number };
+  'open-interior-editor': {
+    houseId: string;
+    roomId: string;
+    layout: InteriorLayout;
+    doorsNeeded: number;
+    // The entrance's doorways, by room name; empty in other rooms.
+    roomNames: string[];
+    canAddRooms: boolean;
+  };
   'close-interior-editor': undefined;
   'commit-interior-layout': { roomId: string; layout: InteriorLayout };
   'open-exterior-editor': {
