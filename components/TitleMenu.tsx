@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import styles from './TitleMenu.module.css';
 import pixel from './pixelUi.module.css';
 import CharacterCreator from './CharacterCreator';
+import TitleFrame from './TitleFrame';
 import { openDemoVault, openVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
 import type { VaultHandle } from '@/lib/types';
@@ -65,44 +66,38 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
   });
 
   return (
-    <div className={styles.screen}>
-      <header className={styles.header}>
-        <h1 className={pixel.ribbon}>Notekeep Town</h1>
-        <p className={`${pixel.outlined} ${styles.subtitle}`}>Your notes, as a town you can walk around</p>
-      </header>
-
-      <div className={styles.stage}>
-        {view === 'menu' ? (
-          <div className={pixel.parchment}>
-            <ul role="menu" className={styles.menu}>
-              {ITEMS.map(([choice, label], i) => (
-                <li key={choice} role="none">
-                  <button
-                    role="menuitem"
-                    className={`${styles.item} ${i === cursor ? styles.current : ''}`}
-                    disabled={busy}
-                    onMouseEnter={() => setCursor(i)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => choose(choice)}
-                  >
-                    <span className={`${pixel.cursor} ${i === cursor && !busy ? '' : pixel.cursorIdle}`} />
-                    {label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {status && <p className={styles.status}>{status}</p>}
-          </div>
-        ) : (
-          <CharacterCreator onDone={closeHero} />
-        )}
-
-        <p className={`${pixel.outlined} ${styles.hint}`}>
-          {view === 'menu'
-            ? 'Arrow keys to choose, Enter to select'
-            : 'Up/Down picks a row, Left/Right changes it, Enter when done'}
-        </p>
-      </div>
-    </div>
+    <TitleFrame
+      subtitle="Your notes, as a town you can walk around"
+      hint={
+        view === 'menu'
+          ? 'Arrow keys to choose, Enter to select'
+          : 'Up/Down picks a row, Left/Right changes it, Enter when done'
+      }
+    >
+      {view === 'menu' ? (
+        <div className={pixel.parchment}>
+          <ul role="menu" className={styles.menu}>
+            {ITEMS.map(([choice, label], i) => (
+              <li key={choice} role="none">
+                <button
+                  role="menuitem"
+                  className={`${pixel.item} ${i === cursor ? pixel.current : ''}`}
+                  disabled={busy}
+                  onMouseEnter={() => setCursor(i)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => choose(choice)}
+                >
+                  <span className={`${pixel.cursor} ${i === cursor && !busy ? '' : pixel.cursorIdle}`} />
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {status && <p className={styles.status}>{status}</p>}
+        </div>
+      ) : (
+        <CharacterCreator onDone={closeHero} />
+      )}
+    </TitleFrame>
   );
 }

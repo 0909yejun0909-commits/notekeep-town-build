@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import styles from './JoinScreen.module.css';
+import pixel from './pixelUi.module.css';
+import TitleFrame from './TitleFrame';
 import { JoinError, joinRoom, type Invite } from '@/lib/multiplayer/guest';
 import { MAX_NAME } from '@/lib/multiplayer/protocol';
 import { END_MESSAGES, loadName, saveName } from '@/lib/multiplayer/session';
@@ -11,7 +14,10 @@ export default function JoinScreen({ invite, onVault }: { invite: Invite; onVaul
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which action the cursor points at: Join (what Enter does) or the optional vault pick.
+  const [cursor, setCursor] = useState<'join' | 'pick'>('join');
   const canPick = 'showDirectoryPicker' in window;
+  const canJoin = !busy && name.trim() !== '';
 
   const pick = async () => {
     try {
@@ -33,17 +39,20 @@ export default function JoinScreen({ invite, onVault }: { invite: Invite; onVaul
     }
   };
 
+  const cursorClass = (at: 'join' | 'pick') => `${pixel.cursor} ${cursor === at && !busy ? '' : pixel.cursorIdle}`;
+
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40">
+    <TitleFrame subtitle="You've been invited to study together" hint="Type your name, then press Enter to join">
       <form
-        className="flex w-80 flex-col gap-3 rounded bg-black/85 p-6 text-white"
+        className={`${pixel.parchment} ${styles.form}`}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!busy && name.trim()) join();
+          if (canJoin) join();
         }}
       >
-        <h2 className="text-lg font-semibold">Join a study session</h2>
-        <label className="flex flex-col gap-1 text-sm">
+        <h2 className={styles.heading}>Join a study session</h2>
+
+        <label className={styles.label}>
           Your name
           <input
             autoFocus
@@ -51,23 +60,40 @@ export default function JoinScreen({ invite, onVault }: { invite: Invite; onVaul
             maxLength={MAX_NAME}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
-            className="rounded bg-white px-2 py-1 text-black"
+            onFocus={() => setCursor('join')}
+            className={pixel.field}
           />
         </label>
-        {canPick && (
-          <button type="button" onClick={pick} className="rounded border border-white/60 px-3 py-2 text-left text-sm">
-            {dir ? `Reading notes from your copy: ${dir.name}` : 'I have this vault too (optional)'}
+
+        <div className={styles.actions}>
+          <button
+            type="submit"
+            disabled={!canJoin}
+            className={`${pixel.item} ${cursor === 'join' ? pixel.current : ''}`}
+            onMouseEnter={() => setCursor('join')}
+            onFocus={() => setCursor('join')}
+          >
+            <span className={cursorClass('join')} />
+            {busy ? 'Joining...' : 'Join'}
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={busy || !name.trim()}
-          className="rounded bg-white px-6 py-3 font-medium text-black disabled:opacity-50"
-        >
-          {busy ? 'Joining…' : 'Join'}
-        </button>
-        {error && <p className="text-sm text-red-300">{error}</p>}
+          {canPick && (
+            <button
+              type="button"
+              disabled={busy}
+              className={`${pixel.item} ${styles.pick} ${cursor === 'pick' ? pixel.current : ''}`}
+              onMouseEnter={() => setCursor('pick')}
+              onMouseLeave={() => setCursor('join')}
+              onFocus={() => setCursor('pick')}
+              onClick={pick}
+            >
+              <span className={cursorClass('pick')} />
+              {dir ? `Reading notes from your copy: ${dir.name}` : 'I have this vault too (optional)'}
+            </button>
+          )}
+        </div>
+
+        {error && <p className={styles.error}>{error}</p>}
       </form>
-    </div>
+    </TitleFrame>
   );
 }

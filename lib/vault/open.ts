@@ -1,11 +1,12 @@
 'use client';
 
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
-import type { InteriorLayout, VaultHandle, WorldModel } from '@/lib/types';
-import { makeLinkResolver, parseVault } from '@/lib/vault/parse';
+import type { InteriorLayout, NoteRef, VaultHandle, WorldModel } from '@/lib/types';
+import { isNotePath, makeLinkResolver, parseVault } from '@/lib/vault/parse';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
+import { startWallet, stopWallet } from '@/lib/walletStore';
 
 const HEAD_BYTES = 2048;
 
@@ -18,6 +19,7 @@ export function publishWorld(
     const game = (window as any).__game;
     if (!game?.registry) return false;
     if (guest) {
+      stopWallet();
       // No fingerprint: a guest's own saved customizations must never repaint the host's town.
       game.registry.set('role', 'guest');
       game.registry.set('sessionLayouts', guest.layouts);
@@ -36,6 +38,49 @@ export function publishWorld(
   };
   if (attempt()) return;
   const timer = setInterval(() => { if (attempt()) clearInterval(timer); }, 100);
+}
+
+// For a world re-parsed mid-session (a note was added). Scenes read it the next time they
+// start; exterior overrides are re-applied by OverworldScene.create() as usual.
+export function replaceWorld(world: WorldModel) {
+  (window as any).__game?.registry.set('world', world);
+}
+
+const BAD_TITLE_CHARS = /[\\/:*?"<>|#^[\]]/g;
+
+function newNotePath(folder: string, title: string, paths: string[]): string {
+  const clean = title.replace(BAD_TITLE_CHARS, '').trim();
+  if (!clean || clean.startsWith('.')) throw new Error('Give the note a name.');
+  if (clean.length > 120) throw new Error('That name is too long.');
+  const path = folder ? `${folder}/${clean}.md` : `${clean}.md`;
+  const lower = path.toLowerCase();
+  if (paths.some((p) => p.toLowerCase() === lower)) throw new Error(`"${clean}" is already on this shelf.`);
+  return path;
+}
+
+function findNote(world: WorldModel, id: string): NoteRef {
+  for (const region of world.regions) {
+    for (const house of region.houses) {
+      for (const room of house.rooms) {
+        const note = room.notes.find((n) => n.id === id);
+        if (note) return note;
+      }
+    }
+  }
+  throw new Error('The new note did not make it into the town.');
+}
+
+type PermissionHandle = FileSystemHandle & {
+  queryPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>;
+  requestPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>;
+};
+
+async function ensureWritable(handle: FileSystemHandle) {
+  const h = handle as PermissionHandle;
+  if (h.queryPermission && (await h.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+    const state = await h.requestPermission?.({ mode: 'readwrite' });
+    if (state !== 'granted') throw new Error('Write permission denied');
+  }
 }
 
 export async function walk(
@@ -80,7 +125,7 @@ export async function openVault(): Promise<VaultHandle | null> {
   const files = new Map<string, FileSystemFileHandle>();
   await walk(dir, '', files);
   const paths = [...files.keys()];
-  const resolve = makeLinkResolver(paths);
+  let resolve = makeLinkResolver(paths);
 
   // Accepts a vault path or an Obsidian link target ("Note", "Note#Heading|alias", "img.png").
   const getHandle = (link: string) => {
@@ -91,10 +136,15 @@ export async function openVault(): Promise<VaultHandle | null> {
   };
   const getFile = (link: string) => getHandle(link).getFile();
 
-  const world = await parseVault(dir.name, paths, async (p) =>
-    (await getFile(p)).slice(0, HEAD_BYTES).text(),
-  );
+  // Kept so a note added later re-parses the town without re-reading every file.
+  const heads = new Map<string, string>();
+  const world = await parseVault(dir.name, paths, async (p) => {
+    const head = await (await getFile(p)).slice(0, HEAD_BYTES).text();
+    heads.set(p, head);
+    return head;
+  });
   const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
+  startWallet(dir.name, true, heads);
   publishWorld(world, vaultFingerprint(dir.name, houseIds));
 
   return {
@@ -102,17 +152,26 @@ export async function openVault(): Promise<VaultHandle | null> {
     readNote: async (id) => (await getFile(id)).text(),
     readBinary: (path) => getFile(path),
     writeNote: async (id, content) => {
-      const handle = getHandle(id) as FileSystemFileHandle & {
-        queryPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>;
-        requestPermission?: (o: { mode: 'readwrite' }) => Promise<PermissionState>;
-      };
-      if (handle.queryPermission && (await handle.queryPermission({ mode: 'readwrite' })) !== 'granted') {
-        const state = await handle.requestPermission?.({ mode: 'readwrite' });
-        if (state !== 'granted') throw new Error('Write permission denied');
-      }
+      const handle = getHandle(id);
+      await ensureWritable(handle);
       const writable = await handle.createWritable();
       await writable.write(content);
       await writable.close();
+      const path = resolve(id);
+      if (path) heads.set(path, content.slice(0, HEAD_BYTES));
+    },
+    createNote: async (folder, title) => {
+      const path = newNotePath(folder, title, paths);
+      await ensureWritable(dir);
+      let target = dir;
+      for (const seg of folder.split('/').filter(Boolean)) target = await target.getDirectoryHandle(seg);
+      const handle = await target.getFileHandle(path.slice(path.lastIndexOf('/') + 1), { create: true });
+      files.set(path, handle);
+      paths.push(path);
+      resolve = makeLinkResolver(paths);
+      heads.set(path, '');
+      const next = await parseVault(dir.name, paths, async (p) => heads.get(p) ?? '');
+      return { world: next, note: findNote(next, path) };
     },
   };
 }
@@ -121,7 +180,7 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   // Own copy so edits made in the book stick for this session without touching the module constant.
   const files: Record<string, string> = { ...DEMO_FILES };
   const paths = Object.keys(files);
-  const resolve = makeLinkResolver(paths);
+  let resolve = makeLinkResolver(paths);
   const getPath = (link: string) => {
     const path = resolve(link);
     if (!path || files[path] === undefined) throw new Error(`No such file in vault: ${link}`);
@@ -129,8 +188,10 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   };
   const getText = (link: string) => files[getPath(link)];
 
-  const world = await parseVault(DEMO_VAULT_NAME, paths, async (p) => getText(p).slice(0, HEAD_BYTES));
+  const head = async (p: string) => getText(p).slice(0, HEAD_BYTES);
+  const world = await parseVault(DEMO_VAULT_NAME, paths, head);
   const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
+  startWallet(DEMO_VAULT_NAME, false, new Map(paths.filter(isNotePath).map((p) => [p, files[p]])));
   publishWorld(world, vaultFingerprint(DEMO_VAULT_NAME, houseIds));
 
   return {
@@ -139,6 +200,14 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
     readBinary: async (path) => new Blob([getText(path)], { type: 'text/markdown' }),
     writeNote: async (id, content) => {
       files[getPath(id)] = content;
+    },
+    createNote: async (folder, title) => {
+      const path = newNotePath(folder, title, paths);
+      files[path] = '';
+      paths.push(path);
+      resolve = makeLinkResolver(paths);
+      const next = await parseVault(DEMO_VAULT_NAME, paths, head);
+      return { world: next, note: findNote(next, path) };
     },
   };
 }

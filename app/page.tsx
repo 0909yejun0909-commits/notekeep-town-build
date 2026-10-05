@@ -12,6 +12,9 @@ import RoomPanel from '@/components/RoomPanel';
 import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
 import PlayerTags from '@/components/PlayerTags';
+import CoinPurse from '@/components/CoinPurse';
+import Wardrobe from '@/components/Wardrobe';
+import BedMenu from '@/components/BedMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
 import { bus } from '@/game/bus';
@@ -61,6 +64,9 @@ function Game() {
       <PlayerTags />
       <ChatPanel />
       <RoomPanel />
+      <CoinPurse />
+      <Wardrobe />
+      <BedMenu />
       <BiomePicker />
       <MissingArtBanner />
 

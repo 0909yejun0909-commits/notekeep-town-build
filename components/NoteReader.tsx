@@ -7,6 +7,8 @@ import { safeUrl } from '@/lib/safeUrl';
 import type { NoteRef, VaultHandle } from '@/lib/types';
 import { useVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
+import { noteProgress, noteSaved } from '@/lib/walletStore';
+import Coin from './Coin';
 
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'mov'];
 
@@ -257,7 +259,15 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         if (cancelled) return;
         setRaw(text);
         await display(text, () => cancelled);
-        if (!cancelled) setStatus('idle');
+        if (cancelled) return;
+        setStatus('idle');
+        // A blank page (a note just added from the bookshelf) opens ready to write in.
+        if (text.trim() === '' && vault.writeNote) {
+          setDraft(text);
+          setEditing(true);
+          editingRef.current = true;
+          requestAnimationFrame(() => textareaRef.current?.focus());
+        }
       } catch (err) {
         if (cancelled) return;
         setErrorText(err instanceof Error && err.cause === 'host' ? err.message : null);
@@ -301,6 +311,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     setSaveError(null);
     try {
       await vault.writeNote(note.id, draft);
+      noteSaved(note.id, draft, note.title);
       setRaw(draft);
       await display(draft, () => false);
       setSaveState('saved');
@@ -359,6 +370,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   };
 
   if (!note) return <style>{READER_CSS}</style>;
+
+  const progress = editing && canWrite ? noteProgress(note.id, draft) : null;
 
   const stopKeys = (e: React.KeyboardEvent) => {
     // Keep Phaser's window-level key handlers (WASD, arrows, Space) from eating keystrokes.
@@ -492,7 +505,15 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                         ? 'Editing · ⌘S / Ctrl+S to save · Esc to cancel'
                         : 'Read-only vault · changes cannot be saved'}
                 </span>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {progress && (
+                    <span className="note-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
+                      <Coin size={10} />
+                      {progress.words >= progress.needed
+                        ? `Save to earn +${progress.reward}`
+                        : `${progress.words}/${progress.needed} words for +${progress.reward}`}
+                    </span>
+                  )}
                   <button className="note-btn" onClick={cancelEdit}>
                     Cancel
                   </button>
