@@ -11,6 +11,7 @@ import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
 import { useSession } from '@/lib/multiplayer/session';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import Coin from './Coin';
+import styles from './InteriorEditor.module.css';
 
 const SHELF_SHEET_URL = furnitureSheetUrl(SHELF_SHEET);
 
@@ -76,21 +77,19 @@ function ShopTile({ entry, owned, balance, disabled, onClick }: {
     <button
       title={title}
       disabled={disabled}
-      className={`flex flex-col items-center rounded border border-neutral-700 bg-neutral-800 p-0.5 text-[10px] leading-3 enabled:hover:border-yellow-400 disabled:opacity-30 ${
-        short ? 'opacity-50' : ''
-      }`}
-      style={{ borderBottomColor: TIER_COLOR[entry.tier], borderBottomWidth: 2 }}
+      className={`${styles.tile} ${short ? styles.short : ''}`}
+      style={{ borderBottomColor: TIER_COLOR[entry.tier] }}
       onClick={onClick}
     >
       <Thumb entry={entry} />
       {owned !== null &&
         (forSale ? (
-          <span className={`flex items-center gap-0.5 ${short ? 'text-red-400' : 'text-yellow-300'}`}>
+          <span className={`${styles.price} ${short ? styles.priceShort : ''}`}>
             <Coin size={8} />
             {price}
           </span>
         ) : (
-          <span className="text-emerald-300">×{owned}</span>
+          <span className={styles.owned}>x{owned}</span>
         ))}
     </button>
   );
@@ -365,39 +364,39 @@ export default function InteriorEditor() {
 
   return (
     <div
-      className="absolute inset-0 z-50 flex items-center justify-center bg-black/70"
+      className={styles.screen}
       onClick={close}
     >
       <div
-        className="flex max-h-[90vh] flex-col gap-3 rounded bg-neutral-900 p-4 text-white"
+        className={styles.panel}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-4">
-          <span className="flex items-center gap-3 text-sm uppercase tracking-wide text-neutral-300">
-            Customize interior
+        <div className={styles.header}>
+          <span className={styles.title}>
+            Customize
             {wallet.active && (
-              <span className="flex items-center gap-1 text-base text-yellow-300" title="Your coins">
+              <span className={styles.coins} title="Your coins">
                 <Coin size={16} />
                 {wallet.balance}
               </span>
             )}
           </span>
           <div className="flex gap-2">
-            <button className="rounded border border-white px-3 py-1 text-sm" onClick={close}>
+            <button className={styles.btn} onClick={close}>
               Cancel
             </button>
-            <button className="rounded bg-white px-3 py-1 text-sm text-black" onClick={save}>
+            <button className={`${styles.btn} ${styles.primary}`} onClick={save}>
               Save
             </button>
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <span className="text-xs uppercase text-neutral-400">Floor</span>
+        <div className={styles.row}>
+          <span className={styles.label}>Floor</span>
           {FLOOR_FRAMES.map((frame, i) => (
             <button
               key={frame}
-              className={`h-6 w-6 border ${draft.floorFrame === i ? 'border-yellow-400' : 'border-neutral-600'}`}
+              className={`${styles.swatch} ${draft.floorFrame === i ? styles.swatchOn : ''}`}
               style={{
                 // floor.png is 128x128, 8 cols x 8 rows of 16px tiles (docs/ASSETS.md).
                 backgroundImage: "url('/assets/interior/floor.png')",
@@ -408,12 +407,12 @@ export default function InteriorEditor() {
             />
           ))}
         </div>
-        <div className="flex gap-2">
-          <span className="text-xs uppercase text-neutral-400">Wallpaper</span>
+        <div className={styles.row}>
+          <span className={styles.label}>Wallpaper</span>
           {WALL_TRIPLES.map((triple, i) => (
             <button
               key={i}
-              className={`h-6 w-6 border ${draft.wallTriple === i ? 'border-yellow-400' : 'border-neutral-600'}`}
+              className={`${styles.swatch} ${draft.wallTriple === i ? styles.swatchOn : ''}`}
               style={{
                 // walls.png is 224x96, 14 cols x 6 rows of 16px tiles (docs/ASSETS.md).
                 backgroundImage: "url('/assets/interior/walls.png')",
@@ -424,14 +423,12 @@ export default function InteriorEditor() {
             />
           ))}
         </div>
-        <div className="flex gap-2">
-          <span className="text-xs uppercase text-neutral-400">Room Size</span>
+        <div className={styles.row}>
+          <span className={styles.label}>Room size</span>
           {(['small', 'medium', 'large'] as const).map((size) => (
             <button
               key={size}
-              className={`rounded border px-2 py-1 text-xs capitalize ${
-                draft.roomSize === size ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'
-              }`}
+              className={`${styles.btn} ${draft.roomSize === size ? styles.on : ''}`}
               onClick={() => {
                 if (!canResize(draft, CATALOG_BY_ID, size)) {
                   setError("Something's in the way at that size — move furniture or the shelf, then try again.");
@@ -446,19 +443,19 @@ export default function InteriorEditor() {
                 setDraft({ ...draft, roomSize: size });
               }}
             >
-              {size}
+              {size[0].toUpperCase() + size.slice(1)}
             </button>
           ))}
         </div>
         {session.canAddRooms && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase text-neutral-400">Rooms</span>
+          <div className={styles.row}>
+            <span className={styles.label}>Rooms</span>
             {[...session.roomNames, ...added].map((name) => (
-              <span key={name} className="rounded border border-neutral-700 px-2 py-1 text-xs">{name}</span>
+              <span key={name} className={styles.chip}>{name}</span>
             ))}
             {naming ? (
               <form
-                className="flex items-center gap-2"
+                className={styles.row}
                 onSubmit={(e) => {
                   e.preventDefault();
                   void addRoom();
@@ -466,7 +463,7 @@ export default function InteriorEditor() {
               >
                 <input
                   autoFocus
-                  className="rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-xs"
+                  className={styles.input}
                   value={roomName}
                   maxLength={60}
                   placeholder="Room name"
@@ -476,16 +473,16 @@ export default function InteriorEditor() {
                   onKeyDown={(e) => e.stopPropagation()}
                   onKeyUp={(e) => e.stopPropagation()}
                 />
-                <button type="submit" className="rounded border border-neutral-600 px-2 py-1 text-xs" disabled={creatingRoom || !roomName.trim()}>
+                <button type="submit" className={`${styles.btn} ${styles.primary}`} disabled={creatingRoom || !roomName.trim()}>
                   {creatingRoom ? 'Creating…' : 'Create'}
                 </button>
-                <button type="button" className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={() => setNaming(false)}>
+                <button type="button" className={styles.btn} onClick={() => setNaming(false)}>
                   Never mind
                 </button>
               </form>
             ) : (
               <button
-                className="rounded border border-neutral-600 px-2 py-1 text-xs disabled:opacity-40"
+                className={styles.btn}
                 disabled={!!addBlocked}
                 title={addBlocked ?? 'Makes a new folder in this house'}
                 onClick={() => {
@@ -497,14 +494,14 @@ export default function InteriorEditor() {
                 + Add room
               </button>
             )}
-            {(roomError || addBlocked) && <span className="text-xs text-red-400">{roomError ?? addBlocked}</span>}
+            {(roomError || addBlocked) && <span className={styles.error}>{roomError ?? addBlocked}</span>}
           </div>
         )}
 
         <div className="flex items-start gap-4">
           <div className="flex flex-col gap-2">
             <div
-              className="relative grid border border-neutral-700"
+              className={styles.grid}
               style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
             >
               {Array.from({ length: h }).map((_, gy) =>
@@ -517,15 +514,15 @@ export default function InteriorEditor() {
                   return (
                     <button
                       key={`${gx},${gy}`}
-                      className="border border-neutral-800 text-[8px]"
+                      className={styles.cell}
                       style={{
                         background: isDoor || isRoomDoor
                           ? '#8a5a2a'
                           : isStructural
-                            ? '#333'
+                            ? '#3f2832'
                             : idx !== null || onShelf
                               ? '#5a7a5a'
-                              : '#1a1a1a',
+                              : '#2a1c20',
                         cursor: isStructural ? 'default' : 'pointer',
                       }}
                       disabled={isStructural}
@@ -639,28 +636,28 @@ export default function InteriorEditor() {
               ))}
             </div>
 
-            {error && <span className="text-xs text-red-400">{error}</span>}
-            {moving !== null && <span className="text-xs text-yellow-400">Drag it, or click a cell to move it there.</span>}
+            {error && <span className={styles.error}>{error}</span>}
+            {moving !== null && <span className={styles.note}>Drag it, or click a cell to move it there.</span>}
           </div>
 
-          <div className="flex w-[436px] flex-col gap-3">
+          <div className={styles.side}>
             {picking && (
               <>
-                <span className="text-xs uppercase text-neutral-400">
+                <span className={styles.small}>
                   {wallet.active ? 'Place from your inventory, or buy something new' : 'Place'}
                 </span>
-                <div className="flex flex-wrap gap-1">
+                <div className={styles.row}>
                   {CATALOG_GROUPS.map((g) => (
                     <button
                       key={g.id}
-                      className={`rounded border px-2 py-1 text-xs ${tab === g.id ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                      className={`${styles.btn} ${tab === g.id ? styles.on : ''}`}
                       onClick={() => setTab(g.id)}
                     >
                       {g.label}
                     </button>
                   ))}
                 </div>
-                <div className="flex max-h-[50vh] flex-wrap content-start gap-1 overflow-y-auto pr-1">
+                <div className={styles.shelf}>
                   {CATALOG_BY_GROUP[tab].map((entry) => (
                     <ShopTile
                       key={entry.id}
@@ -677,25 +674,25 @@ export default function InteriorEditor() {
 
             {selectedPlacement && (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs uppercase text-neutral-400">Selected: {nameOf(selectedPlacement.item)}</span>
-                  <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={rotateSelected}>
+                <div className={styles.row}>
+                  <span className={styles.small}>Selected: {nameOf(selectedPlacement.item)}</span>
+                  <button className={styles.btn} onClick={rotateSelected}>
                     Rotate
                   </button>
                   <button
-                    className={`rounded border px-2 py-1 text-xs ${moving === selected ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                    className={`${styles.btn} ${moving === selected ? styles.on : ''}`}
                     onClick={toggleMove}
                   >
                     {moving === selected ? 'Cancel move' : 'Move'}
                   </button>
-                  <button className="rounded border border-neutral-600 px-2 py-1 text-xs" onClick={removeSelected}>
+                  <button className={styles.btn} onClick={removeSelected}>
                     {wallet.active ? 'Put away' : 'Remove'}
                   </button>
                 </div>
                 {swaps.length > 0 && (
                   <>
-                    <span className="text-xs uppercase text-neutral-400">Swap for</span>
-                    <div className="flex flex-wrap gap-1">
+                    <span className={styles.small}>Swap for</span>
+                    <div className={styles.row}>
                       {swaps.map((entry) => (
                         <ShopTile
                           key={entry.id}
@@ -712,10 +709,10 @@ export default function InteriorEditor() {
             )}
 
             {shelfSelected && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase text-neutral-400">Selected: Bookshelf</span>
+              <div className={styles.row}>
+                <span className={styles.small}>Selected: Bookshelf</span>
                 <button
-                  className={`rounded border px-2 py-1 text-xs ${moving === 'shelf' ? 'border-yellow-400 text-yellow-400' : 'border-neutral-600'}`}
+                  className={`${styles.btn} ${moving === 'shelf' ? styles.on : ''}`}
                   onClick={toggleMove}
                 >
                   {moving === 'shelf' ? 'Cancel move' : 'Move'}
@@ -724,13 +721,13 @@ export default function InteriorEditor() {
             )}
 
             {!picking && !selectedPlacement && !shelfSelected && (
-              <p className="text-sm text-neutral-400">
+              <p className={styles.hint}>
                 Click an empty tile to place furniture{wallet.active ? ' from your inventory, or buy something new' : ''}.
                 Click a piece to move or rotate it{wallet.active ? ', or put it back in your inventory' : ''}.
               </p>
             )}
             {wallet.active && (
-              <p className="flex items-center gap-1 text-xs text-neutral-500">
+              <p className={`${styles.row} ${styles.small}`}>
                 <Coin size={10} /> Every new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins.
               </p>
             )}

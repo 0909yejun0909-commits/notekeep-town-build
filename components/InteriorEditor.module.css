@@ -1,0 +1,210 @@
+/* The bookshelf's wooden frame and pixel font, so CUSTOMIZE looks like part of the game. */
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  font-family: 'CuteFantasy', monospace;
+  image-rendering: pixelated;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 90vh;
+  max-width: 96vw;
+  overflow-y: auto;
+  padding: 18px;
+  background: #91533b;
+  border: 6px solid #3f2832;
+  box-shadow:
+    inset 0 0 0 6px #b86f50,
+    0 12px 0 #1f1418;
+  color: #f4e4c1;
+  font-size: 18px;
+  line-height: 27px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 6px 12px;
+  background: #3f2832;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 27px;
+  line-height: 36px;
+}
+
+.coins {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffe066;
+  font-size: 18px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.label {
+  min-width: 108px;
+  color: #ffe0b0;
+}
+
+.btn {
+  background: #6d483b;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 3px 0 #b86f50;
+  color: #f4e4c1;
+  font: inherit;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover:enabled,
+.btn:focus-visible {
+  background: #b86f50;
+  outline: none;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.on,
+.on:hover:enabled {
+  background: #f4e4c1;
+  box-shadow: inset 0 -3px 0 #e4a672;
+  color: #3f2832;
+}
+.primary {
+  background: #f4e4c1;
+  box-shadow: inset 0 -3px 0 #e4a672;
+  color: #3f2832;
+}
+.primary:hover:enabled {
+  background: #ffffff;
+}
+
+.swatch {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #3f2832;
+  cursor: pointer;
+}
+.swatchOn {
+  border-color: #ffe066;
+  box-shadow: 0 0 0 3px #3f2832;
+}
+
+.chip {
+  padding: 0 9px;
+  background: #6d483b;
+  border: 3px solid #3f2832;
+}
+
+.input {
+  width: 216px;
+  padding: 0 9px;
+  background: #fffaf0;
+  border: 3px solid #3f2832;
+  color: #3f2832;
+  font: inherit;
+  outline: none;
+}
+.input:focus {
+  box-shadow: inset 0 0 0 2px #e4a672;
+}
+
+.error {
+  color: #ffe0d0;
+  background: #7a2b25;
+  padding: 0 9px;
+}
+.note {
+  color: #ffe066;
+}
+.hint {
+  max-width: 436px;
+  color: #f4e4c1;
+}
+.small {
+  color: #ffe0b0;
+}
+
+.grid {
+  position: relative;
+  display: grid;
+  border: 3px solid #3f2832;
+  background: #3f2832;
+}
+.cell {
+  border: 1px solid rgba(31, 20, 24, 0.6);
+}
+
+.side {
+  display: flex;
+  width: 436px;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shelf {
+  display: flex;
+  max-height: 50vh;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px;
+  background: #6d483b;
+  border: 3px solid #3f2832;
+  color: #f4e4c1;
+  font: inherit;
+  font-size: 18px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.tile:hover:enabled {
+  border-color: #ffe066;
+}
+.tile:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.short {
+  opacity: 0.55;
+}
+.price {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: #ffe066;
+}
+.priceShort {
+  color: #ffb4a2;
+}
+.owned {
+  color: #b4f0b4;
+}
