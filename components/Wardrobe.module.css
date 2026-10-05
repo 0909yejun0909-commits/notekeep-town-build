@@ -15,8 +15,9 @@
 .hint {
   margin: 0;
   color: #f6ca9f;
-  font-family: 'CuteFantasy', monospace;
-  font-size: 18px;
+  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  word-spacing: 0.4em;
+  font-size: 21px;
   line-height: 27px;
   text-align: center;
 }

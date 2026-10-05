@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 @font-face {
+  font-family: 'ArcadeClassic';
+  src: url('/assets/ui/arcade-classic.ttf') format('truetype');
+}
+
+@font-face {
   font-family: 'CuteFantasy';
   src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
 }

@@ -7,7 +7,8 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.7);
-  font-family: 'CuteFantasy', monospace;
+  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  word-spacing: 0.4em;
   image-rendering: pixelated;
 }
 
@@ -25,7 +26,7 @@
     inset 0 0 0 6px #b86f50,
     0 12px 0 #1f1418;
   color: #f4e4c1;
-  font-size: 18px;
+  font-size: 21px;
   line-height: 27px;
 }
 
@@ -42,7 +43,7 @@
   display: flex;
   align-items: center;
   gap: 18px;
-  font-size: 27px;
+  font-size: 28px;
   line-height: 36px;
 }
 
@@ -51,7 +52,7 @@
   align-items: center;
   gap: 6px;
   color: #ffe066;
-  font-size: 18px;
+  font-size: 21px;
 }
 
 .row {
@@ -145,6 +146,12 @@
 .small {
   color: #ffe0b0;
 }
+.coinNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffe0b0;
+}
 
 .grid {
   position: relative;
@@ -182,7 +189,7 @@
   border: 3px solid #3f2832;
   color: #f4e4c1;
   font: inherit;
-  font-size: 18px;
+  font-size: 21px;
   line-height: 18px;
   cursor: pointer;
 }

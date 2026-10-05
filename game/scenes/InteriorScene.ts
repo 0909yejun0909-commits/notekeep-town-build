@@ -49,16 +49,23 @@ type PieceAction = {
 // A doorway in the entrance's wall to one of the house's other rooms.
 type Door = { slot: DoorSlot; roomId: string; name: string };
 
-// CuteFantasy has no ellipsis, so cut names end in two dots.
 function shorten(name: string, max: number): string {
   return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
 }
 
-// In-room labels use the game's pixel font, boxed in the bookshelf's dark wood. Its glyphs sit
-// off the 9px grid, so they're drawn at the camera's 3x zoom (resolution) rather than scaled
-// up from 9px, which smears them.
+// In-room labels use the game's pixel font, boxed in the bookshelf's dark wood. The game draws
+// at 1/3 of screen size and the browser scales it up, so text has to sit on the game's own
+// pixel grid: ArcadeClassic's grid is 1/14 of its size, so 14px makes one font pixel one game
+// pixel, and 0.3px of letter spacing rounds its 7.7px advance to a whole 8. CuteFantasy fills
+// in the punctuation ArcadeClassic lacks.
+const LABEL_FONT = 'ArcadeClassic, CuteFantasy';
 function labelStyle(color = '#f4e4c1'): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: 'CuteFantasy', fontSize: '9px', color, backgroundColor: '#3f2832', padding: { x: 2, y: 1 }, resolution: 3 };
+  return { fontFamily: LABEL_FONT, fontSize: '14px', letterSpacing: 0.3, color, backgroundColor: '#3f2832', padding: { x: 2, y: 1 } };
+}
+
+// ArcadeClassic's space is barely wider than its letter gap; canvas text has no word-spacing.
+function spaced(text: string): string {
+  return text.replace(/ /g, '  ');
 }
 
 export default class InteriorScene extends Phaser.Scene {
@@ -269,13 +276,13 @@ export default class InteriorScene extends Phaser.Scene {
     const labelCenterX = (w / 2) * TILE;
 
     this.add
-      .text(labelCenterX, 2, this.isEntrance ? `${house.name} (${noteCount})` : `${house.name} / ${room.name} (${room.notes.length})`, labelStyle())
+      .text(labelCenterX, 2, spaced(this.isEntrance ? `${house.name} (${noteCount})` : `${house.name} / ${room.name} (${room.notes.length})`), labelStyle())
       .setOrigin(0.5, 0)
       .setDepth(6);
 
     if (this.game.registry.get('role') !== 'guest') {
       this.add
-        .text(labelCenterX, 15, 'CUSTOMIZE', labelStyle('#ffe066'))
+        .text(labelCenterX, 20, 'CUSTOMIZE', labelStyle('#ffe066'))
         .setOrigin(0.5, 0)
         .setDepth(6)
         .setInteractive({ useHandCursor: true })
@@ -321,7 +328,8 @@ export default class InteriorScene extends Phaser.Scene {
     attachRemotePlayers(this, sceneId, this.player);
 
     this.indicator = this.add
-      .text(0, 0, '!', { fontFamily: 'CuteFantasy', fontSize: '18px', color: '#ffe066', resolution: 3 })
+      .text(0, 0, '!', { fontFamily: LABEL_FONT, fontSize: '14px', color: '#ffe066' })
+      
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setVisible(false);
@@ -399,7 +407,7 @@ export default class InteriorScene extends Phaser.Scene {
 
   private drawDoorLabel(door: Door) {
     const { gx, gy, side } = door.slot;
-    const text = shorten(door.name, side === 'top' || side === 'bottom' ? 6 : 10);
+    const text = spaced(shorten(door.name, side === 'top' || side === 'bottom' ? 4 : 8));
     const style = labelStyle();
     const cx = gx * TILE + TILE / 2;
     const cy = gy * TILE + TILE / 2;
@@ -547,7 +555,7 @@ export default class InteriorScene extends Phaser.Scene {
     const ahead = settled ? this.doorAhead.get(here) : undefined;
     if (ahead) {
       const y = this.indicator.visible ? this.player.y - 50 : this.player.y - 34;
-      this.doorHint.setText(ahead.name).setPosition(this.player.x, y).setVisible(true);
+      this.doorHint.setText(spaced(ahead.name)).setPosition(this.player.x, y).setVisible(true);
     } else {
       this.doorHint.setVisible(false);
     }

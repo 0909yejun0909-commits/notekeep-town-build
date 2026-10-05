@@ -727,7 +727,7 @@ export default function InteriorEditor() {
               </p>
             )}
             {wallet.active && (
-              <p className={`${styles.row} ${styles.small}`}>
+              <p className={styles.coinNote}>
                 <Coin size={10} /> Every new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins.
               </p>
             )}
