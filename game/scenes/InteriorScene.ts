@@ -16,6 +16,8 @@ import {
   doorPositionFor,
   doorSlots,
   computeDefaultLayout,
+  HEADER_TILES,
+  TOP_FIRST_GX,
   type DoorSlot,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
@@ -66,6 +68,16 @@ function labelStyle(color = '#f4e4c1'): Phaser.Types.GameObjects.Text.TextStyle 
 // ArcadeClassic's space is barely wider than its letter gap; canvas text has no word-spacing.
 function spaced(text: string): string {
   return text.replace(/ /g, '  ');
+}
+
+// Shows "Name (count)" in `label`, cut until it's no wider than `maxWidth`.
+function fitHeader(label: Phaser.GameObjects.Text, name: string, count: number, maxWidth: number) {
+  const suffix = ` (${count})`;
+  for (let n = name.length; n > 0; n--) {
+    label.setText(spaced((n === name.length ? name : `${name.slice(0, n).trimEnd()}..`) + suffix));
+    if (label.width <= maxWidth) return;
+  }
+  label.setText(suffix.trim());
 }
 
 export default class InteriorScene extends Phaser.Scene {
@@ -273,21 +285,22 @@ export default class InteriorScene extends Phaser.Scene {
       this.shelfApproach.add(`${x},${shelfGy + 2}`);
     }
 
-    const labelCenterX = (w / 2) * TILE;
-
-    this.add
-      .text(labelCenterX, 2, spaced(this.isEntrance ? `${house.name} (${noteCount})` : `${house.name} / ${room.name} (${room.notes.length})`), labelStyle())
-      .setOrigin(0.5, 0)
-      .setDepth(6);
-
+    // Name and CUSTOMIZE share the top wall's row in the top-right corner, so they never cover
+    // the bookshelf; the name gets whatever the door slots and the coin purse leave free.
+    const labelRightX = w * TILE - 3;
+    let nameRightX = labelRightX;
     if (this.game.registry.get('role') !== 'guest') {
-      this.add
-        .text(labelCenterX, 20, 'CUSTOMIZE', labelStyle('#ffe066'))
-        .setOrigin(0.5, 0)
+      const customize = this.add
+        .text(labelRightX, 1, 'CUSTOMIZE', labelStyle('#ffe066'))
+        .setOrigin(1, 0)
         .setDepth(6)
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => this.openEditor());
+      nameRightX -= customize.width + 2;
     }
+    const headerLeftX = Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE;
+    const header = this.add.text(nameRightX, 1, '', labelStyle()).setOrigin(1, 0).setDepth(6);
+    fitHeader(header, this.isEntrance ? house.name : room.name, this.isEntrance ? noteCount : room.notes.length, nameRightX - headerLeftX);
 
     for (const door of this.doors.values()) this.drawDoorLabel(door);
 

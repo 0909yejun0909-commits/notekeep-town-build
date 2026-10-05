@@ -233,17 +233,16 @@ export type DoorSide = 'top' | 'left' | 'right' | 'bottom';
 // the shelf leans on it).
 export type DoorSlot = { gx: number; gy: number; side: DoorSide; inside: [number, number][] };
 
-// Half-width of the top-wall band kept for the house-name and CUSTOMIZE labels.
-const HEADER_HALF = 4;
+// Top-wall tiles kept at the right-hand end for the name and CUSTOMIZE labels, which share the
+// top wall's row so they never cover the bookshelf (InteriorScene cuts the name to fit).
+export const HEADER_TILES = 12;
 // Top-wall doors start here: the coin purse overlay covers the room's top-left corner.
-const TOP_FIRST_GX = 4;
+export const TOP_FIRST_GX = 4;
 
 function doorCandidates(w: number, h: number): DoorSlot[] {
   const [exitGx] = doorPositionFor(w, h);
-  const mid = Math.floor(w / 2);
   const out: DoorSlot[] = [];
-  for (let gx = TOP_FIRST_GX; gx <= w - 3; gx += 2) {
-    if (gx >= mid - HEADER_HALF && gx < mid + HEADER_HALF) continue;
+  for (let gx = TOP_FIRST_GX; gx < w - 1 - HEADER_TILES; gx += 2) {
     out.push({ gx, gy: 0, side: 'top', inside: [[gx, 1], [gx, 2]] });
   }
   for (let gy = 2; gy <= h - 3; gy += 2) out.push({ gx: 0, gy, side: 'left', inside: [[1, gy]] });
