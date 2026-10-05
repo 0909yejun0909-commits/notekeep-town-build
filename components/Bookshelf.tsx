@@ -123,6 +123,7 @@ export default function Bookshelf() {
   const { vault, setVault } = useVault();
   const wallet = useWallet();
   const [houseId, setHouseId] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [path, setPath] = useState<string[]>([]);
   const [naming, setNaming] = useState(false);
   const [title, setTitle] = useState('');
@@ -131,8 +132,9 @@ export default function Bookshelf() {
   const noteOpen = useRef(false);
 
   useEffect(() => {
-    const onOpen = ({ houseId }: { houseId: string }) => {
+    const onOpen = ({ houseId, roomId }: { houseId: string; roomId: string }) => {
       setHouseId(houseId);
+      setRoomId(roomId);
       setPath([]);
       setNaming(false);
     };
@@ -170,7 +172,12 @@ export default function Bookshelf() {
 
   if (!houseId || !tree) return null;
 
-  let folder: Folder = tree;
+  // A room's shelf holds only its own folder (maybe still empty); the entrance's holds the whole house.
+  const roomFolder = house && roomId && roomId !== house.id ? roomId.slice(house.id.length + 1) : null;
+  const root: Folder = roomFolder
+    ? (tree.folders.get(roomFolder) ?? { name: roomFolder, folders: new Map(), notes: [] })
+    : tree;
+  let folder: Folder = root;
   for (const seg of path) {
     const next = folder.folders.get(seg);
     if (!next) break;
@@ -192,7 +199,7 @@ export default function Bookshelf() {
     setCreating(true);
     setCreateError(null);
     try {
-      const folderPath = [house.id === '.' ? '' : house.id, ...path].filter(Boolean).join('/');
+      const folderPath = [house.id === '.' ? '' : house.id, ...(roomFolder ? [roomFolder] : []), ...path].filter(Boolean).join('/');
       const { world, note } = await vault.createNote(folderPath, title);
       setVault({ ...vault, world });
       replaceWorld(world);
@@ -214,9 +221,9 @@ export default function Bookshelf() {
           </button>
           <div className={styles.crumbs}>
             {path.length === 0 ? (
-              <span className={styles.crumbCurrent}>{tree.name}</span>
+              <span className={styles.crumbCurrent}>{root.name}</span>
             ) : (
-              <button className={styles.crumb} onClick={() => setPath([])}>{tree.name}</button>
+              <button className={styles.crumb} onClick={() => setPath([])}>{root.name}</button>
             )}
             {path.map((seg, i) => (
               <span key={i} style={{ display: 'contents' }}>
@@ -276,7 +283,7 @@ export default function Bookshelf() {
                 void create();
               }}
             >
-              <div className={styles.namerTitle}>New note in {path.length ? path[path.length - 1] : tree.name}</div>
+              <div className={styles.namerTitle}>New note in {path.length ? path[path.length - 1] : root.name}</div>
               <input
                 className={styles.input}
                 autoFocus
