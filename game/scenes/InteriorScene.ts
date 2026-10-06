@@ -75,7 +75,7 @@ function fitHeader(label: Phaser.GameObjects.Text, name: string, count: number, 
   const suffix = ` (${count})`;
   for (let n = name.length; n > 0; n--) {
     label.setText(spaced((n === name.length ? name : `${name.slice(0, n).trimEnd()}..`) + suffix));
-    if (label.width <= maxWidth) return;
+    if (label.displayWidth <= maxWidth) return;
   }
   label.setText(suffix.trim());
 }
@@ -121,6 +121,11 @@ export default class InteriorScene extends Phaser.Scene {
   private prevGy = 0;
   private roomPxW = 0;
   private roomPxH = 0;
+  // In-room text is drawn at 1/zoom, so it stays its usual size on screen when the room is
+  // scaled up to fill the view.
+  private labelScale = 1;
+  private labels: Phaser.GameObjects.Text[] = [];
+  private header: { label: Phaser.GameObjects.Text; customize: Phaser.GameObjects.Text | null; name: string; count: number; leftX: number; rightX: number } | null = null;
 
   private editingLayout = false;
   private fingerprint: string | undefined;
@@ -198,6 +203,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.bedTarget = null;
     this.undress = null;
     this.doors = new Map();
+    this.labels = [];
+    this.header = null;
     this.doorAhead = new Map();
   }
 
@@ -225,6 +232,10 @@ export default class InteriorScene extends Phaser.Scene {
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
     this.roomPxW = w * TILE;
     this.roomPxH = h * TILE;
+    // A room too big for the view at the usual pixel size gets a step smaller (game/config.ts).
+    const minView = this.game.registry.get('minView') as [number, number] | null | undefined;
+    if (minView?.[0] !== this.roomPxW || minView?.[1] !== this.roomPxH) this.game.registry.set('minView', [this.roomPxW, this.roomPxH]);
+    this.labelScale = 1 / this.roomZoom();
 
     // The entrance has a doorway per other room. Rooms beyond the wall's capacity get no door;
     // their notes are still on the entrance bookshelf. Rooms are added from CUSTOMIZE, only by
@@ -292,19 +303,21 @@ export default class InteriorScene extends Phaser.Scene {
     // Name and CUSTOMIZE share the top wall's row in the top-right corner, so they never cover
     // the bookshelf; the name gets whatever the door slots and the coin purse leave free.
     const labelRightX = w * TILE - 3;
-    let nameRightX = labelRightX;
-    if (this.game.registry.get('role') !== 'guest') {
-      const customize = this.add
-        .text(labelRightX, 1, 'CUSTOMIZE', labelStyle('#ffe066'))
+    const customize = this.game.registry.get('role') === 'guest' ? null
+      : this.label(labelRightX, 1, 'CUSTOMIZE', labelStyle('#ffe066'))
         .setOrigin(1, 0)
         .setDepth(6)
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => this.openEditor());
-      nameRightX -= customize.width + 2;
-    }
-    const headerLeftX = Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE;
-    const header = this.add.text(nameRightX, 1, '', labelStyle()).setOrigin(1, 0).setDepth(6);
-    fitHeader(header, this.isEntrance ? house.name : room.name, this.isEntrance ? noteCount : room.notes.length, nameRightX - headerLeftX);
+    this.header = {
+      label: this.label(labelRightX, 1, '', labelStyle()).setOrigin(1, 0).setDepth(6),
+      customize,
+      name: this.isEntrance ? house.name : room.name,
+      count: this.isEntrance ? noteCount : room.notes.length,
+      leftX: Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE,
+      rightX: labelRightX,
+    };
+    this.layoutHeader();
 
     for (const door of this.doors.values()) this.drawDoorLabel(door);
 
@@ -313,8 +326,7 @@ export default class InteriorScene extends Phaser.Scene {
       this.renderPlacement(placement, allNotes);
     }
 
-    this.add
-      .text(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', labelStyle())
+    this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', labelStyle())
       .setOrigin(0.5, 1)
       .setDepth(6);
 
@@ -344,15 +356,15 @@ export default class InteriorScene extends Phaser.Scene {
     setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: 'down' });
     attachRemotePlayers(this, sceneId, this.player);
 
-    this.indicator = this.add
-      .text(0, 0, '!', { fontFamily: LABEL_FONT, fontSize: '14px', color: '#ffe066' })
+    this.indicator = this
+      .label(0, 0, '!', { fontFamily: LABEL_FONT, fontSize: '14px', color: '#ffe066' })
       
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setVisible(false);
 
-    this.doorHint = this.add
-      .text(0, 0, '', labelStyle())
+    this.doorHint = this
+      .label(0, 0, '', labelStyle())
       .setOrigin(0.5, 1)
       .setDepth(1000)
       .setVisible(false);
@@ -393,10 +405,35 @@ export default class InteriorScene extends Phaser.Scene {
   // A room is only a few hundred pixels across. Show it as big as fits whole, scaled by a
   // whole number (pixel art stays crisp only at whole multiples), centred in the view. In a
   // window too small for the room even at 1x, follow the player across it instead.
+  private roomZoom() {
+    const cam = this.cameras.main;
+    return Math.max(1, Math.floor(Math.min(cam.width / this.roomPxW, cam.height / this.roomPxH)));
+  }
+
+  private label(x: number, y: number, text: string, style: Phaser.Types.GameObjects.Text.TextStyle) {
+    const t = this.add.text(x, y, text, style).setScale(this.labelScale);
+    this.labels.push(t);
+    return t;
+  }
+
+  // The room name takes whatever CUSTOMIZE leaves of the top-right corner.
+  private layoutHeader() {
+    const h = this.header;
+    if (!h) return;
+    const rightX = h.customize ? h.rightX - h.customize.displayWidth - 2 * this.labelScale : h.rightX;
+    h.label.setX(rightX);
+    fitHeader(h.label, h.name, h.count, rightX - h.leftX);
+  }
+
   private fitCamera = () => {
     const cam = this.cameras.main;
     const rw = this.roomPxW, rh = this.roomPxH;
-    const zoom = Math.max(1, Math.floor(Math.min(cam.width / rw, cam.height / rh)));
+    const zoom = this.roomZoom();
+    if (Math.abs(zoom * this.labelScale - 1) > 1e-9) {
+      this.labelScale = 1 / zoom;
+      for (const t of this.labels) t.setScale(this.labelScale);
+      this.layoutHeader();
+    }
     cam.setZoom(zoom);
     const vw = cam.width / zoom, vh = cam.height / zoom;
     // Bounds at least the view's size, centred on the room, so a room smaller than the view
@@ -446,10 +483,10 @@ export default class InteriorScene extends Phaser.Scene {
     const cx = gx * TILE + TILE / 2;
     const cy = gy * TILE + TILE / 2;
     const label =
-      side === 'top' ? this.add.text(cx, 2, text, style).setOrigin(0.5, 0)
-      : side === 'bottom' ? this.add.text(cx, (gy + 1) * TILE - 2, text, style).setOrigin(0.5, 1)
-      : side === 'left' ? this.add.text(TILE + 2, cy, text, style).setOrigin(0, 0.5)
-      : this.add.text(gx * TILE - 2, cy, text, style).setOrigin(1, 0.5);
+      side === 'top' ? this.label(cx, 2, text, style).setOrigin(0.5, 0)
+      : side === 'bottom' ? this.label(cx, (gy + 1) * TILE - 2, text, style).setOrigin(0.5, 1)
+      : side === 'left' ? this.label(TILE + 2, cy, text, style).setOrigin(0, 0.5)
+      : this.label(gx * TILE - 2, cy, text, style).setOrigin(1, 0.5);
     label.setDepth(6);
   }
 
