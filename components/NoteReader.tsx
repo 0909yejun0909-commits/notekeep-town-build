@@ -22,6 +22,7 @@ const PAGES_W = 754;
 const PAGES_H = 400;
 const SPINE_GAP = 140;
 const PAGE_STRIDE = PAGES_W + SPINE_GAP; // one "turn" = two columns + one gap
+const EDIT_LINE = 21; // .note-editor's line-height: edit pages turn by whole lines
 
 const INK = '#3b2a20';
 const INK_SOFT = 'rgba(59, 42, 32, 0.6)';
@@ -186,7 +187,7 @@ const READER_CSS = `
   .note-btn {
     font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;
     color: ${INK}; background: rgba(255, 248, 232, 0.65); border: 2px solid ${INK_LINE}; border-radius: 4px;
-    padding: 5px 9px; cursor: pointer; line-height: 1;
+    padding: 5px 9px; cursor: pointer; line-height: 1; white-space: nowrap; flex: none;
   }
   .note-btn:hover { background: rgba(255, 248, 232, 0.95); border-color: ${INK}; }
   .note-btn:disabled { opacity: 0.4; cursor: default; }
@@ -215,6 +216,11 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const pagesRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+
+  // Editing pages: one page is one screenful of the editor, a whole number of lines.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [editPage, setEditPage] = useState(0);
+  const [editPageCount, setEditPageCount] = useState(1);
 
   const canWrite = !!vault?.writeNote;
 
@@ -303,6 +309,37 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     editingRef.current = true;
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [raw]);
+
+  const editStep = (t: HTMLTextAreaElement) => Math.max(EDIT_LINE, Math.floor(t.clientHeight / EDIT_LINE) * EDIT_LINE);
+
+  // Recount the editor's pages from where it's scrolled, and turn the preview to the same
+  // place in the note. Runs on every scroll, which includes the editor following the caret.
+  const syncEditPages = useCallback(() => {
+    const t = textareaRef.current;
+    if (!t) return;
+    const step = editStep(t);
+    const maxTop = Math.max(0, t.scrollHeight - t.clientHeight);
+    const count = maxTop === 0 ? 1 : 1 + Math.ceil(maxTop / step);
+    setEditPageCount(count);
+    // Following the caret, the browser scrolls only far enough to show it: within a line of
+    // the end is the last page.
+    setEditPage(maxTop > 0 && t.scrollTop >= maxTop - EDIT_LINE ? count - 1 : Math.floor((t.scrollTop + 1) / step));
+    const p = previewRef.current;
+    if (p) p.scrollTop = maxTop > 0 ? (t.scrollTop / maxTop) * (p.scrollHeight - p.clientHeight) : 0;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (editing) syncEditPages();
+  }, [editing, draft, syncEditPages]);
+
+  const turnEditPage = (delta: number) => {
+    const t = textareaRef.current;
+    if (!t) return;
+    t.scrollTop = Math.max(0, (editPage + delta) * editStep(t));
+    syncEditPages();
+    // Back to the text so typing carries on; the caret itself stays where it was.
+    t.focus({ preventScroll: true });
+  };
 
   const cancelEdit = useCallback(() => {
     setEditing(false);
@@ -435,6 +472,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   value={draft}
                   spellCheck={false}
                   onChange={(e) => setDraft(e.target.value)}
+                  onScroll={syncEditPages}
                   onKeyDown={(e) => {
                     stopKeys(e);
                     if (e.key === 'Escape') {
@@ -448,7 +486,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   onKeyUp={stopKeys}
                   onKeyPress={stopKeys}
                 />
-                <div className="note-scroll note-prose">
+                <div ref={previewRef} className="note-scroll note-prose">
                   <h2 className="note-title">{note.title}</h2>
                   <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeUrl} components={components}>
                     {wikilinksToMarkdown(draft)}
@@ -500,14 +538,22 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               </>
             ) : (
               <>
-                <span className="note-hint">
+                <button className="note-btn" disabled={editPage === 0} onClick={() => turnEditPage(-1)}>
+                  ‹ Prev
+                </button>
+                <span
+                  className="note-hint"
+                  title={saveError ?? undefined}
+                  style={{ flex: 1, minWidth: 0, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  Page {editPage + 1} / {editPageCount} ·{' '}
                   {saveState === 'saving'
                     ? 'Saving…'
                     : saveState === 'error'
                       ? `Could not save: ${saveError ?? ''}`
                       : canWrite
-                        ? 'Editing · ⌘S / Ctrl+S to save · Esc to cancel'
-                        : 'Read-only vault · changes cannot be saved'}
+                        ? '⌘S / Ctrl+S save · Esc cancel'
+                        : 'Read-only vault'}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {progress && (
@@ -527,6 +573,13 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     onClick={() => void save()}
                   >
                     Save
+                  </button>
+                  <button
+                    className="note-btn"
+                    disabled={editPage >= editPageCount - 1}
+                    onClick={() => turnEditPage(1)}
+                  >
+                    Next ›
                   </button>
                 </div>
               </>

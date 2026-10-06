@@ -119,6 +119,8 @@ export default class InteriorScene extends Phaser.Scene {
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
+  private roomPxW = 0;
+  private roomPxH = 0;
 
   private editingLayout = false;
   private fingerprint: string | undefined;
@@ -221,6 +223,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.layout = saved ?? computeDefaultLayout(house, room);
     const [w, h] = ROOM_SIZES[this.layout.roomSize];
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
+    this.roomPxW = w * TILE;
+    this.roomPxH = h * TILE;
 
     // The entrance has a doorway per other room. Rooms beyond the wall's capacity get no door;
     // their notes are still on the entrance bookshelf. Rooms are added from CUSTOMIZE, only by
@@ -360,8 +364,9 @@ export default class InteriorScene extends Phaser.Scene {
     const wasd = keyboard.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
     this.standKeys = [cursors.up, cursors.down, cursors.left, cursors.right, ...Object.values(wasd), this.spaceKey, this.enterKey];
 
-    this.cameras.main.setScroll(0, 0);
     this.cameras.main.setBackgroundColor('#141018');
+    this.fitCamera();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.fitCamera);
 
     this.prevGx = spawnGx;
     this.prevGy = spawnGy;
@@ -374,6 +379,7 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.fitCamera);
       bus.off('close-shelf', this.onCloseShelf);
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
@@ -383,6 +389,21 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('world-updated', this.onWorldUpdated);
     });
   }
+
+  // A room is only a few hundred pixels across. Show it as big as fits whole, scaled by a
+  // whole number (pixel art stays crisp only at whole multiples), centred in the view. In a
+  // window too small for the room even at 1x, follow the player across it instead.
+  private fitCamera = () => {
+    const cam = this.cameras.main;
+    const rw = this.roomPxW, rh = this.roomPxH;
+    const zoom = Math.max(1, Math.floor(Math.min(cam.width / rw, cam.height / rh)));
+    cam.setZoom(zoom);
+    const vw = cam.width / zoom, vh = cam.height / zoom;
+    // Bounds at least the view's size, centred on the room, so a room smaller than the view
+    // sits in the middle and a bigger one scrolls only as far as its walls.
+    cam.setBounds(Math.min(0, Math.round((rw - vw) / 2)), Math.min(0, Math.round((rh - vh) / 2)), Math.max(rw, vw), Math.max(rh, vh));
+    cam.startFollow(this.player, true);
+  };
 
   private overlayOpen() {
     return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout;
