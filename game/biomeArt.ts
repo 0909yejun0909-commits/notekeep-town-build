@@ -256,6 +256,46 @@ export function snowOn(data: ImageData, o: SnowCap, seed: string) {
   }
 }
 
+// Oak and fruit canopies are mostly bright highlight green, which a frost blend leaves green.
+// Repaint them instead: snow over the upper canopy (hanging lower in some columns, and on each
+// column's top pixels), the spruces' frosted teal showing beneath. Bands keep Kenmi's shading.
+const SNOWY_LEAVES = [[0.15, '#24434d'], [0.28, '#4d7480'], [0.38, SNOW_SHADE], [0.5, SNOW]] as const;
+const FROSTED_LEAVES = [[0.15, '#193c3e'], [0.28, '#37625b'], [0.38, '#4f8072'], [0.5, '#7fa89c']] as const;
+const LEAF_DRIP = [0, 1, 3, 1, 0, 2, 4, 1, 0, 2];
+const TRUNK_FROST: SnowCap = { cap: 0, drip: 0, frost: 0.12, foliageFrost: 0, tiers: false };
+
+function snowLaden(data: ImageData, seed: string) {
+  const { width: w, height: h } = data;
+  const px = data.data;
+  const at = (x: number, y: number) => (y * w + x) * 4;
+  const leaf = (i: number) => px[i + 3] > 40 && isFoliage(px[i], px[i + 1], px[i + 2]);
+  let top = -1, bottom = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!leaf(at(x, y))) continue;
+      if (top < 0) top = y;
+      bottom = y;
+    }
+  }
+  if (top < 0) return snowOn(data, TRUNK_FROST, seed);
+  const split = top + (bottom - top) * 0.5;
+  for (let x = 0; x < w; x++) {
+    let first = -1;
+    for (let y = 0; y < h; y++) {
+      const i = at(x, y);
+      if (!leaf(i)) continue;
+      const l = (0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]) / 255;
+      if (l < 0.15) continue;
+      if (first < 0) first = y;
+      const bands = y < split + LEAF_DRIP[(x * 7 + 3) % LEAF_DRIP.length] || y - first < 3 ? SNOWY_LEAVES : FROSTED_LEAVES;
+      let c = bands[0][1] as string;
+      for (const [t, col] of bands) if (l >= t) c = col;
+      [px[i], px[i + 1], px[i + 2]] = rgb(c);
+    }
+  }
+  snowOn(data, TRUNK_FROST, seed);
+}
+
 export const HOUSE_SNOW: SnowCap = { cap: 5, drip: 3, frost: 0.08, foliageFrost: 0.2, tiers: false };
 export const TREE_SNOW: SnowCap = { cap: 3, drip: 2, frost: 0.12, foliageFrost: 0.45, tiers: true };
 const PLANT_SNOW: SnowCap = { cap: 2, drip: 1, frost: 0.1, foliageFrost: 0.4, tiers: true };
@@ -269,6 +309,7 @@ const GROUND = new Set([
   'terrain-grass', 'grass-edges', 'grass-2', 'grass-3', 'grass-4',
   'fill-grass-2', 'fill-grass-3', 'fill-grass-4', 'path-decor', 'cobble-edges',
 ]);
+const BROADLEAF = /^tree-(big-)?(oak|fruit)$/;
 const PLANT = /^(decor|grass-anim-\d|flower-grass-\d|flower-anim-\d|flowers|cattail-\d)$/;
 
 function transformFor(biome: TownBiome, key: string): Transform | null {
@@ -285,6 +326,7 @@ function transformFor(biome: TownBiome, key: string): Transform | null {
     }
     if (key === 'water-anim') return recolorWith({ green: SNOW_RAMP, water: POND_ICE, path: { ramp: SNOW_RAMP } });
     if (key.startsWith('house-')) return capWith(HOUSE_SNOW);
+    if (BROADLEAF.test(key)) return { perFrame: true, apply: snowLaden };
     if (key.startsWith('tree-')) return capWith(TREE_SNOW);
     if (PLANT.test(key)) return capWith(PLANT_SNOW);
     return capWith(PROP_SNOW);
