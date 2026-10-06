@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { Appearance, House, MaterialId, Region, RoofColor, WallColor, WorldModel } from '@/lib/types';
+import type { Appearance, House, MaterialId, Region, RoofColor, TownBiome, WallColor, WorldModel } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
 import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, type Entry } from '@/game/tilemap';
@@ -19,6 +19,10 @@ import { placePlazas, renderPlazas, renderYards } from '@/game/townProps';
 import { buildForestBorder, buildGroundCover, buildGroves } from '@/game/nature';
 import { attachDaylight } from '@/game/daylight';
 import { attachAmbience } from '@/game/ambience';
+import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
+import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
+import { ensureWinterTextures } from '@/game/winterArt';
+import { ensureDesertTextures } from '@/game/desertArt';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -68,13 +72,29 @@ export default class OverworldScene extends Phaser.Scene {
     this.scene.restart();
   };
 
+  // components/BiomePicker.tsx writes the registry; rebuild the town in place around the player.
+  private onBiomeChange = () => {
+    if (this.player) {
+      const { gx, gy } = worldToTile(this.player.x, this.player.y);
+      this.game.registry.set('returnTile', { gx, gy });
+    }
+    this.scene.restart();
+  };
+
   constructor() {
     super('OverworldScene');
   }
 
   create() {
+    this.game.registry.events.on('changedata-townBiome', this.onBiomeChange);
+    this.events.once('shutdown', () => this.game.registry.events.off('changedata-townBiome', this.onBiomeChange));
+
     const world = this.game.registry.get('world') as WorldModel | undefined;
     if (!world || world.regions.length === 0) return;
+
+    const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    if (biome === 'snow') ensureWinterTextures(this);
+    if (biome === 'desert') ensureDesertTextures(this);
 
     this.doors = new Map();
     this.lastDoorKey = null;
@@ -102,7 +122,7 @@ export default class OverworldScene extends Phaser.Scene {
     const worldH = rows * cellH + BORDER * 2;
 
     this.add
-      .tileSprite(0, 0, worldW * TILE, worldH * TILE, 'terrain-grass')
+      .tileSprite(0, 0, worldW * TILE, worldH * TILE, skin(this, biome, 'terrain-grass'))
       .setOrigin(0, 0)
       .setDepth(-1000);
 
@@ -123,6 +143,9 @@ export default class OverworldScene extends Phaser.Scene {
       areas: [],
       houses: [],
       lights: [],
+      biome,
+      skin: (k) => skin(this, biome, k),
+      skinAnim: (k) => skinAnim(this, biome, k),
     };
 
     world.regions.forEach((region, i) => {
@@ -131,7 +154,7 @@ export default class OverworldScene extends Phaser.Scene {
       const originGy = BORDER + Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
       areas.push({ originGx, originGy, width: w, height: h });
       grid.areas.push({ region, originGx, originGy, width: w, height: h });
-      const result = buildHouses(this, region, originGx, originGy);
+      const result = buildHouses(this, region, originGx, originGy, biome);
       result.blocked.forEach((k) => blocked.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
@@ -212,10 +235,10 @@ export default class OverworldScene extends Phaser.Scene {
 
     attachAmbience(this, grid, attachDaylight(this, grid));
 
-    // Forest-coloured backdrop so any space beyond the world reads as woods, and a
+    // Woods-coloured backdrop so any space beyond the world reads as more of the ring, and a
     // world smaller than the view sits centred instead of hugging the top-left.
     const cam = this.cameras.main;
-    cam.setBackgroundColor('#27503a');
+    cam.setBackgroundColor(BIOME_BACKDROP[biome]);
     const worldWidthPx = worldW * TILE;
     const worldHeightPx = worldH * TILE;
     const fit = () => {

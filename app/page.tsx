@@ -15,6 +15,8 @@ import PlayerTags from '@/components/PlayerTags';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
 import BedMenu from '@/components/BedMenu';
+import BiomePicker from '@/components/BiomePicker';
+import MissingArtBanner from '@/components/MissingArtBanner';
 import { bus } from '@/game/bus';
 import { readInvite, type Invite } from '@/lib/multiplayer/guest';
 import { RELAY_URL } from '@/lib/multiplayer/session';
@@ -65,6 +67,8 @@ function Game() {
       <CoinPurse />
       <Wardrobe />
       <BedMenu />
+      <BiomePicker />
+      <MissingArtBanner />
 
       {npcLine && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">

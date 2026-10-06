@@ -1,5 +1,7 @@
-import type { Region } from '@/lib/types';
+import type { Region, TownBiome } from '@/lib/types';
 import { HOUSE_FOOTPRINT, HOUSE_DOOR, houseTextureKey } from '@/lib/houseCatalog';
+import { skin } from '@/game/biomeArt';
+import { WREATH } from '@/game/winterArt';
 
 const TILE = 16;
 
@@ -19,6 +21,7 @@ export function buildHouses(
   region: Region,
   originGx: number,
   originGy: number,
+  biome: TownBiome = 'forest',
 ): TilemapResult {
   const blocked = new Set<string>();
   const doors = new Map<string, string>();
@@ -31,11 +34,18 @@ export function buildHouses(
     const gx = originGx + house.gx;
     const gy = originGy + house.gy;
 
+    const texture = houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor);
     const img = scene.add
-      .image(gx * TILE, gy * TILE, houseTextureKey(house.variant, house.material, house.wallColor, house.roofColor))
+      .image(gx * TILE, gy * TILE, skin(scene, biome, texture))
       .setOrigin(0, 0)
       .setDepth((gy + h) * TILE);
     houseImages.set(house.id, img);
+    if (biome === 'snow') {
+      // Hung on the upper of the two door tiles.
+      scene.add
+        .image((gx + doorX) * TILE + TILE / 2, (gy + doorY - 1) * TILE + TILE / 2, WREATH)
+        .setDepth((gy + h) * TILE + 1);
+    }
 
     for (let y = 0; y < h - 1; y++) {
       for (let x = 0; x < w; x++) {

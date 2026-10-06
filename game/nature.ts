@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import type { BiomeId } from '@/lib/types';
 import { fbm, mix, pick, rand01 } from '@/game/noise';
 import { areaAt, isFree, key, nearHouse, ringDistance, TILE, type WorldGrid } from '@/game/worldGrid';
+import { desertTree, BARREL_CACTUS, DESERT_DECOR, desertDecorFrame } from '@/game/desertArt';
+import { SNOWMAN, WINTER_DECOR, winterDecorFrame } from '@/game/winterArt';
 
 // (ox, oy) is the pixel in the frame where the trunk meets the ground. Wide trees have a
 // two-tile trunk and are anchored on the line between their two trunk tiles.
@@ -48,11 +50,12 @@ function choose(mixList: Mix, roll: number): TreeSpec {
   return mixList[0][0];
 }
 
-function addTree(scene: Phaser.Scene, spec: TreeSpec, gx: number, gy: number) {
+function addTree(scene: Phaser.Scene, g: WorldGrid, spec: TreeSpec, gx: number, gy: number, border = false) {
   const x = spec.wide ? (gx + 1) * TILE : gx * TILE + TILE / 2;
   const y = (gy + 1) * TILE - 2;
-  scene.add
-    .image(x, y, spec.key, 1)
+  // Desert plants are drawn at the tree's frame size and anchor, so they stand on the same tiles.
+  const desert = g.biome === 'desert' ? desertTree(scene, spec.key, rand01(g.seed ^ 0xde, gx, gy), border) : null;
+  (desert ? scene.add.image(x, y, desert) : scene.add.image(x, y, g.skin(spec.key), 1))
     .setOrigin(spec.ox / spec.fw, spec.oy / spec.fh)
     .setDepth((gy + 1) * TILE - 1);
 }
@@ -76,7 +79,7 @@ export function buildForestBorder(scene: Phaser.Scene, g: WorldGrid) {
       const x = i * 3 + (j % 2 === 0 ? 0 : 1) + (mix(seed, i, j) % 2);
       const y = j * 2 + (mix(seed ^ 1, i, j) % 2);
       if (x < 0 || y < 0 || x >= g.w - 1 || y >= g.h || !inRing(g, x, y) || !inRing(g, x + 1, y)) continue;
-      addTree(scene, choose(BORDER_MIX, rand01(seed ^ 2, i, j)), x, y);
+      addTree(scene, g, choose(BORDER_MIX, rand01(seed ^ 2, i, j)), x, y, true);
     }
   }
 
@@ -86,7 +89,7 @@ export function buildForestBorder(scene: Phaser.Scene, g: WorldGrid) {
       const edge = x === g.border - 1 || y === g.border - 1 || x === g.w - g.border || y === g.h - g.border;
       if (!edge || rand01(seed ^ 3, x, y) > 0.45) continue;
       scene.add
-        .image(x * TILE + TILE / 2, (y + 1) * TILE, 'decor', pick(DECOR.bushes, seed ^ 4, x, y))
+        .image(x * TILE + TILE / 2, (y + 1) * TILE, g.skin('decor'), pick(DECOR.bushes, seed ^ 4, x, y))
         .setOrigin(0.5, 1)
         .setDepth((y + 1) * TILE - 1);
     }
@@ -125,7 +128,7 @@ export function buildGroves(scene: Phaser.Scene, g: WorldGrid) {
       if (!clearAround(x, y, 2, (k) => g.plaza.has(k))) continue;
       if (!clearAround(x, y, 0, (k) => g.road.has(k))) continue;
 
-      addTree(scene, spec, x, y);
+      addTree(scene, g, spec, x, y);
       for (const [cx, cy] of cells) {
         g.blocked.add(key(cx, cy));
         g.used.add(key(cx, cy));
@@ -142,23 +145,41 @@ export function buildGroves(scene: Phaser.Scene, g: WorldGrid) {
 // in the open. Flowers and grass don't block.
 export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
   const seed = g.seed ^ 0xd2;
+  const decor = g.skin('decor');
   const solid = (x: number, y: number, frame: number, wide = false) => {
-    scene.add.image(x * TILE, (y + 1) * TILE, 'decor', frame).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
-    if (wide) scene.add.image((x + 1) * TILE, (y + 1) * TILE, 'decor', frame + 1).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
+    scene.add.image(x * TILE, (y + 1) * TILE, decor, frame).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
+    if (wide) scene.add.image((x + 1) * TILE, (y + 1) * TILE, decor, frame + 1).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
     for (const cx of wide ? [x, x + 1] : [x]) {
       g.blocked.add(key(cx, y));
       g.used.add(key(cx, y));
     }
   };
+  // A bush's tile, blocked the same in every biome, holding a snowman or barrel cactus instead.
+  const standIn = (x: number, y: number, texture: string) => {
+    scene.add.image(x * TILE + TILE / 2, (y + 1) * TILE, texture).setOrigin(0.5, 1).setDepth((y + 1) * TILE - 1);
+    g.blocked.add(key(x, y));
+    g.used.add(key(x, y));
+  };
+  // Non-blocking scatter is free to differ per biome: snow drifts, or desert pebbles and blooms.
   const flat = (x: number, y: number, texture: string, frame: number) => {
-    scene.add.image(x * TILE + TILE / 2, y * TILE + TILE / 2, texture, frame).setDepth(-600);
+    const roll = mix(seed ^ 15, x, y);
+    const [tex, f] =
+      g.biome === 'snow' ? [WINTER_DECOR, winterDecorFrame(roll)]
+      : g.biome === 'desert' && texture === 'decor' ? [DESERT_DECOR, desertDecorFrame(roll)]
+      : [g.skin(texture), frame];
+    scene.add.image(x * TILE + TILE / 2, y * TILE + TILE / 2, tex, f).setDepth(-600);
     g.used.add(key(x, y));
   };
   const sway = (x: number, y: number, texture: string, anim: string, frames: number) => {
+    // Nothing blooms in the snow: flowers become drifts, flowering grass plain frosted grass.
+    if (g.biome === 'snow' && texture.startsWith('flower-anim')) return flat(x, y, texture, 0);
+    if (g.biome === 'snow' && texture.startsWith('flower-grass')) {
+      texture = anim = `grass-anim-${1 + (mix(seed ^ 16, x, y) % 3)}`;
+    }
     scene.add
-      .sprite(x * TILE + TILE / 2, y * TILE + TILE / 2, texture)
+      .sprite(x * TILE + TILE / 2, y * TILE + TILE / 2, g.skin(texture))
       .setDepth(-590)
-      .play({ key: anim, startFrame: mix(seed ^ 9, x, y) % frames });
+      .play({ key: g.skinAnim(anim), startFrame: mix(seed ^ 9, x, y) % frames });
     g.used.add(key(x, y));
   };
 
@@ -171,7 +192,9 @@ export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
 
       if (!nearDoor && grove > 0.5 && grove < 0.68 && roll < 0.07) {
         const kind = mix(seed ^ 1, x, y) % 10;
-        if (kind < 4) solid(x, y, pick(DECOR.bushes, seed ^ 2, x, y));
+        const swap = g.biome !== 'forest' && mix(seed ^ 17, x, y) % 3 === 0;
+        if (kind < 4 && swap) standIn(x, y, g.biome === 'snow' ? SNOWMAN : BARREL_CACTUS);
+        else if (kind < 4) solid(x, y, pick(DECOR.bushes, seed ^ 2, x, y));
         else if (kind < 6) solid(x, y, pick(DECOR.rocks, seed ^ 3, x, y));
         else if (kind < 7) solid(x, y, pick(DECOR.stumps, seed ^ 4, x, y));
         else if (kind < 8 && isFree(g, x + 1, y)) solid(x, y, pick(DECOR.logs, seed ^ 5, x, y), true);

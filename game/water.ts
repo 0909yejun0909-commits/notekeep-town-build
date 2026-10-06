@@ -101,7 +101,18 @@ const WATER_BASE = frames3(24);
 
 export function renderWater(scene: Phaser.Scene, g: WorldGrid, map: Phaser.Tilemaps.Tilemap, gid: number) {
   if (g.water.size === 0) return;
-  const ts = map.addTilesetImage('water', 'water-anim', 16, 16, 0, 0, gid)!;
+  const ts = map.addTilesetImage('water', g.skin('water-anim'), 16, 16, 0, 0, gid);
+  if (!ts) {
+    // The animated sheet didn't load (a partial scripts/install-assets.sh run): plain water,
+    // from the original install, still shows where the pond is. It stays blocked either way.
+    for (const k of g.water) {
+      const [x, y] = k.split(',').map(Number);
+      scene.add.image(x * TILE, y * TILE, 'terrain-water').setOrigin(0, 0).setDepth(-930);
+    }
+    return;
+  }
+  // Snow freezes the ponds over: no ripples, no lily pads.
+  const frozen = g.biome === 'snow';
   const layer = map.createBlankLayer('water', ts)!.setDepth(-930);
 
   const tiles: { tile: Phaser.Tilemaps.Tile; base: number }[] = [];
@@ -117,15 +128,17 @@ export function renderWater(scene: Phaser.Scene, g: WorldGrid, map: Phaser.Tilem
     const nearShore = [[0, -2], [0, 2], [-2, 0], [2, 0]].some(([dx, dy]) => !g.water.has(key(x + dx, y + dy)));
     let texture: string | null = null;
     if (nearShore && roll < 0.22) texture = `cattail-${1 + (mix(g.seed, x, y) % 2)}`;
-    else if (roll < 0.14) texture = `lily-${1 + (mix(g.seed ^ 0x2e, x, y) % 4)}`;
+    else if (roll < 0.14) texture = frozen ? null : `lily-${1 + (mix(g.seed ^ 0x2e, x, y) % 4)}`;
     else if (roll < 0.17) texture = `water-rock-${1 + (mix(g.seed ^ 0x3f, x, y) % 2)}`;
     if (!texture) continue;
-    scene.add
-      .sprite(x * TILE + TILE / 2, y * TILE + TILE / 2, texture)
-      .setDepth(-920)
-      .play({ key: texture, startFrame: mix(g.seed ^ 0x40, x, y) % 8 });
+    const sprite = scene.add.sprite(x * TILE + TILE / 2, y * TILE + TILE / 2, g.skin(texture), 0).setDepth(-920);
+    // Rocks in ice don't ripple.
+    if (!(frozen && texture.startsWith('water-rock'))) {
+      sprite.play({ key: g.skinAnim(texture), startFrame: mix(g.seed ^ 0x40, x, y) % 8 });
+    }
   }
 
+  if (frozen) return;
   let frame = 0;
   scene.time.addEvent({
     delay: 180,

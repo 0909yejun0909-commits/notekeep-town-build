@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { mix } from '@/game/noise';
 import type { Entry } from '@/game/tilemap';
 import { isFree, key, nearHouse, TILE, type WorldGrid } from '@/game/worldGrid';
+import { CANDY_CANE, FIRE_GLOW, FIRE_PIT, FIRE_PIT_ANIM, PRESENTS, XMAS_TREE, XMAS_TREE_ORIGIN } from '@/game/winterArt';
+import { AMPHORA, POTTED_CACTUS } from '@/game/desertArt';
 
 const PW = 8;
 const PH = 6;
@@ -73,10 +75,10 @@ function rectClear(g: WorldGrid, x0: number, y0: number, pw: number, ph: number)
 
 function lampAt(scene: Phaser.Scene, g: WorldGrid, x: number, y: number) {
   scene.add
-    .sprite(x * TILE + TILE / 2, (y + 1) * TILE, 'lamp-posts')
+    .sprite(x * TILE + TILE / 2, (y + 1) * TILE, g.skin('lamp-posts'))
     .setOrigin(0.5, 1)
     .setDepth((y + 1) * TILE - 1)
-    .play({ key: 'lamp-flicker', startFrame: mix(g.seed, x, y) % 6 });
+    .play({ key: g.skinAnim('lamp-flicker'), startFrame: mix(g.seed, x, y) % 6 });
   g.lights.push({ x: x * TILE + TILE / 2 + 1, y: (y + 1) * TILE - 38, scale: 1 });
 }
 
@@ -84,22 +86,45 @@ export function renderPlazas(scene: Phaser.Scene, g: WorldGrid, plazas: Plaza[],
   for (const w of wells) {
     const x = (w.x + 1) * TILE;
     const y = (w.y + 2) * TILE;
-    scene.add.image(x, y - 1, 'well').setOrigin(0.5, 47 / 48).setDepth(y - 1);
+    if (g.biome === 'snow') {
+      // A campfire on the well's 2x2 tiles, glowing all day and brighter at night.
+      scene.add.image(x, y - TILE, FIRE_GLOW).setDepth(-400);
+      scene.add.sprite(w.x * TILE, w.y * TILE, FIRE_PIT).setOrigin(0, 0).setDepth(y - 1).play(FIRE_PIT_ANIM);
+      g.lights.push({ x, y: y - TILE, scale: 1.3 });
+      continue;
+    }
+    scene.add.image(x, y - 1, g.skin('well')).setOrigin(0.5, 47 / 48).setDepth(y - 1);
   }
 
   for (const p of plazas) {
     const at = (dx: number, dy: number) => ({ x: (p.x + dx) * TILE, y: (p.y + dy) * TILE });
 
     const base = at(4, 4);
-    scene.add.sprite(base.x, base.y - 2, 'fountain').setOrigin(0.5, 46 / 48).setDepth(base.y - 1).play('fountain-flow');
+    if (g.biome === 'snow' && scene.textures.exists(XMAS_TREE)) {
+      // The town Christmas tree stands where the fountain would, trunk on the same blocked tiles.
+      scene.add
+        .image(base.x, base.y - 2, XMAS_TREE)
+        .setOrigin(...XMAS_TREE_ORIGIN)
+        .setDepth(base.y - 1);
+    } else {
+      scene.add
+        .sprite(base.x, base.y - 2, g.skin('fountain'))
+        .setOrigin(0.5, 46 / 48)
+        .setDepth(base.y - 1)
+        .play(g.skinAnim('fountain-flow'));
+    }
 
     for (const dx of [0, 6]) {
       const b = at(dx, 4);
-      scene.add.image(b.x, b.y, 'benches', 1).setOrigin(0, 28 / 32).setDepth(b.y - 1);
+      scene.add.image(b.x, b.y, g.skin('benches'), 1).setOrigin(0, 28 / 32).setDepth(b.y - 1);
     }
 
     const flags = at(2, 1);
-    scene.add.sprite(flags.x, flags.y, 'bunting').setOrigin(0, 1).setDepth(flags.y - 1).play('bunting-wave');
+    scene.add
+      .sprite(flags.x, flags.y, g.skin('bunting'))
+      .setOrigin(0, 1)
+      .setDepth(flags.y - 1)
+      .play(g.skinAnim('bunting-wave'));
 
     lampAt(scene, g, p.x, p.y);
     lampAt(scene, g, p.x + 7, p.y);
@@ -120,10 +145,13 @@ export function renderYards(scene: Phaser.Scene, g: WorldGrid) {
 
     for (const x of [h.entryGx - 2, h.entryGx + 1]) {
       if (!isFree(g, x, front)) continue;
-      const frame = ((r >> 3) % 10) * 10 + 5 + ((r >> 7) + x) % 5;
+      // >>> not >>: mix() is unsigned, and a signed shift made about half of these frames negative.
+      const frame = ((r >>> 3) % 10) * 10 + 5 + ((r >>> 7) + x) % 5;
       // Nudged up against the wall: the sprite's bottom row is mostly empty porch.
+      const [texture, lift] =
+        g.biome === 'snow' ? [CANDY_CANE, 0] : g.biome === 'desert' ? [POTTED_CACTUS, 4] : ['flowers', 6];
       scene.add
-        .image(x * TILE + TILE / 2, (front + 1) * TILE - 6, 'flowers', frame)
+        .image(x * TILE + TILE / 2, (front + 1) * TILE - lift, texture, g.biome === 'forest' ? frame : undefined)
         .setOrigin(0.5, 1)
         .setDepth((front + 1) * TILE - 1);
       claim(x, front);
@@ -137,8 +165,9 @@ export function renderYards(scene: Phaser.Scene, g: WorldGrid) {
         lampAt(scene, g, x, front);
         lampDone = true;
       } else {
+        const stack = g.biome === 'snow' ? PRESENTS : g.biome === 'desert' ? AMPHORA : null;
         scene.add
-          .image(x * TILE + TILE / 2, (front + 1) * TILE, 'barrels', 7 + ((r >> 5) % 5))
+          .image(x * TILE + TILE / 2, (front + 1) * TILE, stack ?? 'barrels', stack ? undefined : 7 + ((r >>> 5) % 5))
           .setOrigin(0.5, 1)
           .setDepth((front + 1) * TILE - 1);
       }

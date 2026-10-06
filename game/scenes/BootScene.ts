@@ -15,6 +15,8 @@ import {
   shoesTextureKey,
 } from '@/lib/characterCatalog';
 import { createSceneryAnims, preloadScenery } from '@/game/sceneryAssets';
+import { loadTownBiome } from '@/lib/biome';
+import { bus } from '@/game/bus';
 
 export default class BootScene extends Phaser.Scene {
   constructor() {
@@ -25,6 +27,17 @@ export default class BootScene extends Phaser.Scene {
     // Phaser text keeps whatever font was ready when it was drawn; start the pixel font now.
     void document.fonts?.load("28px 'ArcadeClassic'");
     void document.fonts?.load("9px 'CuteFantasy'");
+
+    // Phaser draws any texture that failed to load as a black box, which looks like broken
+    // code; collect the failures so components/MissingArtBanner.tsx can say what's missing.
+    const missing: string[] = [];
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => missing.push(file.url as string));
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      if (missing.length === 0) return;
+      this.game.registry.set('missingAssets', missing);
+      bus.emit('assets-missing', { files: missing });
+    });
+
     this.load.spritesheet('player', 'assets/character/base.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('farmer_bob', 'assets/npc/farmer_bob.png', { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('bartender_katy', 'assets/npc/bartender_katy.png', { frameWidth: 64, frameHeight: 64 });
@@ -119,6 +132,8 @@ export default class BootScene extends Phaser.Scene {
     }
 
     createSceneryAnims(this);
+    // Set before any scene reads it, so the picker's later writes arrive as changedata events.
+    this.game.registry.set('townBiome', loadTownBiome());
 
     this.scene.start('TitleScene');
   }

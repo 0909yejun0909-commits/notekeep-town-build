@@ -1,6 +1,7 @@
 import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
 
 type BusEvents = {
+  'assets-missing': { files: string[] };
   'enter-house': { houseId: string };
   'exit-house': undefined;
   'open-note': { note: NoteRef };

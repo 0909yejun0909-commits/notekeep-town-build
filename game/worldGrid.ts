@@ -1,4 +1,4 @@
-import type { Region } from '@/lib/types';
+import type { Region, TownBiome } from '@/lib/types';
 
 export const TILE = 16;
 
@@ -28,6 +28,11 @@ export type WorldGrid = {
   houses: HouseRect[];
   // World-pixel points that glow at night (lamp heads, doors).
   lights: { x: number; y: number; scale: number }[];
+  // The player's town look. Biomes only reskin: they never change what is placed where.
+  biome: TownBiome;
+  // A texture or animation key's version for `biome` (game/biomeArt.ts); identity in forest.
+  skin: (key: string) => string;
+  skinAnim: (key: string) => string;
 };
 
 export function inBounds(g: WorldGrid, x: number, y: number) {

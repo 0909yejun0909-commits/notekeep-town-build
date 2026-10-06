@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
-import { hash } from '@/lib/types';
+import { hash, type TownBiome } from '@/lib/types';
+import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
+import { skin } from '@/game/biomeArt';
+import { WINTER_DECOR, WREATH, ensureWinterTextures, startSnowfall, winterDecorFrame } from '@/game/winterArt';
+import { DESERT_DECOR, desertDecorFrame, desertTree, ensureDesertTextures } from '@/game/desertArt';
 import {
+  HOUSE_DOOR,
   HOUSE_FOOTPRINT,
   DEFAULT_MATERIAL,
   DEFAULT_WALL_COLOR,
@@ -25,15 +30,21 @@ export default class TitleScene extends Phaser.Scene {
   }
 
   // A meadow street behind the title menu, with the player's hero strolling along it.
-  // Rebuilt from scratch on resize and when the hero's outfit changes.
+  // Rebuilt from scratch on resize, when the hero's outfit changes and when the biome does.
   create() {
     const restart = () => this.scene.restart();
     this.scale.on(Phaser.Scale.Events.RESIZE, restart);
     bus.on('appearance-changed', restart);
+    this.game.registry.events.on('changedata-townBiome', restart);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, restart);
       bus.off('appearance-changed', restart);
+      this.game.registry.events.off('changedata-townBiome', restart);
     });
+
+    const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    if (biome === 'snow') ensureWinterTextures(this);
+    if (biome === 'desert') ensureDesertTextures(this);
 
     const { width, height } = this.scale;
     const cols = Math.ceil(width / TILE);
@@ -42,11 +53,12 @@ export default class TitleScene extends Phaser.Scene {
     const roadTop = roadGy * TILE;
     const centre = Math.floor(cols / 2);
 
-    this.add.tileSprite(0, 0, cols * TILE, rows * TILE, 'terrain-grass').setOrigin(0, 0);
+    this.add.tileSprite(0, 0, cols * TILE, rows * TILE, skin(this, biome, 'terrain-grass')).setOrigin(0, 0);
 
+    const road = skin(this, biome, 'grass-edges');
     for (let gx = 0; gx < cols; gx++) {
-      this.add.image(gx * TILE, roadTop, 'grass-edges', 81).setOrigin(0, 0);
-      this.add.image(gx * TILE, roadTop + TILE, 'grass-edges', 113).setOrigin(0, 0);
+      this.add.image(gx * TILE, roadTop, road, 81).setOrigin(0, 0);
+      this.add.image(gx * TILE, roadTop + TILE, road, 113).setOrigin(0, 0);
     }
 
     // A house sprite's bottom row is its doorstep, so it overlaps the road's grassy top row.
@@ -54,12 +66,21 @@ export default class TitleScene extends Phaser.Scene {
     const place = (variant: number, gx: number) => {
       const [w, h] = HOUSE_FOOTPRINT[variant];
       const key = houseTextureKey(variant, DEFAULT_MATERIAL[variant], DEFAULT_WALL_COLOR[variant], DEFAULT_ROOF_COLOR[variant]);
-      this.add.image(gx * TILE, roadTop + TILE, key).setOrigin(0, 1).setDepth(roadTop + TILE);
+      this.add.image(gx * TILE, roadTop + TILE, skin(this, biome, key)).setOrigin(0, 1).setDepth(roadTop + TILE);
+      if (biome === 'snow') {
+        const [doorX, doorY] = HOUSE_DOOR[variant];
+        const top = roadTop + TILE - h * TILE;
+        this.add.image((gx + doorX) * TILE + TILE / 2, top + (doorY - 1) * TILE + TILE / 2, WREATH).setDepth(roadTop + TILE + 1);
+      }
       houses.push([gx, roadGy + 1 - h, w, h]);
     };
     const tree = (gx: number, bottom: number, i: number) => {
       const [key, frame] = i % 2 ? ['tree-spruce', 2] : ['tree-oak', 1];
-      this.add.image(gx * TILE, bottom, key, frame).setOrigin(0, 1).setDepth(bottom);
+      // Desert plants are drawn at the tree's frame size, so the same origin stands them on the ground.
+      const desert = biome === 'desert' ? desertTree(this, key, (hash(`title:plant:${gx}:${i}`) % 100) / 100, false) : null;
+      (desert ? this.add.image(gx * TILE, bottom, desert) : this.add.image(gx * TILE, bottom, skin(this, biome, key), frame))
+        .setOrigin(0, 1)
+        .setDepth(bottom);
     };
 
     let edge = centre - CLEAR;
@@ -91,8 +112,12 @@ export default class TitleScene extends Phaser.Scene {
       if (gy === roadGy || gy === roadGy + 1) continue;
       for (let gx = 0; gx < cols; gx++) {
         if (hash(`title:flower:${gx}:${gy}`) % 17 !== 0 || underHouse(gx, gy)) continue;
-        const frame = hash(`title:frame:${gx}:${gy}`) % 100;
-        this.add.image(gx * TILE + TILE / 2, gy * TILE + TILE / 2, 'flowers', frame);
+        const roll = hash(`title:frame:${gx}:${gy}`);
+        const [texture, frame] =
+          biome === 'snow' ? [WINTER_DECOR, winterDecorFrame(roll)]
+          : biome === 'desert' ? [DESERT_DECOR, desertDecorFrame(roll)]
+          : ['flowers', roll % 100];
+        this.add.image(gx * TILE + TILE / 2, gy * TILE + TILE / 2, texture, frame);
       }
     }
 
@@ -102,6 +127,7 @@ export default class TitleScene extends Phaser.Scene {
     dressPlayer(this, hero, loadAppearance());
     hero.play('idle-down');
     this.time.delayedCall(1200, () => this.stroll(hero));
+    if (biome === 'snow') startSnowfall(this);
   }
 
   private stroll(hero: Phaser.GameObjects.Sprite) {
