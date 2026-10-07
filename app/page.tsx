@@ -12,6 +12,7 @@ import RoomPanel from '@/components/RoomPanel';
 import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
 import PlayerTags from '@/components/PlayerTags';
+import SceneLabels from '@/components/SceneLabels';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
 import BedMenu from '@/components/BedMenu';
@@ -61,6 +62,7 @@ function Game() {
       <NoteReader note={openNote} />
       <InteriorEditor />
       <ExteriorEditor />
+      <SceneLabels />
       <PlayerTags />
       <ChatPanel />
       <RoomPanel />

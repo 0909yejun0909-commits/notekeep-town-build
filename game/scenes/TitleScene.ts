@@ -32,6 +32,8 @@ export default class TitleScene extends Phaser.Scene {
   // A meadow street behind the title menu, with the player's hero strolling along it.
   // Rebuilt from scratch on resize, when the hero's outfit changes and when the biome does.
   create() {
+    // Back to the usual pixel size if a house room asked for a smaller one (game/config.ts).
+    if (this.game.registry.get('minView')) this.game.registry.set('minView', null);
     const restart = () => this.scene.restart();
     this.scale.on(Phaser.Scale.Events.RESIZE, restart);
     bus.on('appearance-changed', restart);

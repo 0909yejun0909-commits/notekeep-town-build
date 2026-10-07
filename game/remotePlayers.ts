@@ -78,10 +78,11 @@ export function attachRemotePlayers(scene: Phaser.Scene, sceneId: SceneId, local
     const cam = scene.cameras.main;
     const rect = scene.game.canvas.getBoundingClientRect();
     const scale = rect.width / scene.scale.width;
+    // cam.zoom: house interiors scale their room up to fill the view.
     const at = (id: string, s: Phaser.GameObjects.Sprite): AvatarAnchor => ({
       id,
-      x: rect.left + (s.x - cam.worldView.x) * scale,
-      y: rect.top + (s.y - HEAD - cam.worldView.y) * scale,
+      x: rect.left + (s.x - cam.worldView.x) * cam.zoom * scale,
+      y: rect.top + (s.y - HEAD - cam.worldView.y) * cam.zoom * scale,
     });
     const out: AvatarAnchor[] = [];
     const selfId = getSession().selfId;

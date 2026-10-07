@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { bus } from '@/game/bus';
+import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { lie, sit } from '@/game/furniturePoses';
@@ -55,30 +56,9 @@ function shorten(name: string, max: number): string {
   return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
 }
 
-// In-room labels use the game's pixel font, boxed in the bookshelf's dark wood. The game draws
-// at 1/3 of screen size and the browser scales it up, so text has to sit on the game's own
-// pixel grid: ArcadeClassic's grid is 1/14 of its size, so 14px makes one font pixel one game
-// pixel, and 0.3px of letter spacing rounds its 7.7px advance to a whole 8. CuteFantasy fills
-// in the punctuation ArcadeClassic lacks.
-const LABEL_FONT = 'ArcadeClassic, CuteFantasy';
-function labelStyle(color = '#f4e4c1'): Phaser.Types.GameObjects.Text.TextStyle {
-  return { fontFamily: LABEL_FONT, fontSize: '14px', letterSpacing: 0.3, color, backgroundColor: '#3f2832', padding: { x: 2, y: 1 } };
-}
-
-// ArcadeClassic's space is barely wider than its letter gap; canvas text has no word-spacing.
-function spaced(text: string): string {
-  return text.replace(/ /g, '  ');
-}
-
-// Shows "Name (count)" in `label`, cut until it's no wider than `maxWidth`.
-function fitHeader(label: Phaser.GameObjects.Text, name: string, count: number, maxWidth: number) {
-  const suffix = ` (${count})`;
-  for (let n = name.length; n > 0; n--) {
-    label.setText(spaced((n === name.length ? name : `${name.slice(0, n).trimEnd()}..`) + suffix));
-    if (label.width <= maxWidth) return;
-  }
-  label.setText(suffix.trim());
-}
+// In-room labels are drawn by the page over the game (components/SceneLabels.tsx), sharp at
+// any scale. Here they're kept in room coordinates; x,y is where their origin point sits.
+type RoomLabel = Omit<SceneLabel, 'x' | 'y' | 'px'> & { x: number; y: number; visible: boolean };
 
 export default class InteriorScene extends Phaser.Scene {
   private houseId!: string;
@@ -89,7 +69,7 @@ export default class InteriorScene extends Phaser.Scene {
   private isEntrance = true;
   private doors = new Map<string, Door>();
   private doorAhead = new Map<string, Door>();
-  private doorHint!: Phaser.GameObjects.Text;
+  private doorHint!: RoomLabel;
 
   private doorGx = 0;
   private doorGy = 0;
@@ -102,7 +82,7 @@ export default class InteriorScene extends Phaser.Scene {
   private appearance!: Appearance;
   private undress: (() => void) | null = null;
   private movement!: GridMovement;
-  private indicator!: Phaser.GameObjects.Text;
+  private indicator!: RoomLabel;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private enterKey!: Phaser.Input.Keyboard.Key;
   private standKeys: Phaser.Input.Keyboard.Key[] = [];
@@ -119,6 +99,9 @@ export default class InteriorScene extends Phaser.Scene {
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
+  private roomPxW = 0;
+  private roomPxH = 0;
+  private labels: RoomLabel[] = [];
 
   private editingLayout = false;
   private fingerprint: string | undefined;
@@ -196,6 +179,7 @@ export default class InteriorScene extends Phaser.Scene {
     this.bedTarget = null;
     this.undress = null;
     this.doors = new Map();
+    this.labels = [];
     this.doorAhead = new Map();
   }
 
@@ -221,6 +205,11 @@ export default class InteriorScene extends Phaser.Scene {
     this.layout = saved ?? computeDefaultLayout(house, room);
     const [w, h] = ROOM_SIZES[this.layout.roomSize];
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
+    this.roomPxW = w * TILE;
+    this.roomPxH = h * TILE;
+    // A room too big for the view at the usual pixel size gets a step smaller (game/config.ts).
+    const minView = this.game.registry.get('minView') as [number, number] | null | undefined;
+    if (minView?.[0] !== this.roomPxW || minView?.[1] !== this.roomPxH) this.game.registry.set('minView', [this.roomPxW, this.roomPxH]);
 
     // The entrance has a doorway per other room. Rooms beyond the wall's capacity get no door;
     // their notes are still on the entrance bookshelf. Rooms are added from CUSTOMIZE, only by
@@ -288,19 +277,12 @@ export default class InteriorScene extends Phaser.Scene {
     // Name and CUSTOMIZE share the top wall's row in the top-right corner, so they never cover
     // the bookshelf; the name gets whatever the door slots and the coin purse leave free.
     const labelRightX = w * TILE - 3;
-    let nameRightX = labelRightX;
-    if (this.game.registry.get('role') !== 'guest') {
-      const customize = this.add
-        .text(labelRightX, 1, 'CUSTOMIZE', labelStyle('#ffe066'))
-        .setOrigin(1, 0)
-        .setDepth(6)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => this.openEditor());
-      nameRightX -= customize.width + 2;
-    }
-    const headerLeftX = Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE;
-    const header = this.add.text(nameRightX, 1, '', labelStyle()).setOrigin(1, 0).setDepth(6);
-    fitHeader(header, this.isEntrance ? house.name : room.name, this.isEntrance ? noteCount : room.notes.length, nameRightX - headerLeftX);
+    this.label(labelRightX, 1, this.isEntrance ? house.name : room.name, 1, 0, {
+      suffix: ` (${this.isEntrance ? noteCount : room.notes.length})`,
+      maxWidth: labelRightX - Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE,
+      action: this.game.registry.get('role') === 'guest' ? undefined
+        : { text: 'CUSTOMIZE', color: '#ffe066', onClick: () => this.openEditor() },
+    });
 
     for (const door of this.doors.values()) this.drawDoorLabel(door);
 
@@ -309,10 +291,7 @@ export default class InteriorScene extends Phaser.Scene {
       this.renderPlacement(placement, allNotes);
     }
 
-    this.add
-      .text(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', labelStyle())
-      .setOrigin(0.5, 1)
-      .setDepth(6);
+    this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1);
 
     // Back from a room: stand just inside its doorway, not at the house's front door.
     const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;
@@ -340,18 +319,9 @@ export default class InteriorScene extends Phaser.Scene {
     setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: 'down' });
     attachRemotePlayers(this, sceneId, this.player);
 
-    this.indicator = this.add
-      .text(0, 0, '!', { fontFamily: LABEL_FONT, fontSize: '14px', color: '#ffe066' })
-      
-      .setOrigin(0.5, 1)
-      .setDepth(1000)
-      .setVisible(false);
-
-    this.doorHint = this.add
-      .text(0, 0, '', labelStyle())
-      .setOrigin(0.5, 1)
-      .setDepth(1000)
-      .setVisible(false);
+    this.indicator = this.label(0, 0, '!', 0.5, 1, { color: '#ffe066', bare: true, visible: false });
+    this.doorHint = this.label(0, 0, '', 0.5, 1, { visible: false });
+    setLabelSource(this.projectLabels);
 
     const keyboard = this.input.keyboard!;
     this.spaceKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -360,8 +330,9 @@ export default class InteriorScene extends Phaser.Scene {
     const wasd = keyboard.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
     this.standKeys = [cursors.up, cursors.down, cursors.left, cursors.right, ...Object.values(wasd), this.spaceKey, this.enterKey];
 
-    this.cameras.main.setScroll(0, 0);
     this.cameras.main.setBackgroundColor('#141018');
+    this.fitCamera();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.fitCamera);
 
     this.prevGx = spawnGx;
     this.prevGy = spawnGy;
@@ -374,6 +345,8 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
+      if (getLabelSource() === this.projectLabels) setLabelSource(null);
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.fitCamera);
       bus.off('close-shelf', this.onCloseShelf);
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
@@ -383,6 +356,50 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('world-updated', this.onWorldUpdated);
     });
   }
+
+  // A room is only a few hundred pixels across. Show it as big as fits whole, scaled by a
+  // whole number (pixel art stays crisp only at whole multiples), centred in the view. In a
+  // window too small for the room even at 1x, follow the player across it instead.
+  private roomZoom() {
+    const cam = this.cameras.main;
+    return Math.max(1, Math.floor(Math.min(cam.width / this.roomPxW, cam.height / this.roomPxH)));
+  }
+
+  private label(x: number, y: number, text: string, ox: number, oy: number, extra: Partial<RoomLabel> = {}) {
+    const l: RoomLabel = { id: `l${this.labels.length}`, text, x, y, ox, oy, visible: true, ...extra };
+    this.labels.push(l);
+    return l;
+  }
+
+  // Room coordinates to the page's, for the label overlay. Labels keep their size in game
+  // pixels whatever the room's zoom; only their positions follow the room.
+  private projectLabels = (): SceneLabel[] => {
+    const cam = this.cameras.main;
+    const rect = this.game.canvas.getBoundingClientRect();
+    const px = rect.width / this.scale.width;
+    const k = cam.zoom * px;
+    return this.labels
+      .filter((l) => l.visible)
+      .map(({ visible, ...l }) => ({
+        ...l,
+        x: rect.left + (l.x - cam.worldView.x) * k,
+        y: rect.top + (l.y - cam.worldView.y) * k,
+        px,
+        maxWidth: l.maxWidth === undefined ? undefined : l.maxWidth * k,
+      }));
+  };
+
+  private fitCamera = () => {
+    const cam = this.cameras.main;
+    const rw = this.roomPxW, rh = this.roomPxH;
+    const zoom = this.roomZoom();
+    cam.setZoom(zoom);
+    const vw = cam.width / zoom, vh = cam.height / zoom;
+    // Bounds at least the view's size, centred on the room, so a room smaller than the view
+    // sits in the middle and a bigger one scrolls only as far as its walls.
+    cam.setBounds(Math.min(0, Math.round((rw - vw) / 2)), Math.min(0, Math.round((rh - vh) / 2)), Math.max(rw, vw), Math.max(rh, vh));
+    cam.startFollow(this.player, true);
+  };
 
   private overlayOpen() {
     return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout;
@@ -420,16 +437,13 @@ export default class InteriorScene extends Phaser.Scene {
 
   private drawDoorLabel(door: Door) {
     const { gx, gy, side } = door.slot;
-    const text = spaced(shorten(door.name, side === 'top' || side === 'bottom' ? 4 : 8));
-    const style = labelStyle();
+    const text = shorten(door.name, side === 'top' || side === 'bottom' ? 4 : 8);
     const cx = gx * TILE + TILE / 2;
     const cy = gy * TILE + TILE / 2;
-    const label =
-      side === 'top' ? this.add.text(cx, 2, text, style).setOrigin(0.5, 0)
-      : side === 'bottom' ? this.add.text(cx, (gy + 1) * TILE - 2, text, style).setOrigin(0.5, 1)
-      : side === 'left' ? this.add.text(TILE + 2, cy, text, style).setOrigin(0, 0.5)
-      : this.add.text(gx * TILE - 2, cy, text, style).setOrigin(1, 0.5);
-    label.setDepth(6);
+    if (side === 'top') this.label(cx, 2, text, 0.5, 0);
+    else if (side === 'bottom') this.label(cx, (gy + 1) * TILE - 2, text, 0.5, 1);
+    else if (side === 'left') this.label(TILE + 2, cy, text, 0, 0.5);
+    else this.label(gx * TILE - 2, cy, text, 1, 0.5);
   }
 
   private enterRoom(roomId: string) {
@@ -450,7 +464,7 @@ export default class InteriorScene extends Phaser.Scene {
       return;
     }
     const { gx, gy } = this.movement.getTile();
-    this.indicator.setVisible(false);
+    this.indicator.visible = false;
     const undo =
       piece.action === 'sit'
         ? sit(this, this.player, piece.entry, piece.placement)
@@ -553,7 +567,7 @@ export default class InteriorScene extends Phaser.Scene {
     const note = settled ? this.approach.get(here) : undefined;
     const piece = settled ? this.actions.get(here) : undefined;
     if (atShelf || note || piece) {
-      this.indicator.setPosition(this.player.x, this.player.y - 34).setVisible(true);
+      Object.assign(this.indicator, { x: this.player.x, y: this.player.y - 34, visible: true });
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
         if (note && piece?.note === note && piece.action === 'lie') this.openBedMenu(piece);
         else if (note) this.openNote(note);
@@ -561,16 +575,16 @@ export default class InteriorScene extends Phaser.Scene {
         else if (piece) this.act(piece);
       }
     } else {
-      this.indicator.setVisible(false);
+      this.indicator.visible = false;
     }
 
     // Door labels are cut short; standing in front of one spells out where it goes.
     const ahead = settled ? this.doorAhead.get(here) : undefined;
     if (ahead) {
       const y = this.indicator.visible ? this.player.y - 50 : this.player.y - 34;
-      this.doorHint.setText(spaced(ahead.name)).setPosition(this.player.x, y).setVisible(true);
+      Object.assign(this.doorHint, { text: ahead.name, x: this.player.x, y, visible: true });
     } else {
-      this.doorHint.setVisible(false);
+      this.doorHint.visible = false;
     }
   }
 }

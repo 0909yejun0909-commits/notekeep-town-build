@@ -86,6 +86,8 @@ export default class OverworldScene extends Phaser.Scene {
   }
 
   create() {
+    // Back to the usual pixel size if a house room asked for a smaller one (game/config.ts).
+    if (this.game.registry.get('minView')) this.game.registry.set('minView', null);
     this.game.registry.events.on('changedata-townBiome', this.onBiomeChange);
     this.events.once('shutdown', () => this.game.registry.events.off('changedata-townBiome', this.onBiomeChange));
 
