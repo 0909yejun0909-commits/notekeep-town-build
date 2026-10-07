@@ -9,7 +9,6 @@ import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
 import { attachRemotePlayers } from '@/game/remotePlayers';
-import { setSelfPresence } from '@/lib/multiplayer/session';
 import { hash } from '@/lib/types';
 import { HOUSE_FOOTPRINT } from '@/lib/houseCatalog';
 import { key, type WorldGrid } from '@/game/worldGrid';
@@ -24,6 +23,8 @@ import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
+import { MINIMAP_TILE, getMinimapSource, setMinimapSource, type MinimapSource } from '@/game/minimap';
+import { currentPresences, setSelfPresence } from '@/lib/multiplayer/session';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -270,12 +271,15 @@ export default class OverworldScene extends Phaser.Scene {
     cam.startFollow(player, true);
 
     setLabelSource(this.projectLabels);
+    const minimap = this.minimapSource(world, grid, player);
+    setMinimapSource(minimap);
 
     bus.on('commit-exterior-variant', this.onCommitExterior);
     bus.on('close-exterior-editor', this.onCloseExteriorEditor);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
       if (getLabelSource() === this.projectLabels) setLabelSource(null);
+      if (getMinimapSource() === minimap) setMinimapSource(null);
       bus.off('commit-exterior-variant', this.onCommitExterior);
       bus.off('close-exterior-editor', this.onCloseExteriorEditor);
       bus.off('world-updated', this.onWorldUpdated);
@@ -303,6 +307,52 @@ export default class OverworldScene extends Phaser.Scene {
         maxWidth: (l.w + TILE) * k,
       }));
   };
+
+  private minimapSource(world: WorldModel, grid: WorldGrid, player: Phaser.GameObjects.Sprite): MinimapSource {
+    const tiles = new Uint8Array(grid.w * grid.h);
+    for (let y = 0; y < grid.h; y++) {
+      for (let x = 0; x < grid.w; x++) {
+        const k = key(x, y);
+        tiles[y * grid.w + x] = grid.water.has(k)
+          ? MINIMAP_TILE.water
+          : grid.road.has(k)
+            ? MINIMAP_TILE.road
+            : grid.plaza.has(k)
+              ? MINIMAP_TILE.plaza
+              : grid.blocked.has(k)
+                ? MINIMAP_TILE.blocked
+                : MINIMAP_TILE.grass;
+      }
+    }
+    const byId = new Map(world.regions.flatMap((r) => r.houses.map((h) => [h.id, h] as const)));
+    const cam = this.cameras.main;
+    return {
+      layout: {
+        w: grid.w,
+        h: grid.h,
+        biome: grid.biome,
+        tiles,
+        houses: grid.houses.map((r) => ({
+          id: r.houseId,
+          name: byId.get(r.houseId)?.name ?? '',
+          gx: r.gx,
+          gy: r.gy,
+          w: r.w,
+          h: r.h,
+          roof: byId.get(r.houseId)?.roofColor ?? 'red',
+        })),
+        areas: grid.areas.map((a) => ({ name: a.region.name, gx: a.originGx, gy: a.originGy, w: a.width, h: a.height })),
+        townName: world.name,
+      },
+      frame: () => ({
+        player: { x: player.x / TILE, y: player.y / TILE - 0.5 },
+        view: { x: cam.worldView.x / TILE, y: cam.worldView.y / TILE, w: cam.worldView.width / TILE, h: cam.worldView.height / TILE },
+        peers: currentPresences()
+          .filter(([, p]) => p.scene === 'overworld')
+          .map(([, p]) => ({ x: p.gx + 0.5, y: p.gy + 0.5 })),
+      }),
+    };
+  }
 
   private openExteriorEditor(house: House, region: Region) {
     if (this.editingExterior) return;
