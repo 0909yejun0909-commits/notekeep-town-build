@@ -25,6 +25,13 @@ export const NOTE_STORE_ITEMS: CatalogItemId[] = [
   'fridge_magnets', 'cabinet_oak', 'cabinet_walnut', 'wardrobe_oak', 'wardrobe_pine', 'wardrobe_walnut',
 ];
 
+// What the notes look like once it's open: books, food in a fridge, or clothes on a rail.
+export type ShelfLook = 'books' | 'fridge' | 'wardrobe';
+export function shelfLook(item: CatalogItemId | undefined): ShelfLook {
+  const category = item ? CATALOG_BY_ID[item]?.category : undefined;
+  return category === 'fridge' || category === 'wardrobe' ? category : 'books';
+}
+
 type Rect = [number, number, number, number];
 type Rotations = CatalogEntry['rotations'];
 

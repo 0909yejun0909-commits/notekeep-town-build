@@ -5,6 +5,7 @@ import type { House, NoteRef, WorldModel } from '@/lib/types';
 import { hash } from '@/lib/types';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
+import type { ShelfLook } from '@/lib/catalog';
 import { MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { useWallet } from '@/lib/walletStore';
 import Coin from './Coin';
@@ -91,21 +92,67 @@ function bookStyle(item: Item): React.CSSProperties {
   }
   return {
     ['--w' as string]: `${38 + (h % 4) * 4}px`,
-    ['--h' as string]: `${168 + ((h >> 4) % 6) * 8}px`,
-    ['--c' as string]: COLORS[(h >> 8) % COLORS.length],
+    ['--h' as string]: `${168 + ((h >>> 4) % 6) * 8}px`,
+    ['--c' as string]: COLORS[(h >>> 8) % COLORS.length],
   };
 }
 
-function widthOf(item: Item): number {
-  return parseInt(String(bookStyle(item)['--w' as keyof React.CSSProperties]), 10) + 6;
+// A fridge holds food and a wardrobe clothes instead of books: each kind is a CSS shape
+// (Bookshelf.module.css) with its own colours. Folders are a tub or a garment bag, and the
+// "New note" slot is a see-through jar or shirt.
+type Good = { shape: string; w: number; h: number; c: string; c2?: string };
+
+const FOODS: Good[] = [
+  { shape: 'bottle', w: 44, h: 196, c: '#b4202a', c2: '#f4f4f4' },
+  { shape: 'bottle', w: 44, h: 188, c: '#f0c419', c2: '#b4202a' },
+  { shape: 'bottle', w: 48, h: 204, c: '#3e8948', c2: '#d8d8d8' },
+  { shape: 'carton', w: 56, h: 196, c: '#f4f4f4', c2: '#3e6fb0' },
+  { shape: 'carton', w: 56, h: 188, c: '#fb6b1d', c2: '#f0c419' },
+  { shape: 'jar', w: 60, h: 172, c: '#825e80', c2: '#e4a672' },
+  { shape: 'jar', w: 60, h: 180, c: '#7c963c', c2: '#b4202a' },
+];
+const CLOTHES: Array<Omit<Good, 'c'>> = [
+  { shape: 'shirt', w: 88, h: 168 },
+  { shape: 'hoodie', w: 92, h: 176 },
+  { shape: 'pants', w: 72, h: 184 },
+  { shape: 'coat', w: 90, h: 188 },
+];
+
+function goodOf(item: Item, look: Exclude<ShelfLook, 'books'>): Good {
+  const fridge = look === 'fridge';
+  if (item.kind === 'new') return fridge ? { shape: 'jar', w: 60, h: 176, c: '' } : { shape: 'shirt', w: 88, h: 168, c: '' };
+  const h = hash(keyOf(item));
+  const c = FOLDER_COLORS[h % FOLDER_COLORS.length];
+  if (item.kind === 'folder') return fridge ? { shape: 'tub', w: 84, h: 150, c } : { shape: 'bag', w: 70, h: 192, c };
+  if (fridge) return FOODS[h % FOODS.length];
+  return { ...CLOTHES[h % CLOTHES.length], c: COLORS[(h >>> 8) % COLORS.length] };
 }
 
-function packRows(items: Item[]): Item[][] {
+function goodStyle(good: Good): React.CSSProperties {
+  return {
+    ['--w' as string]: `${good.w}px`,
+    ['--h' as string]: `${good.h}px`,
+    ['--c' as string]: good.c,
+    ['--c2' as string]: good.c2,
+  };
+}
+
+function widthOf(item: Item, look: ShelfLook): number {
+  return (look === 'books' ? parseInt(String(bookStyle(item)['--w' as keyof React.CSSProperties]), 10) : goodOf(item, look).w) + 6;
+}
+
+const HINTS: Record<ShelfLook, string> = {
+  books: 'Click a folder to open it. Click a book to read. Esc goes back.',
+  fridge: 'Click a tub to open it. Click any food to read. Esc goes back.',
+  wardrobe: 'Click a garment bag to open it. Click any clothes to read. Esc goes back.',
+};
+
+function packRows(items: Item[], look: ShelfLook): Item[][] {
   const rows: Item[][] = [];
   let row: Item[] = [];
   let used = 0;
   for (const item of items) {
-    const w = widthOf(item) + GAP;
+    const w = widthOf(item, look) + GAP;
     if (row.length > 0 && used + w > SHELF_INNER) {
       rows.push(row);
       row = [];
@@ -124,6 +171,7 @@ export default function Bookshelf() {
   const wallet = useWallet();
   const [houseId, setHouseId] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [look, setLook] = useState<ShelfLook>('books');
   const [path, setPath] = useState<string[]>([]);
   const [naming, setNaming] = useState(false);
   const [title, setTitle] = useState('');
@@ -132,9 +180,10 @@ export default function Bookshelf() {
   const noteOpen = useRef(false);
 
   useEffect(() => {
-    const onOpen = ({ houseId, roomId }: { houseId: string; roomId: string }) => {
+    const onOpen = ({ houseId, roomId, look }: { houseId: string; roomId: string; look: ShelfLook }) => {
       setHouseId(houseId);
       setRoomId(roomId);
+      setLook(look);
       setPath([]);
       setNaming(false);
     };
@@ -184,7 +233,7 @@ export default function Bookshelf() {
     folder = next;
   }
   const canCreate = !!vault?.createNote;
-  const rows = packRows(canCreate ? [...itemsOf(folder), NEW_BOOK] : itemsOf(folder));
+  const rows = packRows(canCreate ? [...itemsOf(folder), NEW_BOOK] : itemsOf(folder), look);
 
   const close = () => bus.emit('close-shelf', undefined);
 
@@ -214,7 +263,7 @@ export default function Bookshelf() {
 
   return (
     <div className={styles.backdrop} onClick={close}>
-      <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
+      <div className={`${styles.panel} ${look === 'books' ? '' : styles[look]}`} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <button className={styles.btn} disabled={path.length === 0} onClick={() => setPath((p) => p.slice(0, -1))}>
             &lt; Back
@@ -242,36 +291,55 @@ export default function Bookshelf() {
         <div className={styles.shelves}>
           {rows.map((row, ri) => (
             <div key={ri} className={styles.row}>
-              {row.map((item) => (
-                <button
-                  key={keyOf(item)}
-                  className={`${styles.book} ${item.kind === 'folder' ? styles.folder : ''} ${item.kind === 'new' ? styles.newBook : ''}`}
-                  style={bookStyle(item)}
-                  title={
-                    item.kind === 'note'
-                      ? item.note.preview || item.name
-                      : item.kind === 'folder'
-                        ? `${item.name} (${item.count})`
-                        : 'Write a new note on this shelf'
-                  }
-                  onClick={() => {
-                    if (item.kind === 'folder') setPath((p) => [...p, item.name]);
-                    else if (item.kind === 'note') bus.emit('open-note', { note: item.note });
-                    else startNaming();
-                  }}
-                >
-                  <span className={styles.band} />
-                  {item.kind === 'new' && <span className={styles.plus}>+</span>}
-                  <span className={styles.title}>{item.name}</span>
-                  <span className={styles.bandBottom} />
-                  {item.kind === 'folder' && <span className={styles.count}>{item.count}</span>}
-                </button>
-              ))}
+              {row.map((item) => {
+                const good = look === 'books' ? null : goodOf(item, look);
+                return (
+                  <button
+                    key={keyOf(item)}
+                    className={
+                      good
+                        ? `${styles.good} ${styles[good.shape]} ${item.kind === 'new' ? styles.ghost : ''}`
+                        : `${styles.book} ${item.kind === 'folder' ? styles.folder : ''} ${item.kind === 'new' ? styles.newBook : ''}`
+                    }
+                    style={good ? goodStyle(good) : bookStyle(item)}
+                    title={
+                      item.kind === 'note'
+                        ? item.note.preview || item.name
+                        : item.kind === 'folder'
+                          ? `${item.name} (${item.count})`
+                          : 'Write a new note here'
+                    }
+                    onClick={() => {
+                      if (item.kind === 'folder') setPath((p) => [...p, item.name]);
+                      else if (item.kind === 'note') bus.emit('open-note', { note: item.note });
+                      else startNaming();
+                    }}
+                  >
+                    {good ? (
+                      <>
+                        {look === 'wardrobe' && <span className={styles.hanger} />}
+                        <span className={styles.outline}>
+                          <span className={styles.shape} />
+                        </span>
+                        <span className={styles.label}>{item.kind === 'new' ? `+ ${item.name}` : item.name}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className={styles.band} />
+                        {item.kind === 'new' && <span className={styles.plus}>+</span>}
+                        <span className={styles.title}>{item.name}</span>
+                        <span className={styles.bandBottom} />
+                      </>
+                    )}
+                    {item.kind === 'folder' && <span className={styles.count}>{item.count}</span>}
+                  </button>
+                );
+              })}
             </div>
           ))}
         </div>
 
-        <div className={styles.hint}>Click a folder to open it. Click a book to read. Esc goes back.</div>
+        <div className={styles.hint}>{HINTS[look]}</div>
 
         {naming && (
           <div className={styles.namerBackdrop} onClick={() => setNaming(false)}>

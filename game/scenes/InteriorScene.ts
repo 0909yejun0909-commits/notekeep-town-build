@@ -29,6 +29,7 @@ import {
   SHELF_SHEET,
   WALKABLE,
   furnitureTextureKey,
+  shelfLook,
   type FurnitureAction,
 } from '@/lib/catalog';
 import { attachRemotePlayers } from '@/game/remotePlayers';
@@ -439,7 +440,7 @@ export default class InteriorScene extends Phaser.Scene {
   private openShelf() {
     if (this.overlayOpen() || this.exiting) return;
     this.shelfOpen = true;
-    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId });
+    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId, look: shelfLook(this.layout.shelf.item) });
   }
 
   private useShelf() {

@@ -1,3 +1,4 @@
+import type { ShelfLook } from '@/lib/catalog';
 import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
 
 type BusEvents = {
@@ -9,7 +10,7 @@ type BusEvents = {
   'fast-travel': { houseId: string; roomId?: string; noteId?: string };
   'open-note': { note: NoteRef };
   'close-note': undefined;
-  'open-shelf': { houseId: string; roomId: string };
+  'open-shelf': { houseId: string; roomId: string; look: ShelfLook };
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
   'world-updated': { exteriorChanged: boolean };
