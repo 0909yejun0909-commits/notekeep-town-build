@@ -131,10 +131,11 @@ export type InteriorLayout = {
   floorFrame: number;
   wallTriple: number;
   roomSize: RoomSize;
-  // The bookshelf isn't a FurniturePlacement — it's always present, always the
-  // same style, and it's the only guaranteed way to browse every note in the
-  // house — but it can be moved, so its position lives here.
-  shelf: { gx: number; gy: number };
+  // The shelf isn't a FurniturePlacement — it's always present and it's the only
+  // guaranteed way to browse every note in the house — but it can be moved, and
+  // it can look like a fridge, cabinet or wardrobe instead (`item`, one of
+  // NOTE_STORE_ITEMS in lib/catalog.ts; absent means the bookshelf).
+  shelf: { gx: number; gy: number; item?: CatalogItemId };
   placements: FurniturePlacement[];
 };
 

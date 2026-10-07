@@ -17,7 +17,7 @@ import SceneLabels from '@/components/SceneLabels';
 import Minimap from '@/components/Minimap';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
-import BedMenu from '@/components/BedMenu';
+import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
 import { bus } from '@/game/bus';
@@ -72,7 +72,7 @@ function Game() {
       <RoomPanel />
       <CoinPurse />
       <Wardrobe />
-      <BedMenu />
+      <ChoiceMenu />
       <BiomePicker />
       <MissingArtBanner />
 

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FLOOR_FRAMES, ROOM_SIZES, SHELF_GY, SHELF_W, canResize, computeDefaultLayout, doorCells, doorPositionFor, doorSlots,
-  shelfGxFor,
+  restyleShelf, shelfGxFor, shelfOccupied, structuralOccupied,
 } from './interiorLayout.ts';
 import { CATALOG_BY_ID } from './catalog.ts';
 import { hash } from './types.ts';
@@ -59,6 +59,31 @@ test('a shelf moved against a side wall skips the doors behind it', () => {
   const layout: InteriorLayout = { ...empty('large'), shelf: { gx: 1, gy: 5 } };
   const left = doorSlots(layout, CATALOG_BY_ID, 99).filter((s) => s.side === 'left').map((s) => s.gy);
   assert.deepEqual(left, [2, 4, 8, 10, 12]);
+});
+
+test('a fridge or wardrobe shelf blocks only its own footprint and the row in front', () => {
+  assert.deepEqual([...shelfOccupied({ gx: 5, gy: 1, item: 'fridge_magnets' }, CATALOG_BY_ID)].sort(), ['5,1', '5,2', '5,3']);
+  assert.equal(shelfOccupied({ gx: 5, gy: 1, item: 'wardrobe_oak' }, CATALOG_BY_ID).size, 6);
+  assert.equal(shelfOccupied({ gx: 3, gy: 1 }, CATALOG_BY_ID).size, 18);
+});
+
+test('restyling the shelf keeps it centred, and back again lands where it started', () => {
+  const small = empty('small');
+  const structural = structuralOccupied(13, 10);
+  const fridge = restyleShelf(small, CATALOG_BY_ID, structural, 13, 10, 'fridge_magnets');
+  assert.deepEqual(fridge, { gx: 5, gy: SHELF_GY, item: 'fridge_magnets' });
+  assert.deepEqual(restyleShelf({ ...small, shelf: fridge! }, CATALOG_BY_ID, structural, 13, 10, undefined), small.shelf);
+  assert.deepEqual(restyleShelf(small, CATALOG_BY_ID, structural, 13, 10, 'wardrobe_pine'), { gx: 5, gy: SHELF_GY, item: 'wardrobe_pine' });
+});
+
+test('a bookshelf that would overlap furniture is refused', () => {
+  const layout: InteriorLayout = {
+    ...empty('small'),
+    shelf: { gx: 5, gy: SHELF_GY, item: 'fridge_magnets' },
+    placements: [{ item: 'desk', gx: 3, gy: 1, rotation: 0 }, { item: 'desk', gx: 7, gy: 1, rotation: 0 }],
+  };
+  assert.equal(restyleShelf(layout, CATALOG_BY_ID, structuralOccupied(13, 10), 13, 10, undefined), null);
+  assert.ok(restyleShelf(layout, CATALOG_BY_ID, structuralOccupied(13, 10), 13, 10, 'cabinet_oak'));
 });
 
 test('doorCells covers each doorway and the tiles in front of it', () => {

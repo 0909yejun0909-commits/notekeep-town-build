@@ -27,6 +27,7 @@ export function getLayout(fingerprint: string, houseId: string): InteriorLayout 
       typeof parsed.shelf !== 'object' || parsed.shelf === null ||
       typeof parsed.shelf.gx !== 'number' ||
       typeof parsed.shelf.gy !== 'number' ||
+      (parsed.shelf.item !== undefined && typeof parsed.shelf.item !== 'string') ||
       !Array.isArray(parsed.placements)
     ) {
       // Also catches layouts saved before the shelf-move/room-size features

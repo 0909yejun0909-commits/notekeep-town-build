@@ -55,13 +55,28 @@ export function structuralOccupied(w: number, h: number): Set<string> {
   return occupied;
 }
 
-// The shelf's own footprint (SHELF_W x 2 tiles) plus its approach row
-// immediately below it — wherever it currently sits. Union this with
-// `structuralOccupied()` to get "everything furniture must avoid."
-export function shelfOccupied(shelfGx: number, shelfGy: number): Set<string> {
+type Shelf = InteriorLayout['shelf'];
+
+// The bookshelf is SHELF_W x 2 tiles; a fridge, cabinet or wardrobe standing in for it
+// takes its catalog footprint.
+export function shelfSize(
+  shelf: Shelf,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+): [number, number] {
+  return (shelf.item && catalogById[shelf.item]?.footprint) || [SHELF_W, 2];
+}
+
+// The shelf's own footprint plus its approach row immediately below it — wherever it
+// currently sits. Union this with `structuralOccupied()` to get "everything furniture
+// must avoid."
+export function shelfOccupied(
+  shelf: Shelf,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+): Set<string> {
+  const [sw, sh] = shelfSize(shelf, catalogById);
   const occupied = new Set<string>();
-  for (const cell of footprintCells(shelfGx, shelfGy, SHELF_W, 2)) occupied.add(cell);
-  for (let x = shelfGx; x < shelfGx + SHELF_W; x++) occupied.add(`${x},${shelfGy + 2}`);
+  for (const cell of footprintCells(shelf.gx, shelf.gy, sw, sh)) occupied.add(cell);
+  for (let x = shelf.gx; x < shelf.gx + sw; x++) occupied.add(`${x},${shelf.gy + sh}`);
   return occupied;
 }
 
@@ -141,7 +156,7 @@ export function canPlace(
   return true;
 }
 
-// Can the shelf (always SHELF_W x 2 tiles) move to (gx, gy)? `structural` here
+// Can the shelf, looking like `item`, move to (gx, gy)? `structural` here
 // is `structuralOccupied()` only (the perimeter) — deliberately NOT unioned
 // with the shelf's own current position, since we're choosing where it
 // moves TO and it shouldn't collide with itself. Checked against every
@@ -154,9 +169,11 @@ export function canPlaceShelf(
   h: number,
   gx: number,
   gy: number,
+  item: CatalogItemId | undefined,
 ): boolean {
-  if (gx < 1 || gy < 1 || gx + SHELF_W > w - 1 || gy + 2 > h - 1) return false;
-  const cells = footprintCells(gx, gy, SHELF_W, 2);
+  const [sw, sh] = shelfSize({ gx, gy, item }, catalogById);
+  if (gx < 1 || gy < 1 || gx + sw > w - 1 || gy + sh > h - 1) return false;
+  const cells = footprintCells(gx, gy, sw, sh);
   if (cells.some((c) => structural.has(c))) return false;
   for (const p of layout.placements) {
     const pe = catalogById[p.item];
@@ -165,6 +182,26 @@ export function canPlaceShelf(
     if (cells.some((c) => pCells.includes(c))) return false;
   }
   return true;
+}
+
+// The shelf restyled as `item` (undefined = the bookshelf), centred on where it stood so a
+// fridge takes the middle of the old bookshelf and a bookshelf grows out from the fridge —
+// or, if that doesn't fit, kept at the same left edge. Null when neither fits.
+export function restyleShelf(
+  layout: InteriorLayout,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  structural: Set<string>,
+  w: number,
+  h: number,
+  item: CatalogItemId | undefined,
+): Shelf | null {
+  const [oldW] = shelfSize(layout.shelf, catalogById);
+  const [newW] = shelfSize({ ...layout.shelf, item }, catalogById);
+  const { gx, gy } = layout.shelf;
+  for (const x of [gx + Math.trunc((oldW - newW) / 2), gx]) {
+    if (canPlaceShelf(layout, catalogById, structural, w, h, x, gy, item)) return item ? { gx: x, gy, item } : { gx: x, gy };
+  }
+  return null;
 }
 
 // Would every existing placement and the shelf still fit inside the room at `size`, with
@@ -180,10 +217,11 @@ export function canResize(
   const [newW, newH] = ROOM_SIZES[size];
   const structural = structuralOccupied(newW, newH);
 
-  const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, SHELF_W, 2);
+  const [sw, sh] = shelfSize(layout.shelf, catalogById);
+  const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, sw, sh);
   if (
     layout.shelf.gx < 1 || layout.shelf.gy < 1 ||
-    layout.shelf.gx + SHELF_W > newW - 1 || layout.shelf.gy + 2 > newH - 1 ||
+    layout.shelf.gx + sw > newW - 1 || layout.shelf.gy + sh > newH - 1 ||
     shelfCells.some((c) => structural.has(c))
   ) {
     return false;
@@ -237,7 +275,7 @@ export function doorSlots(
   max: number,
 ): DoorSlot[] {
   const [w, h] = ROOM_SIZES[layout.roomSize];
-  const occupied = shelfOccupied(layout.shelf.gx, layout.shelf.gy);
+  const occupied = shelfOccupied(layout.shelf, catalogById);
   for (const p of layout.placements) {
     const entry = catalogById[p.item];
     if (!entry) continue;

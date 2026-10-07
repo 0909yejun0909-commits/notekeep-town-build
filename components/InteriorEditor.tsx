@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
-import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
+import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, NOTE_STORE_ITEMS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, restyleShelf, structuralOccupied, shelfOccupied, shelfSize, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
 import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
@@ -14,6 +14,8 @@ import Coin from './Coin';
 import styles from './InteriorEditor.module.css';
 
 const SHELF_SHEET_URL = furnitureSheetUrl(SHELF_SHEET);
+// One bookshelf segment, for the shelf's look picker.
+const BOOKSHELF_THUMB = { footprint: [2, 2] as [number, number], rect: SHELF_RECT, sheetUrl: SHELF_SHEET_URL };
 
 const TIER_COLOR: Record<CatalogTier, string> = {
   common: '#737373',
@@ -26,8 +28,8 @@ type Session = { houseId: string; roomId: string; doorsNeeded: number; roomNames
 
 const CROWDED = "You can't add rooms while friends are in your town.";
 // A selection/move target is either one furniture placement (its index) or
-// the shelf, which isn't part of `placements` — it's always present, always
-// the same style, only its position is editable.
+// the shelf, which isn't part of `placements` — it's always present; only its
+// position and look are editable.
 type Target = number | 'shelf';
 
 function nameOf(item: CatalogItemId): string {
@@ -35,7 +37,7 @@ function nameOf(item: CatalogItemId): string {
 }
 
 // A piece's sprite, scaled to fit a fixed box so every tile is the same size.
-function Thumb({ entry }: { entry: CatalogEntry }) {
+function Thumb({ entry }: { entry: Pick<CatalogEntry, 'footprint' | 'rect' | 'sheetUrl'> }) {
   const [fw, fh] = entry.footprint;
   const [rx, ry] = entry.rect;
   return (
@@ -192,7 +194,10 @@ export default function InteriorEditor() {
   const structural = structuralOccupied(w, h);
   for (const cell of roomDoors) structural.add(cell);
   const structuralWithShelf = new Set(structural);
-  for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
+  for (const cell of shelfOccupied(layout.shelf, CATALOG_BY_ID)) structuralWithShelf.add(cell);
+  const [shelfW, shelfH] = shelfSize(layout.shelf, CATALOG_BY_ID);
+  const shelfEntry = layout.shelf.item ? CATALOG_BY_ID[layout.shelf.item] : undefined;
+  const shelfName = shelfEntry?.name ?? 'Bookshelf';
 
   const crowded = study.status === 'live' && study.peers.length > 0;
   const addBlocked = crowded
@@ -253,7 +258,7 @@ export default function InteriorEditor() {
 
   function isShelfCell(gx: number, gy: number): boolean {
     const { gx: sx, gy: sy } = layout.shelf;
-    return gx >= sx && gx < sx + SHELF_W && gy >= sy && gy < sy + 2;
+    return gx >= sx && gx < sx + shelfW && gy >= sy && gy < sy + shelfH;
   }
 
   function onCellClick(gx: number, gy: number) {
@@ -274,8 +279,8 @@ export default function InteriorEditor() {
       }
       if (!draft) return;
       if (moving === 'shelf') {
-        const next = { ...draft, shelf: { gx, gy } };
-        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy) || !fitsDoors(next)) {
+        const next = { ...draft, shelf: { ...draft.shelf, gx, gy } };
+        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy, draft.shelf.item) || !fitsDoors(next)) {
           setError("Doesn't fit there.");
           return;
         }
@@ -325,6 +330,19 @@ export default function InteriorEditor() {
     if (selected === null) return;
     setError(null);
     setMoving((prev) => (prev === selected ? null : selected));
+  }
+
+  function restyle(item: CatalogItemId | undefined) {
+    if (!draft) return;
+    setError(null);
+    const shelf = restyleShelf(draft, CATALOG_BY_ID, structural, w, h, item);
+    const next = shelf && { ...draft, shelf };
+    if (!next || !fitsDoors(next)) {
+      setError("That doesn't fit here — move the shelf or clear some space first.");
+      return;
+    }
+    setDraft(next);
+    setMoving(null);
   }
 
   function removeSelected() {
@@ -536,7 +554,7 @@ export default function InteriorEditor() {
                         e.preventDefault();
                         onCellClick(gx, gy);
                       }}
-                      title={isRoomDoor ? 'Doorway' : idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? 'Bookshelf' : ''}
+                      title={isRoomDoor ? 'Doorway' : idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? shelfName : ''}
                     />
                   );
                 }),
@@ -593,7 +611,7 @@ export default function InteriorEditor() {
                 );
               })}
 
-              {Array.from({ length: SHELF_SEGMENTS }).map((_, s) => (
+              {(shelfEntry ? [shelfEntry] : Array.from({ length: SHELF_SEGMENTS }, () => BOOKSHELF_THUMB)).map((sprite, s) => (
                 <div
                   key={`shelf-${s}`}
                   draggable
@@ -623,10 +641,10 @@ export default function InteriorEditor() {
                     position: 'absolute',
                     left: (layout.shelf.gx + s * 2) * 16,
                     top: layout.shelf.gy * 16,
-                    width: 32,
-                    height: 32,
-                    backgroundImage: `url(${SHELF_SHEET_URL})`,
-                    backgroundPosition: `-${SHELF_RECT[0]}px -${SHELF_RECT[1]}px`,
+                    width: sprite.footprint[0] * 16,
+                    height: sprite.footprint[1] * 16,
+                    backgroundImage: `url(${sprite.sheetUrl})`,
+                    backgroundPosition: `-${sprite.rect[0]}px -${sprite.rect[1]}px`,
                     imageRendering: 'pixelated',
                     cursor: moving === 'shelf' ? 'grabbing' : 'grab',
                     outline: shelfSelected ? '2px solid #facc15' : undefined,
@@ -709,15 +727,30 @@ export default function InteriorEditor() {
             )}
 
             {shelfSelected && (
-              <div className={styles.row}>
-                <span className={styles.small}>Selected: Bookshelf</span>
-                <button
-                  className={`${styles.btn} ${moving === 'shelf' ? styles.on : ''}`}
-                  onClick={toggleMove}
-                >
-                  {moving === 'shelf' ? 'Cancel move' : 'Move'}
-                </button>
-              </div>
+              <>
+                <div className={styles.row}>
+                  <span className={styles.small}>Selected: {shelfName}</span>
+                  <button
+                    className={`${styles.btn} ${moving === 'shelf' ? styles.on : ''}`}
+                    onClick={toggleMove}
+                  >
+                    {moving === 'shelf' ? 'Cancel move' : 'Move'}
+                  </button>
+                </div>
+                <span className={styles.small}>Keep this room&apos;s notes in</span>
+                <div className={styles.row}>
+                  {[undefined, ...NOTE_STORE_ITEMS].map((item) => (
+                    <button
+                      key={item ?? 'bookshelf'}
+                      title={item ? nameOf(item) : 'Bookshelf'}
+                      className={`${styles.tile} ${layout.shelf.item === item ? styles.tileOn : ''}`}
+                      onClick={() => restyle(item)}
+                    >
+                      <Thumb entry={item ? CATALOG_BY_ID[item] : BOOKSHELF_THUMB} />
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {!picking && !selectedPlacement && !shelfSelected && (

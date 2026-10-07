@@ -16,8 +16,9 @@ type BusEvents = {
   'appearance-changed': undefined;
   'open-wardrobe': undefined;
   'close-wardrobe': undefined;
-  'open-bed-menu': { note: NoteRef };
-  'bed-menu-choice': { choice: 'read' | 'lie' | 'cancel' };
+  // index is the option picked, null if the menu was dismissed.
+  'open-choice-menu': { title: string; options: string[] };
+  'choice-menu-choice': { index: number | null };
   'open-interior-editor': {
     houseId: string;
     roomId: string;
