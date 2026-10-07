@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FLOOR_FRAMES, ROOM_SIZES, SHELF_GY, canResize, computeDefaultLayout, doorCells, doorSlots, shelfGxFor,
+  FLOOR_FRAMES, ROOM_SIZES, SHELF_GY, SHELF_W, canResize, computeDefaultLayout, doorCells, doorPositionFor, doorSlots,
+  shelfGxFor,
 } from './interiorLayout.ts';
 import { CATALOG_BY_ID } from './catalog.ts';
 import { hash } from './types.ts';
@@ -106,6 +107,66 @@ test('an untouched new room can be switched to any size', () => {
     const layout = computeDefaultLayout(house, room);
     for (const size of ['small', 'medium', 'large'] as const) {
       assert.equal(canResize(layout, CATALOG_BY_ID, size), true, `${room.id} -> ${size}`);
+    }
+  }
+});
+
+test('default furniture never blocks a note, the shelf, a doorway or the way out', () => {
+  for (let i = 0; i < 60; i++) {
+    const house: House = {
+      id: `R/House ${i}`, name: `House ${i}`, gx: 0, gy: 0, variant: 0, material: 'wood', wallColor: 'base', roofColor: 'black',
+      rooms: [{ id: `R/House ${i}`, name: 'Main', notes: [] }],
+    };
+    for (let r = 0; r < 4; r++) house.rooms.push({ id: `R/House ${i}/Room ${r}`, name: `Room ${r}`, notes: [] });
+    for (const room of house.rooms) room.notes = Array.from({ length: 6 }, (_, n) => note(`${room.id}/${n}.md`));
+
+    for (const room of house.rooms) {
+      const base = computeDefaultLayout(house, room);
+      const entrance = room.id === house.id;
+      for (const size of entrance ? (['large'] as const) : (['small', 'medium', 'large'] as const)) {
+        const layout = { ...base, roomSize: size };
+        const [w, h] = ROOM_SIZES[size];
+        const slots = doorSlots(layout, CATALOG_BY_ID, entrance ? house.rooms.length - 1 : 0);
+        if (entrance) assert.equal(slots.length, 4, room.id);
+        assert.deepEqual(slots.filter((s) => s.side === 'top').map((s) => s.gx), entrance ? [4, 6] : [], room.id);
+
+        const blocked = new Set<string>();
+        for (let x = 0; x < w; x++) blocked.add(`${x},0`).add(`${x},1`).add(`${x},${h - 1}`);
+        for (let y = 0; y < h; y++) blocked.add(`0,${y}`).add(`${w - 1},${y}`);
+        for (const [x, y] of slots.flatMap((s) => s.inside)) blocked.delete(`${x},${y}`);
+        for (let x = 0; x < SHELF_W; x++) blocked.add(`${layout.shelf.gx + x},2`);
+        for (const p of layout.placements) {
+          const [fw, fh] = CATALOG_BY_ID[p.item].footprint;
+          for (let x = p.gx; x < p.gx + fw; x++) {
+            for (let y = p.gy; y < p.gy + fh; y++) {
+              if (p.item !== 'rug') assert.ok(!blocked.has(`${x},${y}`) || y === 1, `${room.id} ${size}: ${p.item} overlaps`);
+              if (p.item !== 'rug') blocked.add(`${x},${y}`);
+            }
+          }
+        }
+
+        const [exitX] = doorPositionFor(w, h);
+        const reached = new Set([`${exitX},${h - 2}`]);
+        const queue: [number, number][] = [[exitX, h - 2]];
+        while (queue.length) {
+          const [x, y] = queue.shift()!;
+          for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+            const key = `${nx},${ny}`;
+            if (reached.has(key) || blocked.has(key)) continue;
+            reached.add(key);
+            queue.push([nx, ny]);
+          }
+        }
+        const mustReach = [
+          `${layout.shelf.gx},3`,
+          ...slots.map((s) => s.inside.at(-1)!.join(',')),
+          ...layout.placements.filter((p) => p.noteId).map((p) => {
+            const [fw, fh] = CATALOG_BY_ID[p.item].footprint;
+            return `${p.gx + Math.floor(fw / 2)},${p.gy + fh}`;
+          }),
+        ];
+        for (const key of mustReach) assert.ok(reached.has(key), `${room.id} ${size}: can't reach ${key}`);
+      }
     }
   }
 });

@@ -23,7 +23,7 @@ export function doorPositionFor(w: number, h: number): [number, number] {
   return [Math.floor(w / 2), h - 1];
 }
 
-export const DECOR_TYPES: FurnitureId[] = ['rug', 'desk', 'bed', 'plant', 'lamp', 'chest', 'painting'];
+export const DECOR_TYPES: Exclude<FurnitureId, 'shelf'>[] = ['rug', 'desk', 'bed', 'plant', 'lamp', 'chest', 'painting'];
 
 export function footprintCells(gx: number, gy: number, fw: number, fh: number): string[] {
   const cells: string[] = [];
@@ -65,33 +65,28 @@ export function shelfOccupied(shelfGx: number, shelfGy: number): Set<string> {
   return occupied;
 }
 
-function pickSpot(
-  roomW: number,
-  fw: number,
-  fh: number,
-  occupied: Set<string>,
-  seed: number,
-  minY: number,
-  maxY: number,
-): [number, number] | null {
-  const positions: [number, number][] = [];
-  for (let y = minY; y <= maxY - fh; y++) {
-    for (let x = 1; x <= roomW - 1 - fw; x++) positions.push([x, y]);
-  }
-  if (positions.length === 0) return null;
-  const start = seed % positions.length;
-  for (let i = 0; i < positions.length; i++) {
-    const [x, y] = positions[(start + i) % positions.length];
-    let free = true;
-    for (let dx = 0; dx < fw && free; dx++) {
-      for (let dy = 0; dy < fh && free; dy++) {
-        if (occupied.has(`${x + dx},${y + dy}`)) free = false;
-      }
-    }
-    if (free) return [x, y];
-  }
-  return null;
-}
+type Arrangement = Record<(typeof DECOR_TYPES)[number], [number, number]>;
+
+// Hand-placed furnishings for an untouched room, so pieces sit against the walls in groups —
+// a bed in a corner with its lamp, a desk on a wall, a chest by the bed, the rug in the open
+// middle — instead of scattered tiles. Pieces at gy 1 sit on the back wall's second row the
+// way the bookshelf does, so tall ones lean on it and the painting hangs on it. Every
+// note-holder keeps the tile in front of it free and reachable.
+//
+// The entrance is large (20x15, shelf at x 7-12) and may be mirrored, so the back wall's
+// x 4-6 and 13-15 stay clear: the first room doors go in at top-left x 4-6.
+const ENTRANCE_ARRANGEMENTS: Arrangement[] = [
+  { desk: [1, 8], bed: [17, 1], plant: [1, 1], lamp: [16, 1], chest: [18, 4], painting: [3, 1], rug: [9, 6] },
+  { desk: [17, 1], bed: [17, 8], plant: [18, 11], lamp: [16, 1], chest: [16, 8], painting: [2, 1], rug: [9, 7] },
+];
+
+// Other rooms are medium (16x12, shelf at x 5-10) but keep everything inside the small
+// footprint (x 1-11, y 1-8) with the small room's exit approach (6, 8) clear, so they can
+// shrink straight away. Not mirrored: the shelf sits off-centre in that footprint.
+const NEW_ROOM_ARRANGEMENTS: Arrangement[] = [
+  { desk: [1, 5], bed: [1, 1], plant: [11, 1], lamp: [3, 1], chest: [1, 3], painting: [4, 1], rug: [6, 5] },
+  { desk: [1, 1], bed: [1, 5], plant: [11, 1], lamp: [3, 1], chest: [3, 5], painting: [4, 1], rug: [6, 5] },
+];
 
 export function shelfGxFor(w: number): number {
   return Math.floor((w - SHELF_W) / 2);
@@ -115,24 +110,18 @@ export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
   const floorFrame = hash(seedId) % FLOOR_FRAMES.length;
   const wallTriple = hash(seedName) % WALL_TRIPLES.length;
 
-  const occupied = structuralOccupied(w, h);
-  for (const cell of shelfOccupied(shelfGx, shelfGy)) occupied.add(cell);
-  // A new room's decor stays inside the small footprint, so it can be shrunk straight away.
-  const [fitW, fitH] = entrance ? [w, h] : ROOM_SIZES.small;
+  const pick = hash(`${seedId}:arrangement`);
+  const arrangement = entrance
+    ? ENTRANCE_ARRANGEMENTS[pick % ENTRANCE_ARRANGEMENTS.length]
+    : NEW_ROOM_ARRANGEMENTS[pick % NEW_ROOM_ARRANGEMENTS.length];
+  const mirror = entrance && (pick >>> 8) % 2 === 1;
   const pending = [...room.notes];
-  const placements: FurniturePlacement[] = [];
-
-  for (const type of DECOR_TYPES) {
-    const [fw, fh] = FOOTPRINT[type];
-    const seed = hash(`${seedId}:${type}`);
-    const spot = pickSpot(fitW, fw, fh, occupied, seed, SHELF_GY + 2, fitH - 3);
-    if (!spot) continue;
-    const [dx, dy] = spot;
+  const placements: FurniturePlacement[] = DECOR_TYPES.map((type) => {
+    const [x, y] = arrangement[type];
+    const gx = mirror ? w - x - FOOTPRINT[type][0] : x;
     const note = type === 'rug' ? undefined : pending.shift();
-    for (const cell of footprintCells(dx, dy, fw, fh)) occupied.add(cell);
-    if (note) occupied.add(`${dx + Math.floor(fw / 2)},${dy + fh}`);
-    placements.push({ item: type, gx: dx, gy: dy, rotation: 0, noteId: note?.id });
-  }
+    return { item: type, gx, gy: y, rotation: 0, noteId: note?.id };
+  });
 
   return { floorFrame, wallTriple, roomSize, shelf: { gx: shelfGx, gy: shelfGy }, placements };
 }
