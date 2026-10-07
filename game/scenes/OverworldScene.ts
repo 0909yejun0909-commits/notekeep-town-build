@@ -23,6 +23,7 @@ import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
+import { setPlace } from '@/game/audio/music';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 
 const REGION_PAD = 8;
@@ -97,6 +98,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (!world || world.regions.length === 0) return;
 
     const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    setPlace(biome);
     if (biome === 'snow') ensureWinterTextures(this);
     if (biome === 'desert') ensureDesertTextures(this);
 

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { footstep } from '@/game/audio/sfx';
 
 export const TILE = 16;
 
@@ -167,6 +168,7 @@ export class GridMovement {
     const targetGy = gy + dy;
     this.moving = true;
     this.onStep?.(targetGx, targetGy, dir);
+    footstep();
     this.sprite.play(`walk-${animDir}`, true);
 
     const target = tileToWorld(targetGx, targetGy);

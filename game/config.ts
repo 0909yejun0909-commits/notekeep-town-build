@@ -4,6 +4,7 @@ import TitleScene from '@/game/scenes/TitleScene';
 import OverworldScene from '@/game/scenes/OverworldScene';
 import InteriorScene from '@/game/scenes/InteriorScene';
 import { bus } from '@/game/bus';
+import { attachSoundEvents } from '@/game/audio/events';
 
 // About this many CSS px per game pixel.
 const ZOOM = 3;
@@ -38,6 +39,8 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
     height,
     zoom,
     fps: { forceSetTimeOut: true },
+    // Sound is our own Web Audio (game/audio/); Phaser's would only open a second, idle context.
+    audio: { noAudio: true },
     scene: [BootScene, TitleScene, OverworldScene, InteriorScene],
     physics: {
       default: 'arcade',
@@ -81,12 +84,14 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
         bus.on('enter-house', onEnter);
         bus.on('exit-house', onExit);
         bus.on('fast-travel', onFastTravel);
+        const detachSounds = attachSoundEvents();
         game.events.once(Phaser.Core.Events.DESTROY, () => {
           window.removeEventListener('resize', onResize);
           game.registry.events.off('changedata-minView', onResize);
           bus.off('enter-house', onEnter);
           bus.off('exit-house', onExit);
           bus.off('fast-travel', onFastTravel);
+          detachSounds();
         });
       },
     },
