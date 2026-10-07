@@ -1,4 +1,4 @@
-import { FOOTPRINT, hash } from './types';
+import { hash } from './types';
 import type { CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout, Room, RoomSize } from './types';
 
 export const SHELF_SEGMENTS = 3;
@@ -68,24 +68,14 @@ export function shelfOccupied(shelfGx: number, shelfGy: number): Set<string> {
 type Arrangement = Record<(typeof DECOR_TYPES)[number], [number, number]>;
 
 // Hand-placed furnishings for an untouched room, so pieces sit against the walls in groups —
-// a bed in a corner with its lamp, a desk on a wall, a chest by the bed, the rug in the open
-// middle — instead of scattered tiles. Pieces at gy 1 sit on the back wall's second row the
-// way the bookshelf does, so tall ones lean on it and the painting hangs on it. Every
-// note-holder keeps the tile in front of it free and reachable.
-//
-// The entrance is large (20x15, shelf at x 7-12) and may be mirrored, so the back wall's
-// x 4-6 and 13-15 stay clear: the first room doors go in at top-left x 4-6.
-const ENTRANCE_ARRANGEMENTS: Arrangement[] = [
-  { desk: [1, 8], bed: [17, 1], plant: [1, 1], lamp: [16, 1], chest: [18, 4], painting: [3, 1], rug: [9, 6] },
-  { desk: [17, 1], bed: [17, 8], plant: [18, 11], lamp: [16, 1], chest: [16, 8], painting: [2, 1], rug: [9, 7] },
-];
-
-// Other rooms are medium (16x12, shelf at x 5-10) but keep everything inside the small
-// footprint (x 1-11, y 1-8) with the small room's exit approach (6, 8) clear, so they can
-// shrink straight away. Not mirrored: the shelf sits off-centre in that footprint.
-const NEW_ROOM_ARRANGEMENTS: Arrangement[] = [
-  { desk: [1, 5], bed: [1, 1], plant: [11, 1], lamp: [3, 1], chest: [1, 3], painting: [4, 1], rug: [6, 5] },
-  { desk: [1, 1], bed: [1, 5], plant: [11, 1], lamp: [3, 1], chest: [3, 5], painting: [4, 1], rug: [6, 5] },
+// bed and desk in the back corners, a lamp beside the bed, the painting hung on the back
+// wall, the rug in the open middle — instead of scattered tiles. Pieces at gy 1 sit on the
+// back wall's second row the way the bookshelf does. Rooms start small (13x10, shelf at
+// x 3-8), whose doorways are all on the side and bottom walls, so every arrangement leaves
+// at least six of those free and keeps each note-holder's front tile free and reachable.
+const ARRANGEMENTS: Arrangement[] = [
+  { desk: [10, 1], bed: [1, 1], plant: [11, 5], lamp: [1, 3], chest: [1, 7], painting: [9, 1], rug: [5, 5] },
+  { desk: [1, 1], bed: [10, 1], plant: [11, 5], lamp: [1, 3], chest: [10, 3], painting: [9, 1], rug: [5, 5] },
 ];
 
 export function shelfGxFor(w: number): number {
@@ -93,15 +83,15 @@ export function shelfGxFor(w: number): number {
 }
 
 // The deterministic hash-derived layout for one room — the fallback when nothing is saved,
-// and the editor's first draft for an untouched room. The entrance seeds from the house, so
-// an untouched house looks exactly as it did with one room, and starts large; other rooms
-// seed from themselves and start medium.
+// and the editor's first draft for an untouched room. Every room starts small. The entrance
+// seeds from the house, so an untouched house looks exactly as it did with one room; other
+// rooms seed from themselves.
 export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
   const entrance = room.id === house.id;
-  const roomSize: RoomSize = entrance ? 'large' : 'medium';
+  const roomSize: RoomSize = 'small';
   const seedId = entrance ? house.id : room.id;
   const seedName = entrance ? house.name : room.name;
-  const [w, h] = ROOM_SIZES[roomSize];
+  const [w] = ROOM_SIZES[roomSize];
   const shelfGx = shelfGxFor(w);
   const shelfGy = SHELF_GY;
   // Both stored as indices into FLOOR_FRAMES/WALL_TRIPLES, not raw sheet frame
@@ -110,17 +100,12 @@ export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
   const floorFrame = hash(seedId) % FLOOR_FRAMES.length;
   const wallTriple = hash(seedName) % WALL_TRIPLES.length;
 
-  const pick = hash(`${seedId}:arrangement`);
-  const arrangement = entrance
-    ? ENTRANCE_ARRANGEMENTS[pick % ENTRANCE_ARRANGEMENTS.length]
-    : NEW_ROOM_ARRANGEMENTS[pick % NEW_ROOM_ARRANGEMENTS.length];
-  const mirror = entrance && (pick >>> 8) % 2 === 1;
+  const arrangement = ARRANGEMENTS[hash(`${seedId}:arrangement`) % ARRANGEMENTS.length];
   const pending = [...room.notes];
   const placements: FurniturePlacement[] = DECOR_TYPES.map((type) => {
-    const [x, y] = arrangement[type];
-    const gx = mirror ? w - x - FOOTPRINT[type][0] : x;
+    const [gx, gy] = arrangement[type];
     const note = type === 'rug' ? undefined : pending.shift();
-    return { item: type, gx, gy: y, rotation: 0, noteId: note?.id };
+    return { item: type, gx, gy, rotation: 0, noteId: note?.id };
   });
 
   return { floorFrame, wallTriple, roomSize, shelf: { gx: shelfGx, gy: shelfGy }, placements };

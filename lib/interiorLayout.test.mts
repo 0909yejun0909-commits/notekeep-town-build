@@ -76,7 +76,7 @@ test('canResize refuses a shrink that leaves too few doors', () => {
   assert.equal(canResize(layout, CATALOG_BY_ID, 'medium', 12), true);
 });
 
-test('the entrance keeps the house look and starts large; other rooms start medium with only their notes', () => {
+test('every room starts small; the entrance keeps the house look, other rooms hold only their notes', () => {
   const house: House = {
     id: 'R/H', name: 'H', gx: 0, gy: 0, variant: 0, material: 'wood', wallColor: 'base', roofColor: 'black',
     rooms: [
@@ -87,12 +87,12 @@ test('the entrance keeps the house look and starts large; other rooms start medi
   const noteIds = (l: InteriorLayout) => l.placements.flatMap((p) => (p.noteId ? [p.noteId] : [])).sort();
 
   const entrance = computeDefaultLayout(house, house.rooms[0]);
-  assert.equal(entrance.roomSize, 'large');
+  assert.equal(entrance.roomSize, 'small');
   assert.equal(entrance.floorFrame, hash('R/H') % FLOOR_FRAMES.length);
   assert.deepEqual(noteIds(entrance), ['R/H/a.md']);
 
   const kitchen = computeDefaultLayout(house, house.rooms[1]);
-  assert.equal(kitchen.roomSize, 'medium');
+  assert.equal(kitchen.roomSize, 'small');
   assert.equal(kitchen.floorFrame, hash('R/H/K') % FLOOR_FRAMES.length);
   assert.deepEqual(noteIds(kitchen), ['R/H/K/b.md', 'R/H/K/c.md']);
 });
@@ -123,12 +123,12 @@ test('default furniture never blocks a note, the shelf, a doorway or the way out
     for (const room of house.rooms) {
       const base = computeDefaultLayout(house, room);
       const entrance = room.id === house.id;
-      for (const size of entrance ? (['large'] as const) : (['small', 'medium', 'large'] as const)) {
+      for (const size of ['small', 'medium', 'large'] as const) {
         const layout = { ...base, roomSize: size };
         const [w, h] = ROOM_SIZES[size];
         const slots = doorSlots(layout, CATALOG_BY_ID, entrance ? house.rooms.length - 1 : 0);
-        if (entrance) assert.equal(slots.length, 4, room.id);
-        assert.deepEqual(slots.filter((s) => s.side === 'top').map((s) => s.gx), entrance ? [4, 6] : [], room.id);
+        if (entrance) assert.equal(slots.length, 4, `${room.id} ${size}`);
+        assert.ok(doorSlots(layout, CATALOG_BY_ID, 99).length >= 6, `${room.id} ${size}: too few doorways`);
 
         const blocked = new Set<string>();
         for (let x = 0; x < w; x++) blocked.add(`${x},0`).add(`${x},1`).add(`${x},${h - 1}`);
