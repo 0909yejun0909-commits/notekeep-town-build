@@ -44,9 +44,11 @@ export default function BiomePicker() {
     const onEnter = () => setIndoors(true);
     const onExit = () => setIndoors(false);
     bus.on('enter-house', onEnter);
+    bus.on('fast-travel', onEnter);
     bus.on('exit-house', onExit);
     return () => {
       bus.off('enter-house', onEnter);
+      bus.off('fast-travel', onEnter);
       bus.off('exit-house', onExit);
     };
   }, []);
