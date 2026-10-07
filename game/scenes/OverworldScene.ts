@@ -23,6 +23,7 @@ import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
+import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -35,6 +36,7 @@ export default class OverworldScene extends Phaser.Scene {
   private lastDoorKey: string | null = null;
   private fingerprint: string | undefined;
   private editingExterior = false;
+  private houseLabels: { id: string; text: string; x: number; y: number; w: number }[] = [];
 
   private onCommitExterior = ({
     houseId,
@@ -99,6 +101,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (biome === 'desert') ensureDesertTextures(this);
 
     this.doors = new Map();
+    this.houseLabels = [];
     this.lastDoorKey = null;
     this.editingExterior = false;
 
@@ -166,6 +169,11 @@ export default class OverworldScene extends Phaser.Scene {
         grid.houses.push({ houseId: house.id, gx: originGx + house.gx, gy: originGy + house.gy, w: hw, h: hh, entryGx: e.gx, entryGy: e.gy });
         grid.keepClear.add(key(e.gx, e.gy));
         grid.keepClear.add(key(e.gx, e.gy + 1));
+      }
+
+      for (const house of region.houses) {
+        const img = result.houseImages.get(house.id);
+        if (img) this.houseLabels.push({ id: `house:${house.id}`, text: house.name, x: img.x + img.displayWidth / 2, y: img.y, w: img.displayWidth });
       }
 
       if (!isGuest) {
@@ -261,15 +269,40 @@ export default class OverworldScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, fit));
     cam.startFollow(player, true);
 
+    setLabelSource(this.projectLabels);
+
     bus.on('commit-exterior-variant', this.onCommitExterior);
     bus.on('close-exterior-editor', this.onCloseExteriorEditor);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
+      if (getLabelSource() === this.projectLabels) setLabelSource(null);
       bus.off('commit-exterior-variant', this.onCommitExterior);
       bus.off('close-exterior-editor', this.onCloseExteriorEditor);
       bus.off('world-updated', this.onWorldUpdated);
     });
   }
+
+  // House names float over their roofs as page text (see game/sceneLabels.ts), only for the
+  // houses in view so a big vault doesn't put hundreds of labels on the page.
+  private projectLabels = (): SceneLabel[] => {
+    const cam = this.cameras.main;
+    const view = cam.worldView;
+    const rect = this.game.canvas.getBoundingClientRect();
+    const px = rect.width / this.scale.width;
+    const k = cam.zoom * px;
+    return this.houseLabels
+      .filter((l) => l.x + l.w / 2 > view.x && l.x - l.w / 2 < view.right && l.y > view.y && l.y - TILE < view.bottom)
+      .map((l) => ({
+        id: l.id,
+        text: l.text,
+        x: rect.left + (l.x - view.x) * k,
+        y: rect.top + (l.y - 2 - view.y) * k,
+        ox: 0.5,
+        oy: 1,
+        px,
+        maxWidth: (l.w + TILE) * k,
+      }));
+  };
 
   private openExteriorEditor(house: House, region: Region) {
     if (this.editingExterior) return;
