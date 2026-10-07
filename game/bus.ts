@@ -4,6 +4,9 @@ type BusEvents = {
   'assets-missing': { files: string[] };
   'enter-house': { houseId: string };
   'exit-house': undefined;
+  // Jump straight into a house's room from anywhere. With noteId, the player lands at that note's
+  // furniture (or the bookshelf, if the note has no furniture) and the note opens.
+  'fast-travel': { houseId: string; roomId?: string; noteId?: string };
   'open-note': { note: NoteRef };
   'close-note': undefined;
   'open-shelf': { houseId: string; roomId: string };

@@ -8,6 +8,7 @@ import Bookshelf from '@/components/Bookshelf';
 import TitleMenu from '@/components/TitleMenu';
 import InteriorEditor from '@/components/InteriorEditor';
 import ExteriorEditor from '@/components/ExteriorEditor';
+import FastTravel from '@/components/FastTravel';
 import RoomPanel from '@/components/RoomPanel';
 import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
@@ -63,6 +64,7 @@ function Game() {
       <InteriorEditor />
       <ExteriorEditor />
       <SceneLabels />
+      <FastTravel />
       <PlayerTags />
       <ChatPanel />
       <RoomPanel />

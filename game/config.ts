@@ -63,6 +63,16 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
           game.scene.stop('InteriorScene');
           game.scene.start('OverworldScene');
         };
+        // Leaving a fast-travelled house should put the player outside *that* house, not the
+        // one they walked into last — so set returnTile from the door map Overworld publishes.
+        const onFastTravel = ({ houseId, roomId, noteId }: { houseId: string; roomId?: string; noteId?: string }) => {
+          const doors = game.registry.get('houseDoors') as Map<string, { gx: number; gy: number }> | undefined;
+          const door = doors?.get(houseId);
+          if (door) game.registry.set('returnTile', { gx: door.gx, gy: door.gy + 1 });
+          game.scene.stop('OverworldScene');
+          game.scene.stop('InteriorScene');
+          game.scene.start('InteriorScene', { houseId, roomId, noteId });
+        };
         window.addEventListener('resize', onResize);
         // Set once up front: the registry only has a per-key event for changing a key, not for
         // creating it, so without this the first room entered would never get its fit.
@@ -70,11 +80,13 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
         game.registry.events.on('changedata-minView', onResize);
         bus.on('enter-house', onEnter);
         bus.on('exit-house', onExit);
+        bus.on('fast-travel', onFastTravel);
         game.events.once(Phaser.Core.Events.DESTROY, () => {
           window.removeEventListener('resize', onResize);
           game.registry.events.off('changedata-minView', onResize);
           bus.off('enter-house', onEnter);
           bus.off('exit-house', onExit);
+          bus.off('fast-travel', onFastTravel);
         });
       },
     },

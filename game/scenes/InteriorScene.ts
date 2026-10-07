@@ -70,6 +70,7 @@ export default class InteriorScene extends Phaser.Scene {
   private doors = new Map<string, Door>();
   private doorAhead = new Map<string, Door>();
   private doorHint!: RoomLabel;
+  private arriveNoteId: string | undefined;
 
   private doorGx = 0;
   private doorGy = 0;
@@ -161,10 +162,11 @@ export default class InteriorScene extends Phaser.Scene {
     super('InteriorScene');
   }
 
-  init(data: { houseId: string; roomId?: string; fromRoomId?: string }) {
+  init(data: { houseId: string; roomId?: string; fromRoomId?: string; noteId?: string }) {
     this.houseId = data.houseId;
     this.roomId = data.roomId ?? data.houseId;
     this.fromRoomId = data.fromRoomId;
+    this.arriveNoteId = data.noteId;
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
@@ -293,16 +295,6 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1);
 
-    // Back from a room: stand just inside its doorway, not at the house's front door.
-    const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;
-    const [spawnGx, spawnGy] = back ? back.slot.inside[0] : [this.doorGx, this.doorGy];
-    const spawn = tileToWorld(spawnGx, spawnGy);
-    this.player = this.add.sprite(spawn.x, spawn.y, 'player');
-    this.player.setOrigin(0.5, 0.64);
-    this.player.setDepth(10);
-    this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    this.undress = dressPlayer(this, this.player, this.appearance);
-
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
       if (this.doors.has(`${gx},${gy}`)) return true;
@@ -310,13 +302,35 @@ export default class InteriorScene extends Phaser.Scene {
       return !this.blocked.has(`${gx},${gy}`);
     };
 
+    // Back from a room: stand just inside its doorway, not at the house's front door. Fast travel
+    // lands the player at the note's furniture; a note that only lives on the bookshelf lands
+    // them at the shelf instead. Anything unwalkable falls back to the door.
+    const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;
+    const arriveNote = this.arriveNoteId ? allNotes.find((n) => n.id === this.arriveNoteId) : undefined;
+    let [spawnGx, spawnGy] = back ? back.slot.inside[0] : [this.doorGx, this.doorGy];
+    if (arriveNote) {
+      const candidates = [
+        ...[...this.approach].filter(([, n]) => n.id === arriveNote.id).map(([k]) => k),
+        ...this.shelfApproach,
+      ];
+      const hit = candidates.map((k) => k.split(',').map(Number)).find(([gx, gy]) => isWalkable(gx, gy));
+      if (hit) [spawnGx, spawnGy] = hit;
+    }
+
+    const spawn = tileToWorld(spawnGx, spawnGy);
+    this.player = this.add.sprite(spawn.x, spawn.y, 'player');
+    this.player.setOrigin(0.5, 0.64);
+    this.player.setDepth(10);
+    this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
+    this.undress = dressPlayer(this, this.player, this.appearance);
+
     this.movement = new GridMovement(this, this.player, isWalkable);
     // Back from a room you're often still holding the key that walked you out, and a bottom-wall
     // doorway is right behind you.
     if (back) this.movement.ignoreHeldKeys();
     const sceneId = `house:${this.roomId}` as const;
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: sceneId, gx, gy, facing });
-    setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: 'down' });
+    setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: arriveNote ? 'up' : 'down' });
     attachRemotePlayers(this, sceneId, this.player);
 
     this.indicator = this.label(0, 0, '!', 0.5, 1, { color: '#ffe066', bare: true, visible: false });
@@ -336,6 +350,12 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.prevGx = spawnGx;
     this.prevGy = spawnGy;
+
+    if (arriveNote) {
+      this.player.play('idle-up');
+      this.cameras.main.fadeIn(250, 20, 16, 24);
+      this.time.delayedCall(300, () => this.openNote(arriveNote));
+    }
 
     bus.on('close-shelf', this.onCloseShelf);
     bus.on('close-note', this.onCloseNote);
