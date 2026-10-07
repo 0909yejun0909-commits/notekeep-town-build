@@ -56,6 +56,9 @@ function shorten(name: string, max: number): string {
   return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
 }
 
+// Half the overworld's, so room names fit along a small room's top wall.
+const ROOM_LABEL_FONT = 7;
+
 // In-room labels are drawn by the page over the game (components/SceneLabels.tsx), sharp at
 // any scale. Here they're kept in room coordinates; x,y is where their origin point sits.
 type RoomLabel = Omit<SceneLabel, 'x' | 'y' | 'px'> & { x: number; y: number; visible: boolean };
@@ -405,6 +408,7 @@ export default class InteriorScene extends Phaser.Scene {
         x: rect.left + (l.x - cam.worldView.x) * k,
         y: rect.top + (l.y - cam.worldView.y) * k,
         px,
+        font: ROOM_LABEL_FONT,
         maxWidth: l.maxWidth === undefined ? undefined : l.maxWidth * k,
       }));
   };

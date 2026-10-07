@@ -10,7 +10,7 @@ const PAD_Y = 1;
 
 function signature(labels: SceneLabel[]) {
   return labels
-    .map((l) => [l.id, l.text, l.suffix, l.color, l.bare, l.action?.text, l.px, Math.round(l.maxWidth ?? 0)].join('|'))
+    .map((l) => [l.id, l.text, l.suffix, l.color, l.bare, l.action?.text, l.px, l.font, Math.round(l.maxWidth ?? 0)].join('|'))
     .join('\n');
 }
 
@@ -72,7 +72,7 @@ export default function SceneLabels() {
           className="absolute left-0 top-0 flex items-center whitespace-nowrap"
           style={{
             fontFamily: "'ArcadeClassic', 'CuteFantasy', monospace",
-            fontSize: FONT * l.px,
+            fontSize: (l.font ?? FONT) * l.px,
             lineHeight: 1,
             wordSpacing: '0.4em',
             color: l.color ?? '#f4e4c1',
