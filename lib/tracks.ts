@@ -24,7 +24,6 @@ const heldBass: Fill = (c, s) => `${c.root}*${s}`;
 const hold: Fill = (c, s) => `${c.tones.join('+')}*${s}`;
 const arp = cycle([0, 1, 2, 1]);
 const alberti = cycle([0, 2, 1, 2]);
-const tresilloBass: Fill = (c, s) => Array.from({ length: s }, (_, i) => [c.root, '.', c.root, c.fifth][i % 4]).join(' ');
 const waltzBass: Fill = (c, s) => `${c.root}*${s / 3} .*${s - s / 3}`;
 const waltzStab: Fill = (c, s) => {
   const k = s / 3;
@@ -53,7 +52,7 @@ const FOREST_A_BARS: Bar[] = ['G', 'Em', 'C', 'D', 'G', 'Em', ['C', 'D'], 'G'];
 const FOREST_B_BARS: Bar[] = ['Em', 'C', 'G', 'D', 'Em', 'C', 'Am', 'D'];
 const FOREST_BARS = [...FOREST_A_BARS, ...FOREST_A_BARS, ...FOREST_B_BARS, ...FOREST_A_BARS];
 
-// Snow: slow bells over a soft pad, F major.
+// Snow: slow celesta over harp, strings and cello, F major.
 const SNOW_CHORDS = {
   F: chord('F2', 'C3', 'F3', 'A3', 'C4', 'E4'),
   Am: chord('A2', 'E3', 'A3', 'C4', 'E4'),
@@ -69,26 +68,22 @@ const SNOW_MELODY = tune(
   'F5*2 E5*2 D5*2 F5*2', 'D5*2 F5*2 Bb5*4', 'C6*2 Bb5*2 G5*2 E5*2', 'F5*8',
 );
 
-// Desert: a plucky A Phrygian-dominant tune over a hand-drum tresillo. A B A, the B on a
-// brighter lead.
-const DESERT_CHORDS = {
-  A: chord('A2', 'E3'),
-  Bb: chord('Bb2', 'F3'),
-  Gm: chord('G2', 'D3'),
-  F: chord('F2', 'C3'),
-};
-const DESERT_A = tune(
-  'E5 F5 E5 D5 C#5*2 D5 E5', 'F5*2 D5 F5 Bb5*2 A5*2', 'A5 G5 F5 E5 F5*2 E5*2', 'D5*2 Bb4*2 G4*2 .*2',
-  'E5 F5 E5 D5 C#5 D5 E5 F5', 'F5*2 G5 F5 D5*2 Bb4*2', 'G4 Bb4 D5 G5 F5*2 E5*2', 'A4*6 .*2',
+// Desert: maqam Hijaz on D (D Eb F# G A Bb C), whose step from Eb up to F# is what makes it
+// sound Arabic. A ney melody, then a mizmar answer, over an oud ostinato, a cello drone and the
+// maqsum rhythm (doum tek . tek doum . tek .) on darbuka and riq. Sixteenth-note steps, for the
+// turns and grace notes.
+const DESERT_NEY = tune(
+  'D4*4 Eb4*2 F#4*2 G4*6 F#4 G4', 'A4*8 G4 A4 G4 F#4 G4*4', 'F#4*2 G4*2 A4*2 Bb4*2 A4*4 G4 F#4 Eb4*2', 'D4*12 .*4',
+  'A4*4 Bb4*2 C5*2 D5*6 C5 Bb4', 'A4*6 Bb4 A4 G4*4 F#4*4', 'G4 A4 G4 F#4 Eb4*4 F#4 G4 F#4 Eb4 D4*4', 'D4*8 .*8',
 );
-const DESERT_B = tune(
-  'A5*3 Bb5 A5*2 G5*2', 'F5*3 G5 F5*2 E5*2', 'F5*2 A5*2 C6*2 A5*2', 'E5*6 .*2',
-  'A5*3 Bb5 C#6*2 A5*2', 'Bb5*2 A5*2 G5*2 F5*2', 'F5 G5 F5 D5 Bb4*2 D5*2', 'C#5*2 E5*2 A5*4',
+const DESERT_MIZMAR = tune(
+  'D5*2 Eb5*2 F#5*2 G5*2 A5*4 G5 F#5 G5*2', 'A5*2 Bb5*2 A5*2 G5*2 F#5*4 Eb5*2 F#5*2',
+  'G5*2 F#5*2 Eb5*2 D5*2 Eb5*2 F#5*2 G5*4', 'A5*12 .*4',
+  'C6*2 Bb5*2 A5*2 G5*2 A5*4 Bb5 A5 G5*2', 'F#5*4 G5*2 A5*2 G5 F#5 Eb5 F#5 G5*4',
+  'F#5*2 Eb5*2 D5*2 Eb5*2 F#5 G5 F#5 Eb5 D5*4', 'D5*8 .*8',
 );
-const DESERT_A_BARS: Bar[] = ['A', 'Bb', 'A', 'Gm', 'A', 'Bb', 'Gm', 'A'];
-const DESERT_B_BARS: Bar[] = ['A', 'Gm', 'F', 'A', 'A', 'Gm', 'Bb', 'A'];
 
-// Indoors: a music box over a plucked Alberti bass, C major.
+// Indoors: a music box over a harp playing Alberti bass, C major.
 const INDOORS_CHORDS = {
   C: chord('C2', 'G2', 'C3', 'E3', 'G3'),
   Am: chord('A1', 'E2', 'A2', 'C3', 'E3'),
@@ -130,50 +125,49 @@ export const TRACKS: Record<Place, Track> = {
   title: {
     bpm: 96, div: 2, beats: 3,
     parts: [
-      { voice: 'lead', gain: 0.5, pattern: tune(TITLE_A, TITLE_B, TITLE_A) },
-      { voice: 'bass', gain: 0.8, pattern: accomp(TITLE_CHORDS, TITLE_BARS, 6, waltzBass) },
-      { voice: 'pluck', gain: 0.35, pattern: accomp(TITLE_CHORDS, TITLE_BARS, 6, waltzStab) },
+      { voice: 'acoustic_grand_piano', gain: 0.7, pattern: tune(TITLE_A, TITLE_B, TITLE_A) },
+      { voice: 'acoustic_grand_piano', gain: 0.3, pattern: accomp(TITLE_CHORDS, TITLE_BARS, 6, waltzStab) },
+      { voice: 'string_ensemble_1', gain: 0.25, pattern: accomp(TITLE_CHORDS, TITLE_BARS, 6, hold) },
+      { voice: 'acoustic_bass', gain: 0.7, pattern: accomp(TITLE_CHORDS, TITLE_BARS, 6, waltzBass) },
     ],
   },
   forest: {
     bpm: 112, div: 2, beats: 4,
     parts: [
-      { voice: 'lead', gain: 0.5, pattern: tune(FOREST_A, FOREST_A2, FOREST_B, FOREST_A2) },
-      { voice: 'bass', gain: 0.8, pattern: accomp(FOREST_CHORDS, FOREST_BARS, 8, walkingBass) },
-      { voice: 'pluck', gain: 0.3, pattern: accomp(FOREST_CHORDS, FOREST_BARS, 8, arp) },
-      { voice: 'kick', gain: 0.5, pattern: 'x . . . x . . .' },
-      { voice: 'hat', gain: 0.15, pattern: '. x . x . x . x' },
+      { voice: 'flute', gain: 0.6, pattern: tune(FOREST_A, FOREST_A2, FOREST_B, FOREST_A2) },
+      { voice: 'acoustic_guitar_nylon', gain: 0.45, pattern: accomp(FOREST_CHORDS, FOREST_BARS, 8, arp) },
+      { voice: 'acoustic_bass', gain: 0.7, pattern: accomp(FOREST_CHORDS, FOREST_BARS, 8, walkingBass) },
+      { voice: 'shaker', gain: 0.12, pattern: 'x x x x x x x x' },
     ],
   },
   snow: {
     bpm: 76, div: 2, beats: 4,
     parts: [
-      { voice: 'bell', gain: 0.6, pattern: SNOW_MELODY },
-      { voice: 'pad', gain: 0.25, pattern: accomp(SNOW_CHORDS, SNOW_BARS, 8, hold) },
-      { voice: 'bass', gain: 0.6, pattern: accomp(SNOW_CHORDS, SNOW_BARS, 8, halfBass) },
-      { voice: 'hat', gain: 0.06, pattern: '. x . x . x . x' },
+      { voice: 'celesta', gain: 0.55, pattern: SNOW_MELODY },
+      { voice: 'orchestral_harp', gain: 0.35, pattern: accomp(SNOW_CHORDS, SNOW_BARS, 8, arp) },
+      { voice: 'string_ensemble_1', gain: 0.3, pattern: accomp(SNOW_CHORDS, SNOW_BARS, 8, hold) },
+      { voice: 'cello', gain: 0.45, pattern: accomp(SNOW_CHORDS, SNOW_BARS, 8, halfBass) },
     ],
   },
   desert: {
-    bpm: 100, div: 2, beats: 4,
+    bpm: 92, div: 4, beats: 4,
     parts: [
-      { voice: 'pluck', gain: 0.7, pattern: tune(DESERT_A, rest(8, 8), DESERT_A) },
-      { voice: 'lead', gain: 0.45, pattern: tune(rest(8, 8), DESERT_B, rest(8, 8)) },
-      {
-        voice: 'bass', gain: 0.8,
-        pattern: accomp(DESERT_CHORDS, [...DESERT_A_BARS, ...DESERT_B_BARS, ...DESERT_A_BARS], 8, tresilloBass),
-      },
-      { voice: 'kick', gain: 0.5, pattern: 'x . . x . . x .' },
-      { voice: 'snare', gain: 0.25, pattern: '. . x . . . x .' },
-      { voice: 'hat', gain: 0.1, pattern: 'x x x x x x x x' },
+      { voice: 'shakuhachi', gain: 0.6, slide: true, pattern: tune(DESERT_NEY, rest(8, 16), DESERT_NEY) },
+      { voice: 'shanai', gain: 0.35, pattern: tune(rest(8, 16), DESERT_MIZMAR, rest(8, 16)) },
+      { voice: 'acoustic_guitar_nylon', gain: 0.45, pattern: 'D3*2 .*2 D3 D3 .*2 D3*2 .*2 A2*2 G2 A2' },
+      { voice: 'cello', gain: 0.25, pattern: 'D2+A2*16' },
+      { voice: 'taiko_drum', gain: 0.6, pattern: 'D3 .*7 D3 .*7' },
+      { voice: 'tek', gain: 0.4, pattern: '.*2 x .*3 x .*5 x .*3' },
+      { voice: 'tek', gain: 0.15, pattern: '.*7 x .*6 x x' },
+      { voice: 'riq', gain: 0.12, pattern: '. . x . . . x x . . x . . . x x' },
     ],
   },
   indoors: {
     bpm: 84, div: 2, beats: 4,
     parts: [
-      { voice: 'bell', gain: 0.55, pattern: INDOORS_MELODY },
-      { voice: 'pluck', gain: 0.3, pattern: accomp(INDOORS_CHORDS, INDOORS_BARS, 8, alberti) },
-      { voice: 'bass', gain: 0.5, pattern: accomp(INDOORS_CHORDS, INDOORS_BARS, 8, heldBass) },
+      { voice: 'music_box', gain: 0.6, pattern: INDOORS_MELODY },
+      { voice: 'orchestral_harp', gain: 0.4, pattern: accomp(INDOORS_CHORDS, INDOORS_BARS, 8, alberti) },
+      { voice: 'acoustic_grand_piano', gain: 0.35, pattern: accomp(INDOORS_CHORDS, INDOORS_BARS, 8, heldBass) },
     ],
   },
 };

@@ -1,22 +1,22 @@
 import { bus } from '@/game/bus';
-import { sfx, type Sfx } from '@/game/audio/sfx';
+import { preloadSfx, sfx, type Sfx } from '@/game/audio/sfx';
 
 // Most sounds follow events that already cross the bus, so they're wired here in one place
 // rather than in every scene and panel. Some actions emit several at once (fast travel closes
 // the note and the shelf, then travels; saving an editor commits, then closes), so a burst
 // plays only its most important sound, the earliest in this list.
-const RANK: Sfx[] = ['door', 'place', 'talk', 'pageOpen', 'pageClose', 'open', 'close'];
+const RANK: Sfx[] = ['doorOpen', 'doorClose', 'place', 'wardrobe', 'talk', 'pageOpen', 'pageClose', 'open', 'close'];
 
 const SOUND_FOR = {
-  'enter-house': 'door',
-  'exit-house': 'door',
-  'fast-travel': 'door',
+  'enter-house': 'doorOpen',
+  'exit-house': 'doorClose',
+  'fast-travel': 'doorOpen',
   'open-note': 'pageOpen',
   'close-note': 'pageClose',
   'open-shelf': 'pageOpen',
   'close-shelf': 'pageClose',
   'talk-npc': 'talk',
-  'open-wardrobe': 'open',
+  'open-wardrobe': 'wardrobe',
   'close-wardrobe': 'close',
   'open-bed-menu': 'open',
   'open-interior-editor': 'open',
@@ -28,6 +28,7 @@ const SOUND_FOR = {
 } as const satisfies Partial<Record<Parameters<typeof bus.on>[0], Sfx>>;
 
 export function attachSoundEvents(): () => void {
+  preloadSfx();
   let burst: Sfx | null = null;
   const play = (name: Sfx) => {
     if (burst === null) queueMicrotask(() => {

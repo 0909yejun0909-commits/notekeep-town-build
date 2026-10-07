@@ -1,7 +1,8 @@
-import { parsePattern, stepSeconds, type NoteEvent, type Voice } from '@/lib/music';
+import { parsePattern, stepSeconds, type NoteEvent } from '@/lib/music';
 import { TRACKS, type Place } from '@/lib/tracks';
-import { onUnlock, type Engine } from '@/game/audio/engine';
-import { VOICES } from '@/game/audio/voices';
+import { sampleUrl, trackSamples } from '@/lib/samples';
+import { loadSample, onUnlock, type Engine } from '@/game/audio/engine';
+import { voice } from '@/game/audio/voices';
 
 // A look-ahead sequencer: every 25ms, schedule whatever notes fall in the next 150ms on the
 // audio clock, which keeps time even when the game loop stutters.
@@ -9,7 +10,7 @@ import { VOICES } from '@/game/audio/voices';
 const AHEAD = 0.15;
 const FADE = 1;
 
-type Lane = { voice: Voice; gain: number; length: number; at: Array<NoteEvent | undefined> };
+type Lane = { play: ReturnType<typeof voice>; gain: number; slide: boolean; length: number; at: Array<NoteEvent | undefined> };
 type Playing = { place: Place; out: GainNode; lanes: Lane[]; step: number; next: number; sec: number; timer: number };
 
 const lanes: Partial<Record<Place, Lane[]>> = {};
@@ -21,8 +22,12 @@ function lanesFor(place: Place): Lane[] {
     const { length, events } = parsePattern(part.pattern);
     const at: Lane['at'] = new Array(length);
     for (const ev of events) at[ev.step] = ev;
-    return { voice: part.voice, gain: part.gain, length, at };
+    return { play: voice(part.voice), gain: part.gain, slide: !!part.slide, length, at };
   }));
+}
+
+function samplesFor(place: Place): string[] {
+  return [...new Set(trackSamples(TRACKS[place]).map(([inst, m]) => sampleUrl(inst, m)))];
 }
 
 function tick(e: Engine, p: Playing) {
@@ -37,9 +42,9 @@ function tick(e: Engine, p: Playing) {
     for (const lane of p.lanes) {
       const ev = lane.at[p.step % lane.length];
       if (!ev) continue;
-      const freqs = ev.freqs.length ? ev.freqs : [0];
-      const gain = lane.gain / Math.sqrt(freqs.length);
-      for (const f of freqs) VOICES[lane.voice](e, p.out, p.next, f, ev.len * p.sec, gain);
+      const midis = ev.midis.length ? ev.midis : [0];
+      const gain = lane.gain / Math.sqrt(midis.length);
+      for (const m of midis) lane.play(e, p.out, p.next, m, ev.len * p.sec, gain, lane.slide);
     }
     p.step++;
     p.next += p.sec;
@@ -53,9 +58,8 @@ function fade(e: Engine, gain: GainNode, from: number, to: number) {
   gain.gain.linearRampToValueAtTime(to, t + FADE);
 }
 
-function start(e: Engine) {
-  const place = wanted;
-  if (!place || playing?.place === place) return;
+function start(e: Engine, place: Place) {
+  if (wanted !== place || playing?.place === place) return;
   const old = playing;
   if (old) {
     fade(e, old.out, old.out.gain.value, 0);
@@ -76,11 +80,12 @@ function start(e: Engine) {
 }
 
 // Called from each scene's create(). The same place again (a restart on resize, the next room
-// of a house) keeps the music going; a new one crossfades.
+// of a house) keeps the music going; a new one crossfades in once its recordings have loaded,
+// the old one playing on meanwhile.
 export function setPlace(place: Place) {
   if (wanted === place) return;
   wanted = place;
-  onUnlock(start);
+  void Promise.all(samplesFor(place).map(loadSample)).then(() => onUnlock((e) => start(e, place)));
 }
 
 export function currentPlace(): Place | null {

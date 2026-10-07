@@ -8,13 +8,17 @@ export type Engine = {
   music: GainNode;
   sfx: GainNode;
   noise: AudioBuffer;
-  pulse: PeriodicWave;
 };
+
+// norm scales a recording to a common peak, so instruments and notes start out level.
+export type Sample = { buffer: AudioBuffer; norm: number };
 
 const MUTE_KEY = 'notekeep-town:muted';
 const MASTER = 0.8;
-const MUSIC = 0.35;
+const MUSIC = 0.5;
 const SFX = 0.6;
+const REVERB = 0.22;
+const PEAK = 0.5;
 
 let engine: Engine | null = null;
 let installed = false;
@@ -30,13 +34,15 @@ function loadMuted(): boolean {
   }
 }
 
-// A 25% pulse, the classic chiptune lead: Fourier series of a pulse train.
-function pulseWave(ctx: AudioContext, duty: number): PeriodicWave {
-  const n = 64;
-  const real = new Float32Array(n);
-  const imag = new Float32Array(n);
-  for (let k = 1; k < n; k++) real[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty);
-  return ctx.createPeriodicWave(real, imag);
+// A small room: two seconds of stereo noise dying away, so the reverb needs no recording.
+function impulse(ctx: AudioContext): AudioBuffer {
+  const len = Math.floor(ctx.sampleRate * 2);
+  const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp((-4 * i) / len) * (i < 300 ? i / 300 : 1);
+  }
+  return ir;
 }
 
 function create(): Engine {
@@ -47,13 +53,18 @@ function create(): Engine {
   const music = ctx.createGain();
   music.gain.value = MUSIC;
   music.connect(master);
+  const reverb = ctx.createConvolver();
+  reverb.buffer = impulse(ctx);
+  const send = ctx.createGain();
+  send.gain.value = REVERB;
+  music.connect(send).connect(reverb).connect(master);
   const sfx = ctx.createGain();
   sfx.gain.value = SFX;
   sfx.connect(master);
   const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const data = noise.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-  return { ctx, music, sfx, noise, pulse: pulseWave(ctx, 0.25) };
+  return { ctx, music, sfx, noise };
 }
 
 function sync() {
@@ -121,4 +132,41 @@ export function subscribeMute(cb: () => void) {
   return () => {
     muteListeners.delete(cb);
   };
+}
+
+const loading = new Map<string, Promise<Sample | null>>();
+const loaded = new Map<string, Sample>();
+
+// Starts downloading straight away, even before audio is unlocked; decoding needs the context,
+// so it waits for that. Resolves null if the file is missing or can't be decoded.
+export function loadSample(url: string): Promise<Sample | null> {
+  let p = loading.get(url);
+  if (!p) {
+    const bytes = fetch(url).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+    p = new Promise((resolve) =>
+      onUnlock(async (e) => {
+        const data = await bytes;
+        if (!data) return resolve(null);
+        try {
+          const buffer = await e.ctx.decodeAudioData(data);
+          let peak = 0;
+          for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+            for (const x of buffer.getChannelData(ch)) peak = Math.max(peak, Math.abs(x));
+          }
+          const sample = { buffer, norm: peak > 0 ? PEAK / peak : 1 };
+          loaded.set(url, sample);
+          resolve(sample);
+        } catch {
+          resolve(null);
+        }
+      }),
+    );
+    loading.set(url, p);
+  }
+  return p;
+}
+
+// Only what's already decoded: scheduling can't wait.
+export function getSample(url: string): Sample | undefined {
+  return loaded.get(url);
 }

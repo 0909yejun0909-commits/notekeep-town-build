@@ -471,6 +471,7 @@ export default class InteriorScene extends Phaser.Scene {
 
   private enterRoom(roomId: string) {
     this.exiting = true;
+    sfx('doorOpen');
     this.scene.restart({ houseId: this.houseId, roomId });
   }
 
@@ -575,7 +576,10 @@ export default class InteriorScene extends Phaser.Scene {
       if (gx === this.doorGx && gy === this.doorGy) {
         this.exiting = true;
         if (this.isEntrance) bus.emit('exit-house', undefined);
-        else this.scene.restart({ houseId: this.houseId, fromRoomId: this.roomId });
+        else {
+          sfx('doorClose');
+          this.scene.restart({ houseId: this.houseId, fromRoomId: this.roomId });
+        }
         return;
       }
       const door = this.doors.get(`${gx},${gy}`);
