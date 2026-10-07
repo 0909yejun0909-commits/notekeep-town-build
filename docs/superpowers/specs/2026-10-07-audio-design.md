@@ -8,8 +8,11 @@
   8-bit, more of an actual instrumental", so the music plays recorded notes from the FluidR3 GM
   soundfont (CC BY 3.0), one note every three semitones, pitched to the rest. A generated
   reverb sits on the music. ~1.7 MB in `public/audio/`, fetched by `npm run fetch-samples`.
-- **Recorded foley** from Kenney's RPG Audio pack (CC0), ~300 KB of WAVs in `public/sfx/`:
-  doors, book and pages, cloth, creaks, coins, indoor footsteps.
+- **Recorded foley** from Kenney's RPG Audio and Impact Sounds packs (CC0), ~450 KB of WAVs in
+  `public/sfx/`: doors, book and pages, cloth, creaks, coins, and footsteps.
+- **Footsteps follow the ground underfoot**, tile by tile: road (dirt paths), stone (the cobbled
+  plaza), and otherwise the biome's grass, snow or sand; wood indoors. Sand has no recording of
+  its own, so it's the snow recording slowed and muffled. Four takes of each, picked at random.
 - **Five looping tracks**, one per place. Each scene's `create()` names its place; a new place's
   recordings load first, then it crossfades in over about a second. The same place again (a
   restart on resize, the next room of a house) leaves the music playing.
@@ -22,13 +25,13 @@
 
 ## Places
 
-| Place | Melody | Accompaniment | Low end | Percussion | Footsteps |
+| Place | Melody | Accompaniment | Low end | Percussion | Ground |
 |---|---|---|---|---|---|
 | title (waltz, D) | piano | piano chords, strings | acoustic bass | — | — |
-| forest (G) | flute | nylon guitar arpeggios | acoustic bass | shaker | synth grass |
-| snow (F) | celesta | harp, strings | cello | — | synth crunch |
-| desert (D Hijaz) | ney, then mizmar | oud ostinato | cello drone | darbuka, riq | synth sand |
-| indoors (C) | music box | harp Alberti | piano | — | recorded wood |
+| forest (G) | flute | nylon guitar arpeggios | acoustic bass | shaker | grass |
+| snow (F) | celesta | harp, strings | cello | — | snow |
+| desert (D Hijaz) | ney, then mizmar | oud ostinato | cello drone | darbuka, riq | sand |
+| indoors (C) | music box | harp Alberti | piano | — | wood |
 
 ## Sound effects
 
@@ -56,7 +59,7 @@
 | `game/audio/engine.ts` | AudioContext, buses, reverb, sample loading, unlock, mute, tab hide. |
 | `game/audio/voices.ts` | Sample playback with pitch/slide, and the synthesized percussion. |
 | `game/audio/music.ts` | Look-ahead sequencer, preloading and crossfading `setPlace(place)`. |
-| `game/audio/sfx.ts` | Named effects and `footstep()`. |
+| `game/audio/sfx.ts` | Named effects, and `footstep(gx, gy)` on the ground each scene reports. |
 | `game/audio/events.ts` | Bus listeners; a burst of events plays only its most important sound. |
 | `components/SoundToggle.tsx` | The HUD mute button. |
 

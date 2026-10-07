@@ -168,7 +168,7 @@ export class GridMovement {
     const targetGy = gy + dy;
     this.moving = true;
     this.onStep?.(targetGx, targetGy, dir);
-    footstep();
+    footstep(targetGx, targetGy);
     this.sprite.play(`walk-${animDir}`, true);
 
     const target = tileToWorld(targetGx, targetGy);

@@ -5,7 +5,7 @@ import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/g
 import { dressPlayer } from '@/game/playerSprite';
 import { lie, sit } from '@/game/furniturePoses';
 import { setPlace } from '@/game/audio/music';
-import { sfx } from '@/game/audio/sfx';
+import { setGround, sfx } from '@/game/audio/sfx';
 import type { Appearance, CatalogEntry, House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
 import { loadAppearance } from '@/lib/appearance';
@@ -189,6 +189,7 @@ export default class InteriorScene extends Phaser.Scene {
 
   create() {
     setPlace('indoors');
+    setGround(() => 'wood');
     const world = this.game.registry.get('world') as WorldModel | undefined;
     const house = findHouse(world, this.houseId);
 

@@ -100,7 +100,8 @@ extending the game.
   [gleitz/midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts), licensed
   [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The notes the music uses are in
   `public/audio/`; `npm run fetch-samples` downloads them again after the tracks change.
-- Sound effects: [Kenney — RPG Audio](https://kenney.nl/assets/rpg-audio) (CC0), in `public/sfx/`.
+- Sound effects: [Kenney — RPG Audio](https://kenney.nl/assets/rpg-audio) and
+  [Impact Sounds](https://kenney.nl/assets/impact-sounds) (CC0), in `public/sfx/`.
 - Built by the Notekeep Town team.
 
 ## License

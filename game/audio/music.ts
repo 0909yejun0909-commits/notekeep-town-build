@@ -87,7 +87,3 @@ export function setPlace(place: Place) {
   wanted = place;
   void Promise.all(samplesFor(place).map(loadSample)).then(() => onUnlock((e) => start(e, place)));
 }
-
-export function currentPlace(): Place | null {
-  return wanted;
-}

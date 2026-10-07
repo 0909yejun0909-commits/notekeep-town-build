@@ -24,6 +24,7 @@ import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
 import { setPlace } from '@/game/audio/music';
+import { setGround, type Ground } from '@/game/audio/sfx';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 
 const REGION_PAD = 8;
@@ -203,6 +204,8 @@ export default class OverworldScene extends Phaser.Scene {
     const { plazas, anchors, wells } = placePlazas(grid);
     placePonds(grid);
     grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
+    const underfoot: Ground = biome === 'snow' ? 'snow' : biome === 'desert' ? 'sand' : 'grass';
+    setGround((gx, gy) => (grid.plaza.has(key(gx, gy)) ? 'stone' : grid.road.has(key(gx, gy)) ? 'road' : underfoot));
     const ground = buildGround(this, grid);
     renderWater(this, grid, ground.map, GID_WATER);
     renderPlazas(this, grid, plazas, wells);

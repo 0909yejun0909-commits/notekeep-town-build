@@ -16,6 +16,7 @@ import { loadAppearance } from '@/lib/appearance';
 import { dressPlayer } from '@/game/playerSprite';
 import { bus } from '@/game/bus';
 import { setPlace } from '@/game/audio/music';
+import { setGround } from '@/game/audio/sfx';
 
 const TILE = 16;
 // Tiles kept free of houses either side of centre, where the React title menu sits.
@@ -36,6 +37,7 @@ export default class TitleScene extends Phaser.Scene {
     // Back to the usual pixel size if a house room asked for a smaller one (game/config.ts).
     if (this.game.registry.get('minView')) this.game.registry.set('minView', null);
     setPlace('title');
+    setGround(null);
     const restart = () => this.scene.restart();
     this.scale.on(Phaser.Scale.Events.RESIZE, restart);
     bus.on('appearance-changed', restart);

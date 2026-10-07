@@ -46,10 +46,14 @@ export function sampleUrl(instrument: Instrument, midi: number): string {
   return `/audio/${instrument}/${sampleName(midi)}.mp3`;
 }
 
-// Recorded foley from Kenney's RPG Audio pack (CC0), in public/sfx/.
+// Recorded foley from Kenney's RPG Audio and Impact Sounds packs (CC0), in public/sfx/. Four
+// takes of each footstep, so walking doesn't repeat one sound.
+export const steps = <S extends string>(surface: S) => [1, 2, 3, 4].map((i) => `step-${surface}-${i}` as const);
+
 export const SFX_FILES = [
   'door-open', 'door-close-1', 'door-close-2', 'book-open', 'book-close', 'page-1', 'page-2',
-  'cloth', 'creak-1', 'creak-2', 'coins', 'step-1', 'step-2', 'step-3', 'step-4',
+  'cloth', 'creak-1', 'creak-2', 'coins',
+  ...steps('grass'), ...steps('snow'), ...steps('road'), ...steps('concrete'), ...steps('wood'),
 ] as const;
 
 export type SfxFile = (typeof SFX_FILES)[number];
