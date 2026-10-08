@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, NOTE_STORE_ITEMS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, restyleShelf, structuralOccupied, shelfOccupied, shelfSize, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
-import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
+import { canPlaceShelf, canResize, doorCells, doorSlots, placementSpot, restyleShelf, ridersOf, structuralOccupied, shelfSize, surfaceUnder, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import type { CatalogEntry, CatalogItemId, CatalogLayer, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
 import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
 import { sfx } from '@/game/audio/sfx';
@@ -32,26 +32,29 @@ const CROWDED = "You can't add rooms while friends are in your town.";
 // the shelf, which isn't part of `placements` — it's always present; only its
 // position and look are editable.
 type Target = number | 'shelf';
+type Tab = CatalogGroupId | 'all';
+
+// Which piece a click on a cell means when several share it: what's on top.
+const RANK: Record<CatalogLayer, number> = { rug: 1, wall: 2, floor: 2, tabletop: 3 };
 
 function nameOf(item: CatalogItemId): string {
   return CATALOG_BY_ID[item]?.name ?? item;
 }
 
 // A piece's sprite, scaled to fit a fixed box so every tile is the same size.
-function Thumb({ entry }: { entry: Pick<CatalogEntry, 'footprint' | 'rect' | 'sheetUrl'> }) {
-  const [fw, fh] = entry.footprint;
-  const [rx, ry] = entry.rect;
+function Thumb({ entry }: { entry: Pick<CatalogEntry, 'rect' | 'sheetUrl'> }) {
+  const [rx, ry, rw, rh] = entry.rect;
   return (
     <span className="flex h-10 w-10 items-center justify-center overflow-hidden">
       <span
         className="shrink-0"
         style={{
-          width: fw * 16,
-          height: fh * 16,
+          width: rw,
+          height: rh,
           backgroundImage: `url(${entry.sheetUrl})`,
           backgroundPosition: `-${rx}px -${ry}px`,
           imageRendering: 'pixelated',
-          transform: `scale(${40 / (16 * Math.max(fw, fh))})`,
+          transform: `scale(${Math.min(40 / Math.max(rw, rh), 2.5)})`,
         }}
       />
     </span>
@@ -59,12 +62,13 @@ function Thumb({ entry }: { entry: Pick<CatalogEntry, 'footprint' | 'rect' | 'sh
 }
 
 // `owned` null = no wallet (free placement, no badge). The bottom border is the piece's tier.
-function ShopTile({ entry, owned, balance, disabled, onClick }: {
+function ShopTile({ entry, owned, balance, disabled, onClick, onHover }: {
   entry: CatalogEntry;
   owned: number | null;
   balance: number;
   disabled?: boolean;
   onClick: () => void;
+  onHover?: (entry: CatalogEntry | null) => void;
 }) {
   const price = priceOf(entry.id);
   const forSale = owned !== null && owned <= 0;
@@ -83,6 +87,8 @@ function ShopTile({ entry, owned, balance, disabled, onClick }: {
       className={`${styles.tile} ${short ? styles.short : ''}`}
       style={{ borderBottomColor: TIER_COLOR[entry.tier] }}
       onClick={onClick}
+      onMouseEnter={() => onHover?.(entry)}
+      onMouseLeave={() => onHover?.(null)}
     >
       <Thumb entry={entry} />
       {owned !== null &&
@@ -109,7 +115,10 @@ export default function InteriorEditor() {
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
-  const [tab, setTab] = useState<CatalogGroupId>('seating');
+  const [tab, setTab] = useState<Tab>('all');
+  const [query, setQuery] = useState('');
+  const [hovered, setHovered] = useState<CatalogEntry | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const { vault, setVault } = useVault();
   const study = useSession();
   // Rooms made during this edit: they exist on disk already, so their doorways join the draft.
@@ -190,12 +199,11 @@ export default function InteriorEditor() {
   const fitsDoors = (next: InteriorLayout) => doorSlots(next, CATALOG_BY_ID, doorsNeeded).length >= doorsNeeded;
 
   // The perimeter and the doorways — cells nothing can ever occupy (disabled buttons). The
-  // shelf blocks furniture too, but it can move, so it's unioned in by `structuralWithShelf`
-  // only where furniture placement is validated.
+  // shelf blocks furniture too, but it can move, so canPlace checks it wherever it stands.
   const structural = structuralOccupied(w, h);
   for (const cell of roomDoors) structural.add(cell);
-  const structuralWithShelf = new Set(structural);
-  for (const cell of shelfOccupied(layout.shelf, CATALOG_BY_ID)) structuralWithShelf.add(cell);
+  const spotFor = (item: CatalogItemId, gx: number, gy: number, skip?: ReadonlySet<number>) =>
+    placementSpot(layout, CATALOG_BY_ID, structural, w, h, item, gx, gy, skip);
   const [shelfW, shelfH] = shelfSize(layout.shelf, CATALOG_BY_ID);
   const shelfEntry = layout.shelf.item ? CATALOG_BY_ID[layout.shelf.item] : undefined;
   const shelfName = shelfEntry?.name ?? 'Bookshelf';
@@ -248,15 +256,45 @@ export default function InteriorEditor() {
     return true;
   }
 
+  // The topmost piece covering a cell: a candle over its table over the rug beneath.
   function cellPlacementIndex(gx: number, gy: number): number | null {
+    let best: number | null = null;
+    let bestRank = 0;
     for (let i = 0; i < layout.placements.length; i++) {
       const p = layout.placements[i];
       const entry = CATALOG_BY_ID[p.item];
       if (!entry) continue;
       const [fw, fh] = entry.footprint;
-      if (gx >= p.gx && gx < p.gx + fw && gy >= p.gy && gy < p.gy + fh) return i;
+      if (gx >= p.gx && gx < p.gx + fw && gy >= p.gy && gy < p.gy + fh && RANK[entry.layer] > bestRank) {
+        best = i;
+        bestRank = RANK[entry.layer];
+      }
     }
-    return null;
+    return best;
+  }
+
+  // Can something go on top of piece `idx` at this cell — furniture on a rug, a candle on a table?
+  function hosts(idx: number, gx: number, gy: number): boolean {
+    const entry = CATALOG_BY_ID[layout.placements[idx].item];
+    return entry?.layer === 'rug' || surfaceUnder(layout, CATALOG_BY_ID, gx, gy) === idx;
+  }
+
+  // The cell under the pointer: pieces drawn taller than their footprint, or under others, are
+  // clicked through to whatever is really at that spot.
+  function cellAt(e: React.MouseEvent): [number, number] | null {
+    const el = gridRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const gx = Math.floor((e.clientX - rect.left - el.clientLeft) / 16);
+    const gy = Math.floor((e.clientY - rect.top - el.clientTop) / 16);
+    return gx >= 0 && gy >= 0 && gx < w && gy < h ? [gx, gy] : null;
+  }
+
+  function onPieceClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = cellAt(e);
+    if (cell) onCellClick(...cell);
   }
 
   function isShelfCell(gx: number, gy: number): boolean {
@@ -264,69 +302,84 @@ export default function InteriorEditor() {
     return gx >= sx && gx < sx + shelfW && gy >= sy && gy < sy + shelfH;
   }
 
-  function onCellClick(gx: number, gy: number) {
-    setError(null);
-    if (structural.has(`${gx},${gy}`)) return;
-    const idx = cellPlacementIndex(gx, gy);
-    const onShelf = isShelfCell(gx, gy);
-
-    if (moving !== null) {
-      if (idx !== null || onShelf) {
-        // Clicking any occupied cell (furniture, the shelf, or the moving
-        // piece's own current spot) cancels the pending move and selects
-        // whatever was clicked — more forgiving than silently ignoring it.
-        setMoving(null);
-        setSelected(onShelf ? 'shelf' : idx);
-        setPicking(null);
-        return;
-      }
-      if (!draft) return;
-      if (moving === 'shelf') {
-        const next = { ...draft, shelf: { ...draft.shelf, gx, gy } };
-        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy, draft.shelf.item) || !fitsDoors(next)) {
-          setError("Doesn't fit there.");
-          return;
-        }
-        setDraft(next);
-        setSelected('shelf');
-        setMoving(null);
-        return;
-      }
-      const p = draft.placements[moving];
-      if (!canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, p.item, gx, gy, moving)) {
-        setError("Doesn't fit there.");
-        return;
-      }
-      const placements = draft.placements.slice();
-      placements[moving] = { ...p, gx, gy };
-      setDraft({ ...draft, placements });
-      setSelected(moving);
-      setMoving(null);
-      return;
-    }
-
+  function select(gx: number, gy: number, idx: number | null, onShelf: boolean) {
     if (onShelf) {
       setSelected('shelf');
       setPicking(null);
     } else if (idx !== null) {
       setSelected(idx);
-      setPicking(null);
+      setPicking(hosts(idx, gx, gy) ? { gx, gy } : null);
+      if (surfaceUnder(layout, CATALOG_BY_ID, gx, gy) === idx) setTab('tabletop');
     } else {
       setSelected(null);
       setPicking({ gx, gy });
     }
   }
 
+  function onCellClick(gx: number, gy: number) {
+    setError(null);
+    const idx = cellPlacementIndex(gx, gy);
+    if (structural.has(`${gx},${gy}`) && idx === null) return;
+    const onShelf = isShelfCell(gx, gy);
+
+    if (moving !== null) {
+      if (!draft) return;
+      if (moving !== 'shelf') {
+        // Whatever stands on the piece moves with it.
+        const p = draft.placements[moving];
+        const riders = ridersOf(draft, CATALOG_BY_ID, moving);
+        const spot = spotFor(p.item, gx, gy, new Set([moving, ...riders]));
+        if (!spot) {
+          if ((idx !== null && idx !== moving) || onShelf) {
+            // Clicking something that's in the way cancels the move and selects it instead —
+            // more forgiving than silently ignoring it.
+            setMoving(null);
+            select(gx, gy, idx, onShelf);
+          } else {
+            setError("Doesn't fit there.");
+          }
+          return;
+        }
+        const [dx, dy] = [spot[0] - p.gx, spot[1] - p.gy];
+        const placements = draft.placements.map((q, i) =>
+          i === moving || riders.includes(i) ? { ...q, gx: q.gx + dx, gy: q.gy + dy } : q);
+        setDraft({ ...draft, placements });
+        setSelected(moving);
+        setMoving(null);
+        return;
+      }
+      if (idx !== null && CATALOG_BY_ID[draft.placements[idx].item]?.layer !== 'rug') {
+        setMoving(null);
+        select(gx, gy, idx, onShelf);
+        return;
+      }
+      const next = { ...draft, shelf: { ...draft.shelf, gx, gy } };
+      if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy, draft.shelf.item) || !fitsDoors(next)) {
+        setError("Doesn't fit there.");
+        return;
+      }
+      setDraft(next);
+      setSelected('shelf');
+      setMoving(null);
+      return;
+    }
+
+    select(gx, gy, idx, onShelf);
+  }
+
   function placeItem(item: CatalogItemId) {
     if (!picking || !draft) return;
-    if (!canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, item, picking.gx, picking.gy)) {
+    const spot = spotFor(item, picking.gx, picking.gy);
+    if (!spot) {
       setError("Doesn't fit there.");
       return;
     }
     if (!acquire(item)) return;
-    const placement: FurniturePlacement = { item, gx: picking.gx, gy: picking.gy, rotation: 0 };
+    const placement: FurniturePlacement = { item, gx: spot[0], gy: spot[1], rotation: 0 };
     setDraft({ ...draft, placements: [...draft.placements, placement] });
+    setSelected(null);
     setPicking(null);
+    setHovered(null);
   }
 
   function toggleMove() {
@@ -348,9 +401,11 @@ export default function InteriorEditor() {
     setMoving(null);
   }
 
+  // Whatever stands on the piece is put away with it.
   function removeSelected() {
     if (selected === null || selected === 'shelf' || !draft) return;
-    setDraft({ ...draft, placements: draft.placements.filter((_, i) => i !== selected) });
+    const gone = new Set([selected, ...ridersOf(draft, CATALOG_BY_ID, selected)]);
+    setDraft({ ...draft, placements: draft.placements.filter((_, i) => !gone.has(i)) });
     setSelected(null);
     setMoving(null);
   }
@@ -375,6 +430,11 @@ export default function InteriorEditor() {
     placements[selected] = { ...placements[selected], item, rotation: 0 };
     setDraft({ ...draft, placements });
   }
+
+  const needle = query.trim().toLowerCase();
+  const shown = (tab === 'all' ? CATALOG : CATALOG_BY_GROUP[tab]).filter(
+    (e) => !needle || e.name.toLowerCase().includes(needle),
+  );
 
   const selectedPlacement = typeof selected === 'number' ? draft.placements[selected] : null;
   const selectedCategory = selectedPlacement ? CATALOG_BY_ID[selectedPlacement.item]?.category : null;
@@ -522,6 +582,7 @@ export default function InteriorEditor() {
         <div className="flex items-start gap-4">
           <div className="flex flex-col gap-2">
             <div
+              ref={gridRef}
               className={styles.grid}
               style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
             >
@@ -567,7 +628,7 @@ export default function InteriorEditor() {
                 const entry = CATALOG_BY_ID[p.item];
                 if (!entry) return null;
                 const [fw, fh] = entry.footprint;
-                const [rx, ry] = entry.rect;
+                const [rx, ry, , rh] = entry.rect;
                 const isQuarterTurn = entry.rotations.length > 2;
                 return (
                   <div
@@ -587,20 +648,15 @@ export default function InteriorEditor() {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = 'move';
                     }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      onCellClick(p.gx, p.gy);
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCellClick(p.gx, p.gy);
-                    }}
+                    onDrop={onPieceClick}
+                    onClick={onPieceClick}
                     style={{
                       position: 'absolute',
+                      zIndex: RANK[entry.layer],
                       left: p.gx * 16,
-                      top: p.gy * 16,
+                      top: (p.gy + fh) * 16 - rh,
                       width: fw * 16,
-                      height: fh * 16,
+                      height: rh,
                       backgroundImage: `url(${entry.sheetUrl})`,
                       backgroundPosition: `-${rx}px -${ry}px`,
                       imageRendering: 'pixelated',
@@ -642,6 +698,7 @@ export default function InteriorEditor() {
                   }}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     left: (layout.shelf.gx + s * 2) * 16,
                     top: layout.shelf.gy * 16,
                     width: sprite.footprint[0] * 16,
@@ -662,37 +719,6 @@ export default function InteriorEditor() {
           </div>
 
           <div className={styles.side}>
-            {picking && (
-              <>
-                <span className={styles.small}>
-                  {wallet.active ? 'Place from your inventory, or buy something new' : 'Place'}
-                </span>
-                <div className={styles.row}>
-                  {CATALOG_GROUPS.map((g) => (
-                    <button
-                      key={g.id}
-                      className={`${styles.btn} ${tab === g.id ? styles.on : ''}`}
-                      onClick={() => setTab(g.id)}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
-                <div className={styles.shelf}>
-                  {CATALOG_BY_GROUP[tab].map((entry) => (
-                    <ShopTile
-                      key={entry.id}
-                      entry={entry}
-                      owned={wallet.active ? owned(entry.id) : null}
-                      balance={wallet.balance}
-                      disabled={!canPlace(layout, CATALOG_BY_ID, structuralWithShelf, w, h, entry.id, picking.gx, picking.gy)}
-                      onClick={() => placeItem(entry.id)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
             {selectedPlacement && (
               <>
                 <div className={styles.row}>
@@ -713,7 +739,7 @@ export default function InteriorEditor() {
                 {swaps.length > 0 && (
                   <>
                     <span className={styles.small}>Swap for</span>
-                    <div className={styles.row}>
+                    <div className={`${styles.shelf} ${styles.swaps}`}>
                       {swaps.map((entry) => (
                         <ShopTile
                           key={entry.id}
@@ -727,6 +753,67 @@ export default function InteriorEditor() {
                   </>
                 )}
               </>
+            )}
+
+            {picking && (
+              <div className={styles.catalogue}>
+                <div className={styles.catalogueHead}>
+                  <span>Catalogue</span>
+                  <input
+                    className={styles.search}
+                    value={query}
+                    placeholder="Search"
+                    spellCheck={false}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setHovered(null);
+                    }}
+                    // Keep typed keys away from Phaser's window listeners.
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyUp={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div className={styles.tabs}>
+                  {[{ id: 'all' as const, label: 'All' }, ...CATALOG_GROUPS].map((g) => (
+                    <button
+                      key={g.id}
+                      className={`${styles.tab} ${tab === g.id ? styles.tabOn : ''}`}
+                      onClick={() => {
+                        setTab(g.id);
+                        setHovered(null);
+                      }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.shelf}>
+                  {shown.map((entry) => (
+                    <ShopTile
+                      key={entry.id}
+                      entry={entry}
+                      owned={wallet.active ? owned(entry.id) : null}
+                      balance={wallet.balance}
+                      disabled={!spotFor(entry.id, picking.gx, picking.gy)}
+                      onClick={() => placeItem(entry.id)}
+                      onHover={setHovered}
+                    />
+                  ))}
+                  {shown.length === 0 && <span className={styles.small}>Nothing called that.</span>}
+                </div>
+                <div className={styles.info}>
+                  {hovered ? (
+                    <>
+                      <span>{hovered.name}</span>
+                      <span style={{ color: TIER_COLOR[hovered.tier] }}>{hovered.tier}</span>
+                    </>
+                  ) : (
+                    <span className={styles.small}>
+                      {shown.length} pieces{wallet.active ? ' - place one you own, or buy it' : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
             )}
 
             {shelfSelected && (
