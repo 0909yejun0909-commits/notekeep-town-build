@@ -196,6 +196,10 @@
 .tile:hover:enabled {
   border-color: #ffe066;
 }
+.tileOn {
+  border-color: #ffe066;
+  background: #8a5a2a;
+}
 .tile:disabled {
   opacity: 0.3;
   cursor: default;

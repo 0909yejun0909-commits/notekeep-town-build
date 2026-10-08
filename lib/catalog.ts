@@ -18,6 +18,20 @@ export const furnitureSheetUrl = (sheet: FurnitureSheet) => `/assets/furniture/$
 export const SHELF_SHEET: FurnitureSheet = 'bookshelves';
 export const SHELF_RECT: [number, number, number, number] = [16, 0, 32, 32];
 
+// What else a room's shelf can look like, so a kitchen or bedroom needn't keep a bookshelf.
+// Each is a catalog piece, so its sprite and footprint come from CATALOG_BY_ID. A wardrobe
+// also still changes your outfit.
+export const NOTE_STORE_ITEMS: CatalogItemId[] = [
+  'fridge_magnets', 'cabinet_oak', 'cabinet_walnut', 'wardrobe_oak', 'wardrobe_pine', 'wardrobe_walnut',
+];
+
+// What the notes look like once it's open: books, food in a fridge, or clothes on a rail.
+export type ShelfLook = 'books' | 'fridge' | 'wardrobe';
+export function shelfLook(item: CatalogItemId | undefined): ShelfLook {
+  const category = item ? CATALOG_BY_ID[item]?.category : undefined;
+  return category === 'fridge' || category === 'wardrobe' ? category : 'books';
+}
+
 type Rect = [number, number, number, number];
 type Rotations = CatalogEntry['rotations'];
 

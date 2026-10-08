@@ -1,3 +1,4 @@
+import type { ShelfLook } from '@/lib/catalog';
 import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
 
 type BusEvents = {
@@ -9,15 +10,16 @@ type BusEvents = {
   'fast-travel': { houseId: string; roomId?: string; noteId?: string };
   'open-note': { note: NoteRef };
   'close-note': undefined;
-  'open-shelf': { houseId: string; roomId: string };
+  'open-shelf': { houseId: string; roomId: string; look: ShelfLook };
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
   'world-updated': { exteriorChanged: boolean };
   'appearance-changed': undefined;
   'open-wardrobe': undefined;
   'close-wardrobe': undefined;
-  'open-bed-menu': { note: NoteRef };
-  'bed-menu-choice': { choice: 'read' | 'lie' | 'cancel' };
+  // index is the option picked, null if the menu was dismissed.
+  'open-choice-menu': { title: string; options: string[] };
+  'choice-menu-choice': { index: number | null };
   'open-interior-editor': {
     houseId: string;
     roomId: string;

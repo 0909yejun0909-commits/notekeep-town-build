@@ -12,12 +12,13 @@ import { loadAppearance } from '@/lib/appearance';
 import {
   SHELF_SEGMENTS,
   SHELF_GY,
-  SHELF_W,
+  shelfSize,
   FLOOR_FRAMES,
   WALL_TRIPLES,
   ROOM_SIZES,
   doorPositionFor,
   doorSlots,
+  footprintCells,
   computeDefaultLayout,
   HEADER_TILES,
   TOP_FIRST_GX,
@@ -30,6 +31,7 @@ import {
   SHELF_SHEET,
   WALKABLE,
   furnitureTextureKey,
+  shelfLook,
   type FurnitureAction,
 } from '@/lib/catalog';
 import { attachRemotePlayers } from '@/game/remotePlayers';
@@ -96,12 +98,14 @@ export default class InteriorScene extends Phaser.Scene {
   // Sitting or lying: how to take the pose apart, the tile to stand back up on, and which
   // keys were already held when it began (they don't count until pressed again).
   private pose: { undo: () => void; gx: number; gy: number; held: Set<Phaser.Input.Keyboard.Key> } | null = null;
-  private bedTarget: PieceAction | null = null;
+  // What each option of the open choice menu does; null while none is open.
+  private menu: Array<() => void> | null = null;
+  // A wardrobe standing in for the shelf still changes your outfit.
+  private shelfWardrobe: string | null = null;
 
   private shelfOpen = false;
   private noteOpen = false;
   private wardrobeOpen = false;
-  private bedMenuOpen = false;
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
@@ -139,14 +143,11 @@ export default class InteriorScene extends Phaser.Scene {
     this.undress = dressPlayer(this, this.player, this.appearance);
   };
 
-  private onBedMenuChoice = ({ choice }: { choice: 'read' | 'lie' | 'cancel' }) => {
-    this.bedMenuOpen = false;
+  private onMenuChoice = ({ index }: { index: number | null }) => {
+    const menu = this.menu;
+    this.menu = null;
     this.input.keyboard?.resetKeys();
-    const target = this.bedTarget;
-    this.bedTarget = null;
-    if (!target) return;
-    if (choice === 'read' && target.note) this.openNote(target.note);
-    else if (choice === 'lie') this.act(target);
+    if (menu && index !== null) menu[index]?.();
   };
 
   private onCommitLayout = ({ roomId, layout }: { roomId: string; layout: InteriorLayout }) => {
@@ -175,7 +176,6 @@ export default class InteriorScene extends Phaser.Scene {
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
-    this.bedMenuOpen = false;
     this.exiting = false;
     this.editingLayout = false;
     this.blocked = new Set();
@@ -183,7 +183,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.approach = new Map();
     this.actions = new Map();
     this.pose = null;
-    this.bedTarget = null;
+    this.menu = null;
+    this.shelfWardrobe = null;
     this.undress = null;
     this.doors = new Map();
     this.labels = [];
@@ -266,21 +267,22 @@ export default class InteriorScene extends Phaser.Scene {
       }
     }
 
-    // Bookshelf: three verified 32x32 shelf frames side by side, rows shelfGy..shelfGy+1.
-    for (let s = 0; s < SHELF_SEGMENTS; s++) {
-      const gx = shelfGx + s * 2;
-      const img = this.add
-        .image(gx * TILE, shelfGy * TILE, furnitureTextureKey(SHELF_SHEET), 'shelf')
-        .setOrigin(0, 0)
-        .setDepth(5)
-        .setInteractive({ useHandCursor: true });
-      img.on('pointerdown', () => this.openShelf());
-      for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) this.blocked.add(`${gx + dx},${shelfGy + dy}`);
-      }
+    // The bookshelf is three verified 32x32 shelf frames side by side; a fridge, cabinet or
+    // wardrobe standing in for it is its catalog sprite.
+    const [shelfW, shelfH] = shelfSize(this.layout.shelf, CATALOG_BY_ID);
+    const shelfEntry = this.layout.shelf.item ? CATALOG_BY_ID[this.layout.shelf.item] : undefined;
+    const shelfImages = shelfEntry
+      ? [this.add.image(shelfGx * TILE, shelfGy * TILE, shelfEntry.textureKey, shelfEntry.frameKey)]
+      : Array.from({ length: SHELF_SEGMENTS }, (_, s) =>
+          this.add.image((shelfGx + s * 2) * TILE, shelfGy * TILE, furnitureTextureKey(SHELF_SHEET), 'shelf'));
+    for (const img of shelfImages) {
+      img.setOrigin(0, 0).setDepth(5).setInteractive({ useHandCursor: true });
+      img.on('pointerdown', () => this.useShelf());
     }
-    for (let x = shelfGx; x < shelfGx + SHELF_W; x++) {
-      this.shelfApproach.add(`${x},${shelfGy + 2}`);
+    if (shelfEntry && FURNITURE_ACTIONS[shelfEntry.category] === 'wardrobe') this.shelfWardrobe = shelfEntry.name;
+    for (const cell of footprintCells(shelfGx, shelfGy, shelfW, shelfH)) this.blocked.add(cell);
+    for (let x = shelfGx; x < shelfGx + shelfW; x++) {
+      this.shelfApproach.add(`${x},${shelfGy + shelfH}`);
     }
 
     // Name and CUSTOMIZE share the top wall's row in the top-right corner, so they never cover
@@ -368,7 +370,7 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('close-note', this.onCloseNote);
     bus.on('close-interior-editor', this.onCloseEditor);
     bus.on('close-wardrobe', this.onCloseWardrobe);
-    bus.on('bed-menu-choice', this.onBedMenuChoice);
+    bus.on('choice-menu-choice', this.onMenuChoice);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
@@ -378,7 +380,7 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
       bus.off('close-wardrobe', this.onCloseWardrobe);
-      bus.off('bed-menu-choice', this.onBedMenuChoice);
+      bus.off('choice-menu-choice', this.onMenuChoice);
       bus.off('commit-interior-layout', this.onCommitLayout);
       bus.off('world-updated', this.onWorldUpdated);
     });
@@ -430,7 +432,7 @@ export default class InteriorScene extends Phaser.Scene {
   };
 
   private overlayOpen() {
-    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout;
+    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.menu !== null || this.editingLayout;
   }
 
   private openNote(note: NoteRef) {
@@ -442,7 +444,24 @@ export default class InteriorScene extends Phaser.Scene {
   private openShelf() {
     if (this.overlayOpen() || this.exiting) return;
     this.shelfOpen = true;
-    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId });
+    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId, look: shelfLook(this.layout.shelf.item) });
+  }
+
+  private useShelf() {
+    if (this.shelfWardrobe) this.openMenu(this.shelfWardrobe, [['Browse notes', () => this.openShelf()], ['Change outfit', () => this.openWardrobe()]]);
+    else this.openShelf();
+  }
+
+  private openWardrobe() {
+    if (this.overlayOpen() || this.exiting) return;
+    this.wardrobeOpen = true;
+    bus.emit('open-wardrobe', undefined);
+  }
+
+  private openMenu(title: string, options: Array<[string, () => void]>) {
+    if (this.overlayOpen() || this.exiting) return;
+    this.menu = options.map(([, run]) => run);
+    bus.emit('open-choice-menu', { title, options: options.map(([label]) => label) });
   }
 
   private openEditor() {
@@ -480,16 +499,13 @@ export default class InteriorScene extends Phaser.Scene {
     this.scene.restart({ houseId: this.houseId, roomId });
   }
 
-  private openBedMenu(piece: PieceAction) {
-    this.bedMenuOpen = true;
-    this.bedTarget = piece;
-    bus.emit('open-bed-menu', { note: piece.note! });
+  private openBedMenu(piece: PieceAction, note: NoteRef) {
+    this.openMenu(note.title, [['Read note', () => this.openNote(note)], ['Lie down', () => this.act(piece)]]);
   }
 
   private act(piece: PieceAction) {
     if (piece.action === 'wardrobe') {
-      this.wardrobeOpen = true;
-      bus.emit('open-wardrobe', undefined);
+      this.openWardrobe();
       return;
     }
     const { gx, gy } = this.movement.getTile();
@@ -602,9 +618,9 @@ export default class InteriorScene extends Phaser.Scene {
     if (atShelf || note || piece) {
       Object.assign(this.indicator, { x: this.player.x, y: this.player.y - 34, visible: true });
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-        if (note && piece?.note === note && piece.action === 'lie') this.openBedMenu(piece);
+        if (note && piece?.note === note && piece.action === 'lie') this.openBedMenu(piece, note);
         else if (note) this.openNote(note);
-        else if (atShelf) this.openShelf();
+        else if (atShelf) this.useShelf();
         else if (piece) this.act(piece);
       }
     } else {

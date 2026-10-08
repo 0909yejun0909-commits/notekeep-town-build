@@ -306,3 +306,622 @@
   justify-content: flex-end;
   gap: 10px;
 }
+
+/* A fridge: cold white walls and glass shelves. */
+.fridge {
+  background: #c9d6dc;
+  box-shadow:
+    inset 0 0 0 6px #eef4f6,
+    0 12px 0 #1f1418;
+}
+.fridge .header {
+  background: #2f3e46;
+}
+.fridge .shelves {
+  background: #f2f8f9;
+  box-shadow: inset 0 0 0 4px #9fb7bf;
+  scrollbar-color: #9fb7bf #dfe9ec;
+}
+.fridge .row {
+  border-bottom: 10px solid #a9d4e2;
+  box-shadow: 0 4px 0 #7f9ea8;
+}
+.fridge .hint {
+  color: #2f3e46;
+}
+
+/* A wardrobe: a dark inside with a brass rail across the top of each row, clothes hanging off it. */
+.wardrobe .shelves {
+  background: #2e1f1c;
+}
+.wardrobe .row {
+  align-items: flex-start;
+  min-height: 228px;
+  padding-top: 30px;
+  border-bottom: none;
+  box-shadow: none;
+}
+.wardrobe .row::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: #c8a46a;
+  border: 3px solid #1f1418;
+}
+
+/* Food and clothes: the clipped .shape draws the silhouette, .outline traces it (a filter
+   can't sit on the clipped element itself — the clip would cut the outline away). */
+.good {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: var(--w);
+  height: var(--h);
+  padding: calc(var(--h) * var(--pt, 0.3)) 0 0;
+  background: none;
+  border: none;
+  color: #3f2832;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 90ms steps(3, end);
+}
+.good:hover,
+.good:focus-visible {
+  transform: translateY(-14px);
+  outline: none;
+  z-index: 1;
+}
+.wardrobe .good:hover,
+.wardrobe .good:focus-visible {
+  transform: translateY(-6px);
+}
+.outline {
+  position: absolute;
+  inset: 0;
+  filter:
+    drop-shadow(3px 0 0 #1f1418) drop-shadow(-3px 0 0 #1f1418)
+    drop-shadow(0 3px 0 #1f1418) drop-shadow(0 -3px 0 #1f1418);
+}
+.shape {
+  position: absolute;
+  inset: 0;
+  background: var(--c);
+}
+.label {
+  position: relative;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  max-height: calc(var(--h) * var(--lh, 0.6));
+  padding: 6px 2px;
+  font-size: 21px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--lbg, #f4e4c1);
+  color: var(--lfg);
+}
+
+/* Fridge food, layered inside the clipped .shape: its backgrounds are the body (shaded like a
+   cylinder, or a glass with what's inside it), ::before the cap or lid, ::after a glint and
+   .detail anything else. */
+.shape::before,
+.shape::after,
+.detail {
+  content: '';
+  position: absolute;
+}
+
+/* Ketchup and mustard: a squeeze bottle with a flip cap. */
+.squeeze {
+  --pt: 0.3;
+  --lh: 0.64;
+}
+.squeeze .shape {
+  clip-path: polygon(44% 0, 56% 0, 56% 4%, 74% 4%, 74% 15%, 86% 18%, 96% 23%, 100% 30%, 100% 96%, 94% 100%, 6% 100%, 0 96%, 0 30%, 4% 23%, 14% 18%, 26% 15%, 26% 4%, 44% 4%);
+  background: linear-gradient(90deg, var(--c) 0 10%, var(--hl) 10% 22%, var(--c) 22% 74%, var(--sh) 74%);
+}
+.squeeze .shape::before {
+  inset: 0 0 auto;
+  height: 15%;
+  background:
+    linear-gradient(transparent 24%, #1f141880 24% 32%, transparent 32%),
+    linear-gradient(90deg, transparent 34%, #ffffff80 34% 42%, transparent 42%),
+    linear-gradient(90deg, var(--cap) 0 62%, var(--capSh) 62%);
+  border-bottom: 3px solid #1f1418;
+}
+.squeeze .shape::after {
+  top: 20%;
+  left: 12%;
+  width: 5px;
+  height: 10px;
+  background: #fff;
+}
+
+/* Milk and juice: a gable-top carton seen from the corner, the side face in shadow. */
+.carton {
+  --pt: 0.3;
+  --lh: 0.64;
+}
+.carton .label {
+  align-self: flex-start;
+  margin-left: calc(var(--w) * 0.31 - 13px);
+}
+.carton .shape {
+  clip-path: polygon(0 22%, 19% 6%, 19% 0, 81% 0, 81% 6%, 100% 22%, 100% 100%, 0 100%);
+  background:
+    linear-gradient(transparent 5%, #1f1418 5% 6.5%, transparent 6.5% 21%, #1f1418 21% 22.5%, transparent 22.5%),
+    linear-gradient(#ffffff59 0 21%, transparent 21%),
+    linear-gradient(transparent 26%, var(--c2) 26% 36%, transparent 36% 88%, var(--c2) 88% 93%, transparent 93%),
+    var(--c);
+}
+.carton .shape::before {
+  inset: 0 0 0 62%;
+  clip-path: polygon(50% 6%, 100% 22%, 100% 100%, 0 100%, 0 22%);
+  background: linear-gradient(90deg, #1f1418 0 3px, #1f141838 3px);
+}
+.carton .shape::after {
+  top: 9%;
+  left: 28%;
+  width: 10px;
+  height: 6px;
+  background: var(--c2);
+  border: 2px solid #1f1418;
+}
+
+/* Soda and cola: a glass bottle, empty glass showing above the drink. */
+.glass {
+  --pt: 0.4;
+  --lh: 0.54;
+}
+.glass .shape {
+  clip-path: polygon(34% 0, 66% 0, 66% 5%, 62% 6%, 62% 28%, 80% 36%, 94% 44%, 100% 52%, 100% 96%, 94% 100%, 6% 100%, 0 96%, 0 52%, 6% 44%, 20% 36%, 38% 28%, 38% 6%, 34% 5%);
+  background:
+    linear-gradient(90deg, #1f14181f 0 8%, transparent 8% 56%, #ffffff26 56% 70%, transparent 70% 78%, #1f141840 78%),
+    linear-gradient(transparent 46%, #ffffffb3 46% 48%, transparent 48%),
+    linear-gradient(var(--glass) 0 46%, var(--c) 46%);
+}
+.glass .shape::before {
+  inset: 0 0 auto;
+  height: 5.5%;
+  background: repeating-linear-gradient(90deg, #e2e2e2 0 3px, #9a9a9a 3px 6px);
+  border-bottom: 2px solid #1f1418;
+}
+.glass .shape::after,
+.jam .shape::after,
+.pickles .shape::after,
+.empty .shape::after,
+.tub .shape::after {
+  top: 10%;
+  bottom: 8%;
+  left: 14%;
+  width: 5px;
+  background: #ffffffa6;
+}
+.glass .detail {
+  top: 40%;
+  right: 14%;
+  width: 4px;
+  height: 10px;
+  background: #ffffffb3;
+}
+
+/* Jam: a glass jar under a gingham cloth tied with string. */
+.jam {
+  --pt: 0.26;
+  --lh: 0.66;
+}
+.jam .shape {
+  clip-path: polygon(6% 0, 94% 0, 100% 14%, 96% 17%, 92% 15%, 92% 19%, 96% 23%, 96% 95%, 90% 100%, 10% 100%, 4% 95%, 4% 23%, 8% 19%, 8% 15%, 4% 17%, 0 14%);
+  background:
+    linear-gradient(90deg, transparent 80%, #1f141840 80%),
+    radial-gradient(circle 4px at 18% 52%, var(--c2) 99%, transparent 100%),
+    radial-gradient(circle 4px at 82% 62%, var(--c2) 99%, transparent 100%),
+    radial-gradient(circle 4px at 20% 78%, var(--c2) 99%, transparent 100%),
+    radial-gradient(circle 4px at 80% 88%, var(--c2) 99%, transparent 100%),
+    linear-gradient(transparent 28%, #1f141859 28% 30%, transparent 30%),
+    linear-gradient(var(--glass, #e6f1f4) 0 28%, var(--c) 28%);
+}
+.jam .shape::before {
+  inset: 0 0 auto;
+  height: 15.5%;
+  background: repeating-conic-gradient(var(--cloth) 0 25%, #f4f4f4 0 50%) 0 0 / 10px 10px;
+}
+.jam .shape::after {
+  top: 30%;
+}
+.jam .detail {
+  top: 15%;
+  left: 0;
+  right: 0;
+  height: 4%;
+  background: #c8a46a;
+  border-block: 2px solid #1f1418;
+}
+
+/* Pickles: a glass jar of brine with pickles floating in it, under a screw-top lid. The empty
+   jar ("+ New note") is the same jar with nothing in it. */
+.pickles,
+.empty {
+  --pt: 0.24;
+  --lh: 0.7;
+}
+.pickles .shape,
+.empty .shape {
+  clip-path: polygon(8% 0, 92% 0, 92% 12%, 88% 13%, 88% 16%, 100% 22%, 100% 95%, 94% 100%, 6% 100%, 0 95%, 0 22%, 12% 16%, 12% 13%, 8% 12%);
+}
+.pickles .shape {
+  background:
+    linear-gradient(90deg, transparent 80%, #1f141838 80%),
+    radial-gradient(ellipse 6px 18px at 18% 46%, var(--c2) 99%, transparent 100%),
+    radial-gradient(ellipse 6px 18px at 82% 40%, var(--c2) 99%, transparent 100%),
+    radial-gradient(ellipse 6px 16px at 17% 76%, var(--c2) 99%, transparent 100%),
+    radial-gradient(ellipse 6px 18px at 83% 72%, var(--c2) 99%, transparent 100%),
+    linear-gradient(transparent 27%, #ffffffb3 27% 29%, transparent 29%),
+    linear-gradient(var(--glass) 0 28%, var(--c) 28%);
+}
+.empty .shape {
+  background: linear-gradient(90deg, transparent 80%, #1f14181f 80%), #e6f1f4;
+}
+.pickles .shape::before,
+.empty .shape::before {
+  inset: 0 0 auto;
+  height: 12.5%;
+  background: repeating-linear-gradient(90deg, #e0bd72 0 4px, #a27f45 4px 6px);
+  border-bottom: 3px solid #1f1418;
+}
+.empty .shape::before {
+  background: repeating-linear-gradient(90deg, #c9c9c9 0 4px, #9a9a9a 4px 6px);
+}
+.pickles .shape::after,
+.empty .shape::after {
+  top: 22%;
+}
+
+/* A folder: a tub with a coloured lid. */
+.tub {
+  --pt: 0.24;
+  --lh: 0.7;
+}
+.tub .label {
+  background: var(--c);
+  color: #f4e4c1;
+}
+.tub .shape {
+  clip-path: polygon(0 3%, 3% 0, 97% 0, 100% 3%, 100% 15%, 95% 15%, 90% 100%, 10% 100%, 5% 15%, 0 15%);
+  background:
+    linear-gradient(90deg, transparent 78%, #1f141838 78%),
+    linear-gradient(transparent 82%, var(--c) 82% 90%, transparent 90%),
+    #f4ead2;
+}
+.tub .shape::before {
+  inset: 0 0 auto;
+  height: 15%;
+  background: linear-gradient(transparent 30%, #ffffff4d 30% 52%, transparent 52%), var(--c);
+  border-bottom: 3px solid #1f1418;
+}
+.tub .shape::after {
+  top: 22%;
+  left: 16%;
+}
+
+/* Wardrobe clothes, shaded like the food: the .shape backgrounds are the fabric (its pattern
+   in --pat, light from the left, seams, cuffs and hems in --sh), ::before the collar, hood or
+   waistband, .detail a pocket or lapel opening, ::after buttons, drawstrings or a fly. */
+.tee,
+.shirt,
+.hoodie,
+.sweater,
+.pants,
+.coat {
+  color: #f4e4c1;
+}
+.tee .label,
+.shirt .label,
+.hoodie .label,
+.sweater .label,
+.pants .label,
+.coat .label {
+  background: none;
+  text-shadow: var(--lsh, 2px 0 0 rgba(0, 0, 0, 0.55));
+}
+
+/* A crew-neck tee. */
+.tee {
+  --pt: 0.2;
+  --lh: 0.74;
+}
+.tee .shape {
+  clip-path: polygon(34% 0, 66% 0, 100% 13%, 100% 32%, 80% 35%, 80% 100%, 20% 100%, 20% 35%, 0 32%, 0 13%);
+  background:
+    linear-gradient(90deg, transparent 19%, #1f141859 19% 22%, transparent 22% 78%, #1f141859 78% 81%, transparent 81%) 0 0 / 100% 35% no-repeat,
+    linear-gradient(transparent 95%, var(--sh) 95%),
+    linear-gradient(90deg, transparent 20%, #ffffff2e 20% 32%, transparent 32% 68%, #1f141838 68%),
+    var(--pat, none),
+    var(--c);
+}
+.tee .shape::before {
+  top: 0;
+  left: 34%;
+  width: 32%;
+  height: 8%;
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  background: radial-gradient(ellipse 38% 62% at 50% 0, #2a1d1d 98%, transparent), var(--sh);
+}
+
+/* A button-up shirt with a collar, chest pocket and cuffs; plain or flannel. */
+.shirt {
+  --pt: 0.2;
+  --lh: 0.74;
+}
+.shirt .label {
+  align-self: flex-start;
+  margin-left: calc(var(--w) * 0.665 - 12px);
+}
+.shirt .shape {
+  clip-path: polygon(34% 0, 66% 0, 100% 10%, 100% 80%, 86% 80%, 86% 30%, 83% 30%, 83% 100%, 17% 100%, 17% 30%, 14% 30%, 14% 80%, 0 80%, 0 10%);
+  background:
+    linear-gradient(transparent 72%, var(--sh) 72%) 0 0 / 14% 100% no-repeat,
+    linear-gradient(transparent 72%, var(--sh) 72%) 100% 0 / 14% 100% no-repeat,
+    linear-gradient(transparent 96%, var(--sh) 96%),
+    linear-gradient(90deg, transparent 17%, #ffffff2e 17% 30%, transparent 30% 70%, #1f141838 70%),
+    var(--pat, none),
+    var(--c);
+}
+.shirt .shape::before {
+  top: 0;
+  left: 29%;
+  width: 42%;
+  height: 12%;
+  clip-path: polygon(0 0, 100% 0, 100% 40%, 58% 100%, 50% 62%, 42% 100%, 0 40%);
+  background: linear-gradient(transparent 70%, #1f141866 70%), var(--collar, var(--hl));
+}
+.shirt .shape::after {
+  top: 10%;
+  bottom: 0;
+  left: calc(50% - 4px);
+  width: 8px;
+  background:
+    radial-gradient(circle at 50% 50%, var(--btn) 0 2px, transparent 2.5px) 0 4px / 8px 22px,
+    linear-gradient(90deg, #1f141859 0 1px, transparent 1px 7px, #1f141859 7px);
+}
+.shirt .detail {
+  top: 20%;
+  left: 23%;
+  width: 17%;
+  height: 10%;
+  background: linear-gradient(var(--sh) 0 3px, transparent 3px);
+  box-shadow: inset 0 -1px 0 #1f141859, inset 1px 0 0 #1f141859, inset -1px 0 0 #1f141859;
+}
+
+/* A hoodie: the hood's lining behind the neck, drawstrings, a kangaroo pocket, ribbed cuffs. */
+.hoodie {
+  --pt: 0.18;
+  --lh: 0.58;
+}
+.hoodie .shape {
+  clip-path: polygon(28% 0, 72% 0, 78% 5%, 100% 13%, 100% 84%, 86% 84%, 86% 32%, 83% 32%, 83% 100%, 17% 100%, 17% 32%, 14% 32%, 14% 84%, 0 84%, 0 13%, 22% 5%);
+  background:
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, transparent 2px 4px) 0 82.6% / 14% 8% no-repeat,
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, transparent 2px 4px) 100% 82.6% / 14% 8% no-repeat,
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, transparent 2px 4px) 0 100% / 100% 7% no-repeat,
+    linear-gradient(90deg, transparent 17%, #ffffff2e 17% 30%, transparent 30% 70%, #1f141838 70%),
+    var(--pat, none),
+    var(--c);
+}
+.hoodie .shape::before {
+  top: 0;
+  left: 24%;
+  width: 52%;
+  height: 13%;
+  border-radius: 0 0 45% 45% / 0 0 100% 100%;
+  background: radial-gradient(ellipse 36% 72% at 50% 0, #2a1d1d 98%, transparent), var(--sh);
+}
+.hoodie .shape::after {
+  top: 9%;
+  left: 35%;
+  width: 30%;
+  height: 22%;
+  background:
+    linear-gradient(transparent 84%, #c8c8c8 84%) 0 0 / 3px 100% no-repeat,
+    linear-gradient(transparent 84%, #c8c8c8 84%) 100% 0 / 3px 100% no-repeat,
+    linear-gradient(90deg, var(--cord) 0 3px, transparent 3px calc(100% - 3px), var(--cord) 0);
+}
+.hoodie .detail {
+  top: 58%;
+  left: 25%;
+  width: 50%;
+  height: 25%;
+  clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%);
+  background:
+    linear-gradient(#1f141859 0 2px, transparent 2px),
+    linear-gradient(90deg, var(--sh) 0 18%, transparent 18% 82%, var(--sh) 82%);
+}
+
+/* A cable-knit sweater: two cables down the front, ribbed neck, cuffs and hem. */
+.sweater {
+  --pt: 0.16;
+  --lh: 0.74;
+}
+.sweater .shape {
+  clip-path: polygon(32% 0, 68% 0, 100% 11%, 100% 82%, 86% 82%, 86% 30%, 83% 30%, 83% 100%, 17% 100%, 17% 30%, 14% 30%, 14% 82%, 0 82%, 0 11%);
+  background:
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, transparent 2px 4px) 0 82.6% / 14% 8% no-repeat,
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, transparent 2px 4px) 100% 82.6% / 14% 8% no-repeat,
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, transparent 2px 4px) 0 100% / 100% 8% no-repeat,
+    linear-gradient(45deg, transparent 38%, var(--sh) 38% 56%, transparent 56%) 27% 0 / 10px 10px repeat-y,
+    linear-gradient(-45deg, transparent 38%, var(--hl) 38% 56%, transparent 56%) 27% 0 / 10px 10px repeat-y,
+    linear-gradient(45deg, transparent 38%, var(--sh) 38% 56%, transparent 56%) 73% 0 / 10px 10px repeat-y,
+    linear-gradient(-45deg, transparent 38%, var(--hl) 38% 56%, transparent 56%) 73% 0 / 10px 10px repeat-y,
+    linear-gradient(90deg, transparent 17%, #ffffff2e 17% 30%, transparent 30% 70%, #1f141838 70%),
+    repeating-linear-gradient(transparent 0 3px, #1f14181a 3px 4px),
+    var(--c);
+}
+.sweater .shape::before {
+  top: 0;
+  left: 32%;
+  width: 36%;
+  height: 7%;
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  background:
+    radial-gradient(ellipse 38% 56% at 50% 0, #2a1d1d 98%, transparent),
+    repeating-linear-gradient(90deg, var(--sh) 0 2px, var(--c) 2px 4px);
+}
+
+/* Trousers: waistband with belt loops and a button, front pockets, a fly, a turned-up hem. */
+.pants {
+  --pt: 0.14;
+  --lh: 0.78;
+}
+/* Down the left leg, clear of the gap between the legs. */
+.pants .label {
+  left: -18px;
+}
+.pants .shape {
+  clip-path: polygon(4% 0, 96% 0, 100% 100%, 58% 100%, 50% 34%, 42% 100%, 0 100%);
+  background:
+    linear-gradient(transparent 93%, var(--sh) 93% 94%, var(--cuff, var(--hl)) 94%),
+    radial-gradient(ellipse 16% 20% at 24% 44%, #ffffff2e 98%, transparent),
+    radial-gradient(ellipse 16% 20% at 76% 44%, #ffffff1f 98%, transparent),
+    linear-gradient(90deg, #1f141833 0 6%, transparent 6% 44%, #1f141838 44% 56%, transparent 56% 92%, #1f141838 92%),
+    var(--pat, none),
+    var(--c);
+}
+.pants .shape::before {
+  inset: 0 0 auto;
+  height: 7%;
+  background:
+    radial-gradient(circle at 50% 50%, var(--btn) 0 3px, transparent 3.5px),
+    linear-gradient(90deg, transparent 12%, var(--sh) 12% 17%, transparent 17% 83%, var(--sh) 83% 88%, transparent 88%),
+    var(--c);
+  border-bottom: 2px dashed var(--stitch);
+}
+.pants .shape::after {
+  top: 8%;
+  left: calc(50% - 9px);
+  width: 8px;
+  height: 18%;
+  border-right: 2px dashed var(--stitch);
+  border-bottom: 2px dashed var(--stitch);
+  border-bottom-right-radius: 10px;
+}
+.pants .detail {
+  top: 8%;
+  left: 4%;
+  right: 4%;
+  height: 12%;
+  background:
+    radial-gradient(circle at 0 0, transparent 62%, var(--stitch) 64% 74%, transparent 76%) 0 0 / 34% 100% no-repeat,
+    radial-gradient(circle at 100% 0, transparent 62%, var(--stitch) 64% 74%, transparent 76%) 100% 0 / 34% 100% no-repeat;
+}
+
+/* A long coat: lapels over a scarf, double-breasted buttons, cuffs, maybe a belt. */
+.coat {
+  --pt: 0.36;
+  --lh: 0.58;
+}
+.coat .label {
+  align-self: flex-start;
+  margin-left: calc(var(--w) * 0.33 - 12px);
+}
+.coat .shape {
+  clip-path: polygon(34% 0, 66% 0, 100% 10%, 100% 72%, 88% 72%, 88% 30%, 85% 30%, 85% 100%, 15% 100%, 15% 30%, 12% 30%, 12% 72%, 0 72%, 0 10%);
+  background:
+    linear-gradient(transparent 63%, var(--sh) 63%) 0 0 / 12% 100% no-repeat,
+    linear-gradient(transparent 63%, var(--sh) 63%) 100% 0 / 12% 100% no-repeat,
+    var(--belt, none),
+    linear-gradient(90deg, transparent 49%, #1f141866 49% 51%, transparent 51%) 0 100% / 100% 66% no-repeat,
+    linear-gradient(transparent 97%, var(--sh) 97%),
+    linear-gradient(90deg, transparent 15%, #ffffff2e 15% 28%, transparent 28% 72%, #1f141838 72%),
+    var(--pat, none),
+    var(--c);
+}
+.coat .shape::before {
+  top: 0;
+  left: 28%;
+  width: 44%;
+  height: 34%;
+  clip-path: polygon(0 0, 100% 0, 100% 22%, 50% 100%, 0 22%);
+  background: linear-gradient(90deg, var(--sh) 50%, var(--hl) 50%);
+}
+.coat .detail {
+  top: 0;
+  left: 28%;
+  width: 44%;
+  height: 34%;
+  clip-path: polygon(24% 0, 76% 0, 50% 80%);
+  background: var(--inner);
+}
+.coat .shape::after {
+  top: 36%;
+  left: 52%;
+  width: 26%;
+  height: 24%;
+  background: radial-gradient(circle at 50% 50%, var(--btn) 0 3px, #1f1418 3.5px 4.5px, transparent 5px) 0 0 / 50% 50%;
+}
+
+/* A folder: a zipped garment bag with a paper name tag. */
+.bag {
+  --pt: 0.22;
+  --lh: 0.66;
+}
+.bag .shape {
+  clip-path: polygon(30% 0, 70% 0, 100% 10%, 100% 96%, 96% 100%, 4% 100%, 0 96%, 0 10%);
+  background:
+    repeating-linear-gradient(#d8d8d8 0 2px, #6a6a6a 2px 4px) 50% 0 / 4px 100% no-repeat,
+    linear-gradient(90deg, transparent 6%, #1f141826 6% 8%, transparent 8% 92%, #1f141826 92% 94%, transparent 94%),
+    linear-gradient(90deg, #ffffff26 0 22%, transparent 22% 70%, #1f141838 70%),
+    var(--c);
+}
+.bag .shape::before {
+  top: 82%;
+  left: calc(50% - 4px);
+  width: 8px;
+  height: 12px;
+  background: #d8d8d8;
+  border: 2px solid #1f1418;
+  border-radius: 2px;
+}
+
+/* A wire hook over the rail; the hanger itself is hidden inside the garment. */
+.hanger {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 3px;
+  height: 14px;
+  margin-left: -1px;
+  background: #9aa0a6;
+}
+.hanger::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: -10px;
+  width: 7px;
+  height: 12px;
+  border: 3px solid #9aa0a6;
+  border-bottom-color: transparent;
+  border-radius: 50% 50% 0 0 / 70% 70% 0 0;
+}
+
+/* "+ New note": an empty, see-through jar or shirt. */
+.wardrobe .ghost .shape {
+  background: #4a3631;
+}
+.wardrobe .ghost .shape::before,
+.wardrobe .ghost .shape::after,
+.wardrobe .ghost .detail {
+  display: none;
+}
+.ghost .label,
+.ghost.tee .label {
+  color: #3f2832;
+  background: #f4e4c1;
+  text-shadow: none;
+}
