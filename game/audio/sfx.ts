@@ -33,6 +33,22 @@ const cushion: Play = (e, d, t) => {
   tone(e, d, t, { wave: 'triangle', freq: 110, to: 75, dur: 0.12, gain: 0.3 });
 };
 
+// A fridge door: the rubber seal letting go with a suck of air, then bottles knocking inside.
+const fridgeOpen: Play = (e, d, t) => {
+  noise(e, d, t, { filter: 'bandpass', freq: 900, to: 2400, q: 2, dur: 0.16, gain: 0.35, attack: 0.03 });
+  tone(e, d, t, { wave: 'triangle', freq: 120, to: 80, dur: 0.1, gain: 0.25 });
+  tone(e, d, t + 0.14, { wave: 'sine', freq: 2300, to: 2200, dur: 0.09, gain: 0.12 });
+  tone(e, d, t + 0.19, { wave: 'sine', freq: 3100, to: 3000, dur: 0.07, gain: 0.09 });
+};
+
+// Shutting it is a heavy soft thud, the magnetic seal catching, and the bottles rattling once.
+const fridgeClose: Play = (e, d, t) => {
+  tone(e, d, t, { wave: 'triangle', freq: 150, to: 55, dur: 0.16, gain: 0.55 });
+  noise(e, d, t, { filter: 'lowpass', freq: 700, dur: 0.1, gain: 0.4 });
+  noise(e, d, t + 0.05, { filter: 'bandpass', freq: 1800, q: 3, dur: 0.05, gain: 0.15 });
+  tone(e, d, t + 0.1, { wave: 'sine', freq: 2600, to: 2400, dur: 0.06, gain: 0.07 });
+};
+
 const SOUNDS = {
   doorOpen: file(['door-open'], 0.9),
   doorClose: file(['door-close-1', 'door-close-2'], 0.8),
@@ -41,6 +57,10 @@ const SOUNDS = {
   open: file(['page-1', 'page-2'], 0.45),
   close: file(['page-2'], 0.35),
   wardrobe: file(['cloth'], 0.7),
+  fridgeOpen,
+  fridgeClose,
+  wardrobeOpen: both(file(['creak-1', 'creak-2'], 0.55, 0, 0.8), file(['cloth'], 0.5, 0.12)),
+  wardrobeClose: both(muffled(file(['door-close-1', 'door-close-2'], 0.6, 0, 1.15), 1800), file(['cloth'], 0.3, 0.06)),
   talk: phrase(PHRASES.talk),
   coin: both(phrase(PHRASES.coin), file(['coins'], 0.5)),
   buy: both(phrase(PHRASES.buy), file(['coins'], 0.5)),
