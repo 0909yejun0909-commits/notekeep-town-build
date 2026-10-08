@@ -98,18 +98,19 @@ function bookStyle(item: Item): React.CSSProperties {
 }
 
 // A fridge holds food and a wardrobe clothes instead of books: each kind is a CSS shape
-// (Bookshelf.module.css) with its own colours. Folders are a tub or a garment bag, and the
-// "New note" slot is a see-through jar or shirt.
-type Good = { shape: string; w: number; h: number; c: string; c2?: string };
+// (Bookshelf.module.css) whose colours come in as variables. Folders are a tub or a garment
+// bag, and the "New note" slot is an empty jar or shirt.
+type Good = { shape: string; w: number; h: number; c: string; c2?: string; vars?: Record<string, string> };
 
 const FOODS: Good[] = [
-  { shape: 'bottle', w: 44, h: 196, c: '#b4202a', c2: '#f4f4f4' },
-  { shape: 'bottle', w: 44, h: 188, c: '#f0c419', c2: '#b4202a' },
-  { shape: 'bottle', w: 48, h: 204, c: '#3e8948', c2: '#d8d8d8' },
-  { shape: 'carton', w: 56, h: 196, c: '#f4f4f4', c2: '#3e6fb0' },
-  { shape: 'carton', w: 56, h: 188, c: '#fb6b1d', c2: '#f0c419' },
-  { shape: 'jar', w: 60, h: 172, c: '#825e80', c2: '#e4a672' },
-  { shape: 'jar', w: 60, h: 180, c: '#7c963c', c2: '#b4202a' },
+  { shape: 'squeeze', w: 52, h: 204, c: '#c4262e', vars: { hl: '#ec6a70', sh: '#8e1a22', cap: '#f4f4f4', capSh: '#c9c9c9', lbg: '#f4f4f4', lfg: '#8e1a22' } },
+  { shape: 'squeeze', w: 52, h: 196, c: '#f0c419', vars: { hl: '#fbe57a', sh: '#c29411', cap: '#c4262e', capSh: '#8e1a22' } },
+  { shape: 'carton', w: 62, h: 204, c: '#f4f4f4', c2: '#3e6fb0', vars: { lbg: '#3e6fb0', lfg: '#f4f4f4' } },
+  { shape: 'carton', w: 62, h: 196, c: '#fb8f2d', c2: '#3e8948' },
+  { shape: 'glass', w: 52, h: 216, c: '#3e8948', vars: { glass: '#d3ead7' } },
+  { shape: 'glass', w: 52, h: 208, c: '#6b3415', vars: { glass: '#efdcc0' } },
+  { shape: 'jam', w: 64, h: 178, c: '#7a2048', c2: '#e0708a', vars: { cloth: '#c4262e' } },
+  { shape: 'pickles', w: 66, h: 184, c: '#c9dc86', c2: '#4d7a2c', vars: { glass: '#eef5dc' } },
 ];
 const CLOTHES: Array<Omit<Good, 'c'>> = [
   { shape: 'shirt', w: 88, h: 168 },
@@ -120,7 +121,7 @@ const CLOTHES: Array<Omit<Good, 'c'>> = [
 
 function goodOf(item: Item, look: Exclude<ShelfLook, 'books'>): Good {
   const fridge = look === 'fridge';
-  if (item.kind === 'new') return fridge ? { shape: 'jar', w: 60, h: 176, c: '' } : { shape: 'shirt', w: 88, h: 168, c: '' };
+  if (item.kind === 'new') return fridge ? { shape: 'empty', w: 64, h: 178, c: '' } : { shape: 'shirt', w: 88, h: 168, c: '' };
   const h = hash(keyOf(item));
   const c = FOLDER_COLORS[h % FOLDER_COLORS.length];
   if (item.kind === 'folder') return fridge ? { shape: 'tub', w: 84, h: 150, c } : { shape: 'bag', w: 70, h: 192, c };
@@ -134,6 +135,7 @@ function goodStyle(good: Good): React.CSSProperties {
     ['--h' as string]: `${good.h}px`,
     ['--c' as string]: good.c,
     ['--c2' as string]: good.c2,
+    ...Object.fromEntries(Object.entries(good.vars ?? {}).map(([k, v]) => [`--${k}`, v])),
   };
 }
 
@@ -319,7 +321,9 @@ export default function Bookshelf() {
                       <>
                         {look === 'wardrobe' && <span className={styles.hanger} />}
                         <span className={styles.outline}>
-                          <span className={styles.shape} />
+                          <span className={styles.shape}>
+                            <span className={styles.detail} />
+                          </span>
                         </span>
                         <span className={styles.label}>{item.kind === 'new' ? `+ ${item.name}` : item.name}</span>
                       </>
