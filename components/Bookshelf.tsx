@@ -115,23 +115,23 @@ const FOODS: Good[] = [
 const PLAID = (a: string, b: string) =>
   `repeating-linear-gradient(90deg, ${a} 0 6px, transparent 6px 14px), repeating-linear-gradient(${a} 0 6px, transparent 6px 14px), repeating-linear-gradient(90deg, transparent 0 9px, ${b} 9px 10px, transparent 10px 14px)`;
 const CLOTHES: Good[] = [
-  { shape: 'tee', w: 88, h: 160, c: '#f4f4f4', vars: { sh: '#c9c9c9', pat: 'repeating-linear-gradient(transparent 0 8px, #2b3f6c 8px 12px)', lfg: '#b4202a', lsh: '2px 0 0 #f4f4f4' } },
-  { shape: 'tee', w: 88, h: 160, c: '#3e8948', vars: { sh: '#265c42' } },
-  { shape: 'shirt', w: 92, h: 184, c: '#a9c6e8', vars: { sh: '#7b9cc4', hl: '#d6e6f6', btn: '#f4f4f4', lfg: '#2b3f6c', lsh: 'none' } },
-  { shape: 'shirt', w: 92, h: 184, c: '#b4202a', vars: { sh: '#6e1219', hl: '#b4202a', collar: '#b4202a', btn: '#f4e4c1', pat: PLAID('#1f141859', '#f4e4c180') } },
-  { shape: 'hoodie', w: 96, h: 184, c: '#8b8f96', vars: { sh: '#61656c', cord: '#f4f4f4', pat: 'repeating-linear-gradient(45deg, #ffffff12 0 2px, transparent 2px 5px)' } },
-  { shape: 'hoodie', w: 96, h: 184, c: '#2b3f6c', vars: { sh: '#1b2848', cord: '#f4e4c1' } },
-  { shape: 'sweater', w: 94, h: 172, c: '#e8dcc0', vars: { sh: '#b8a784', hl: '#fff6e2', lfg: '#6d483b', lsh: 'none' } },
-  { shape: 'sweater', w: 94, h: 172, c: '#7a2048', vars: { sh: '#4c1430', hl: '#a2406c' } },
-  { shape: 'pants', w: 74, h: 190, c: '#33508a', vars: { sh: '#22365e', cuff: '#6f8fc4', btn: '#c8a46a', stitch: '#e0a050', pat: 'repeating-linear-gradient(-60deg, #ffffff14 0 2px, transparent 2px 4px)' } },
-  { shape: 'pants', w: 74, h: 190, c: '#c9b089', vars: { sh: '#9a8462', cuff: '#c9b089', btn: '#6d483b', stitch: '#9a8462', lfg: '#4a3631', lsh: 'none' } },
-  { shape: 'coat', w: 100, h: 204, c: '#c49a5c', vars: { sh: '#8f6c3c', hl: '#d8b47a', inner: '#b4202a', btn: '#4a3631', belt: 'linear-gradient(90deg, transparent 43%, #3f2832 43% 46%, #8f6c3c 46% 54%, #3f2832 54% 57%, transparent 57%) 50% 69% / 70% 7% no-repeat, linear-gradient(#8f6c3c, #8f6c3c) 50% 69% / 70% 5% no-repeat', lsh: '2px 0 0 #4a3631' } },
-  { shape: 'coat', w: 100, h: 204, c: '#25304a', vars: { sh: '#161d2e', hl: '#35425f', inner: '#e8dcc0', btn: '#c8a46a' } },
+  { shape: 'tee', w: 98, h: 160, c: '#f4f4f4', vars: { sh: '#c9c9c9', pat: 'repeating-linear-gradient(transparent 0 8px, #2b3f6c 8px 12px)', lfg: '#b4202a', lsh: '2px 0 0 #f4f4f4' } },
+  { shape: 'tee', w: 98, h: 160, c: '#3e8948', vars: { sh: '#265c42' } },
+  { shape: 'shirt', w: 102, h: 184, c: '#a9c6e8', vars: { sh: '#7b9cc4', hl: '#d6e6f6', btn: '#f4f4f4', lfg: '#2b3f6c', lsh: 'none' } },
+  { shape: 'shirt', w: 102, h: 184, c: '#b4202a', vars: { sh: '#6e1219', hl: '#b4202a', collar: '#b4202a', btn: '#f4e4c1', pat: PLAID('#1f141859', '#f4e4c180') } },
+  { shape: 'hoodie', w: 106, h: 184, c: '#8b8f96', vars: { sh: '#61656c', cord: '#f4f4f4', pat: 'repeating-linear-gradient(45deg, #ffffff12 0 2px, transparent 2px 5px)' } },
+  { shape: 'hoodie', w: 106, h: 184, c: '#2b3f6c', vars: { sh: '#1b2848', cord: '#f4e4c1' } },
+  { shape: 'sweater', w: 104, h: 172, c: '#e8dcc0', vars: { sh: '#b8a784', hl: '#fff6e2', lfg: '#6d483b', lsh: 'none' } },
+  { shape: 'sweater', w: 104, h: 172, c: '#7a2048', vars: { sh: '#4c1430', hl: '#a2406c' } },
+  { shape: 'pants', w: 82, h: 190, c: '#33508a', vars: { sh: '#22365e', cuff: '#6f8fc4', btn: '#c8a46a', stitch: '#e0a050', pat: 'repeating-linear-gradient(-60deg, #ffffff14 0 2px, transparent 2px 4px)' } },
+  { shape: 'pants', w: 82, h: 190, c: '#c9b089', vars: { sh: '#9a8462', cuff: '#c9b089', btn: '#6d483b', stitch: '#9a8462', lfg: '#4a3631', lsh: 'none' } },
+  { shape: 'coat', w: 110, h: 204, c: '#c49a5c', vars: { sh: '#8f6c3c', hl: '#d8b47a', inner: '#b4202a', btn: '#4a3631', belt: 'linear-gradient(90deg, transparent 43%, #3f2832 43% 46%, #8f6c3c 46% 54%, #3f2832 54% 57%, transparent 57%) 50% 69% / 70% 7% no-repeat, linear-gradient(#8f6c3c, #8f6c3c) 50% 69% / 70% 5% no-repeat', lsh: '2px 0 0 #4a3631' } },
+  { shape: 'coat', w: 110, h: 204, c: '#25304a', vars: { sh: '#161d2e', hl: '#35425f', inner: '#e8dcc0', btn: '#c8a46a' } },
 ];
 
 function goodOf(item: Item, look: Exclude<ShelfLook, 'books'>): Good {
   const fridge = look === 'fridge';
-  if (item.kind === 'new') return fridge ? { shape: 'empty', w: 64, h: 178, c: '' } : { shape: 'tee', w: 88, h: 160, c: '' };
+  if (item.kind === 'new') return fridge ? { shape: 'empty', w: 64, h: 178, c: '' } : { shape: 'tee', w: 98, h: 160, c: '' };
   const h = hash(keyOf(item));
   const c = FOLDER_COLORS[h % FOLDER_COLORS.length];
   if (item.kind === 'folder') return fridge ? { shape: 'tub', w: 84, h: 150, c } : { shape: 'bag', w: 70, h: 192, c };
