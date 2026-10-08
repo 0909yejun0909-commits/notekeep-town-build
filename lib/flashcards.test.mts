@@ -64,3 +64,7 @@ test('long heading answers are trimmed', () => {
   assert.ok(card.back.length <= 160);
   assert.ok(card.back.endsWith('…'));
 });
+
+test('a paragraph that only introduces a list is not an answer', () => {
+  assert.deepEqual(pairs('# Series\nOrder of tests to try:\n\n1. Divergence test first.'), []);
+});

@@ -95,7 +95,9 @@ export function extractCards(src: CardSource, md: string): Card[] {
 
   const closeSection = () => {
     if (section && section.cards === 0 && section.para.length > 0) {
-      const pair = pairOf(section.heading, firstSentence(clean(section.para.join(' '))));
+      const sentence = firstSentence(clean(section.para.join(' ')));
+      // "Order of tests to try:" only introduces the list below it.
+      const pair = sentence.endsWith(':') ? null : pairOf(section.heading, sentence);
       if (pair) found.push(['pair', ...pair]);
     }
   };
