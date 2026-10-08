@@ -241,3 +241,20 @@ cartridge menu, and both games start and end.
 
 AI-generated questions, long-term spaced repetition, streak freezes, coins from games,
 browser-wide site blocking (would need an extension), embedding web pages in the game.
+
+## As built (2026-10-08)
+
+Where the build differs from the design above:
+
+- A pair card that can't get three distractors becomes a typed question that shows the
+  **definition** and asks for the **term**, not the other way round.
+- `lib/houseCards.ts` reads a house's notes fresh every time a desk, computer or console opens; there
+  is no cache to invalidate.
+- Heading cards are skipped when their first sentence ends in `:` (it only introduces a list), and
+  answers that are only a URL aren't cards.
+- Typed without `http(s)://`, input only counts as a website when it starts with `www.` or ends in
+  a common web TLD, so `node.js` or `main.py` is a search.
+- The demo vault has no tech pieces in its default layout: computers and consoles come from the
+  catalogue's new **Tech** tab. Its coursework notes gained flashcard lines instead.
+- The old "pieces with an action are drawn exactly on their footprint" invariant now covers only
+  sit and lie, since desks and tech pieces overhang.
