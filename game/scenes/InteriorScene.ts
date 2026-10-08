@@ -22,6 +22,7 @@ import {
   computeDefaultLayout,
   HEADER_TILES,
   TOP_FIRST_GX,
+  surfaceUnder,
   type DoorSlot,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
@@ -29,8 +30,10 @@ import {
   CATALOG_BY_ID,
   FURNITURE_ACTIONS,
   SHELF_SHEET,
+  SURFACES,
   WALKABLE,
   furnitureTextureKey,
+  windowView,
   shelfLook,
   type FurnitureAction,
 } from '@/lib/catalog';
@@ -59,6 +62,10 @@ type Door = { slot: DoorSlot; roomId: string; name: string };
 function shorten(name: string, max: number): string {
   return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
 }
+
+// Rugs under everything, wall pieces over the wall, tabletop pieces over what they stand on;
+// the player (10) is drawn over all of them.
+const LAYER_DEPTH = { rug: 2, wall: 3, floor: 5, tabletop: 6 } as const;
 
 // Half the overworld's, so room names fit along a small room's top wall.
 const ROOM_LABEL_FONT = 7;
@@ -257,9 +264,13 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     // Back wall gets a second row so the shelf has something to lean on — only
-    // when the shelf is actually against the top wall; moved elsewhere, it's
-    // just a free-standing piece like any other furniture.
-    if (shelfGy === SHELF_GY) {
+    // when the shelf is actually against the top wall, or something hangs on that row;
+    // moved elsewhere, the shelf is just a free-standing piece like any other furniture.
+    const hangsLow = this.layout.placements.some((p) => {
+      const entry = CATALOG_BY_ID[p.item];
+      return entry?.layer === 'wall' && p.gy + entry.footprint[1] > SHELF_GY;
+    });
+    if (shelfGy === SHELF_GY || hangsLow) {
       for (let x = 1; x < w - 1; x++) {
         if (this.doors.has(`${x},0`)) continue;
         this.add.image(x * TILE, SHELF_GY * TILE, 'interior-walls', wallBase).setOrigin(0, 0).setDepth(1);
@@ -548,10 +559,17 @@ export default class InteriorScene extends Phaser.Scene {
     const { gx, gy, rotation } = placement;
     const walkable = WALKABLE.has(entry.category);
 
+    // A tabletop piece on a surface stands on its top, not in front of it.
+    const under = entry.layer === 'tabletop' ? surfaceUnder(this.layout, CATALOG_BY_ID, gx, gy) : null;
+    const lift = under === null ? 0 : (SURFACES[CATALOG_BY_ID[this.layout.placements[under].item].category] ?? 0);
+    // A sprite taller than its footprint stands on it and overhangs the tiles behind, so pieces
+    // further down the room draw over the ones behind them.
+    const view = entry.views ? windowView(new Date().getHours()) : 'day';
+    const frame = view !== 'day' && entry.views?.[view] !== undefined ? `${entry.frameKey}@${view}` : entry.frameKey;
     const img = this.add
-      .image(gx * TILE, gy * TILE, entry.textureKey, entry.frameKey)
+      .image(gx * TILE, (gy + fh) * TILE - entry.rect[3] - lift, entry.textureKey, frame)
       .setOrigin(0, 0)
-      .setDepth(walkable ? 2 : 5);
+      .setDepth(LAYER_DEPTH[entry.layer] + (gy + fh) / 1000);
 
     if (entry.rotations.length > 2) {
       img.setOrigin(0.5, 0.5).setPosition((gx + fw / 2) * TILE, (gy + fh / 2) * TILE).setAngle(rotation);
