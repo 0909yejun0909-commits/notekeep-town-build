@@ -109,7 +109,7 @@ export default function InteriorEditor() {
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
-  const [tab, setTab] = useState<CatalogGroupId>('living');
+  const [tab, setTab] = useState<CatalogGroupId>('seating');
   const { vault, setVault } = useVault();
   const study = useSession();
   // Rooms made during this edit: they exist on disk already, so their doorways join the draft.

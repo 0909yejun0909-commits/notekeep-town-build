@@ -83,11 +83,22 @@ export const FURNITURE: FurnitureId[] =
 // Decoration-only kinds: placeable from the interior editor (and later the shop),
 // but the vault parser never puts a note on one — notes only land on a FurnitureId.
 export type DecorKind =
-  | 'sofa' | 'armchair' | 'chair' | 'stool' | 'fireplace' | 'clock'
-  | 'single_bed' | 'wardrobe' | 'cabinet' | 'sideboard' | 'nightstand' | 'mirror'
-  | 'table' | 'stove' | 'sink' | 'fridge' | 'barrel'
-  | 'bathtub' | 'toilet' | 'basin' | 'vanity'
-  | 'bookcase' | 'piano' | 'guitar' | 'planter' | 'mat';
+  | 'sofa' | 'armchair' | 'chair' | 'stool' | 'bench' | 'fireplace' | 'clock'
+  | 'bed_side' | 'single_bed' | 'wardrobe' | 'cabinet' | 'sideboard' | 'nightstand' | 'mirror'
+  | 'dresser' | 'dresser_wide' | 'writing_desk'
+  | 'table' | 'table_tall' | 'counter' | 'stove' | 'sink' | 'fridge' | 'barrel'
+  | 'bathtub' | 'bathtub_tall' | 'toilet' | 'basin' | 'vanity'
+  | 'bookcase' | 'bookcase_wide' | 'bookcase_tall' | 'piano' | 'guitar'
+  | 'plant_big' | 'planter' | 'planter_tall'
+  | 'mat' | 'mat_small' | 'rug_wide'
+  | 'window' | 'window_wide' | 'wall_clock' | 'wall_mirror' | 'wall_mirror_wide' | 'towel' | 'pot_rack'
+  | 'table_lamp' | 'candle' | 'potion' | 'book' | 'dish' | 'food' | 'vase' | 'trinket' | 'toiletry' | 'tabletop_plant'
+  | 'xmas_tree' | 'candy_cane' | 'gift' | 'gift_pile' | 'wreath' | 'stocking';
+
+// Where a piece goes, Stardew-style: rugs lie under everything, wall pieces hang on the
+// back wall, tabletop pieces stand on a table, counter or nightstand (or on the floor), and
+// everything else stands on the floor.
+export type CatalogLayer = 'rug' | 'floor' | 'wall' | 'tabletop';
 
 export type CatalogCategory = FurnitureId | DecorKind;
 
@@ -107,12 +118,17 @@ export type CatalogEntry = {
   tier: CatalogTier;
   textureKey: string;
   frameKey: string;
+  layer: CatalogLayer;
   footprint: [number, number];
   rotations: Array<0 | 90 | 180 | 270>;
   // The sprite's pixel rect on its sheet — BootScene carves the Phaser frame from
-  // it and the editor crops a CSS thumbnail from it, so it's always footprint*16.
+  // it and the editor crops a CSS thumbnail from it. It's footprint*16 wide and at least
+  // footprint*16 tall: a taller sprite stands on its footprint and its top overhangs the
+  // tiles behind, the way Stardew draws tall furniture.
   sheetUrl: string;
   rect: [number, number, number, number];
+  // A window's view at dawn, dusk and night, as y offsets from `rect` on the same sheet.
+  views?: Partial<Record<'dawn' | 'dusk' | 'night', number>>;
 };
 
 export type FurniturePlacement = {

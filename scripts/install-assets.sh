@@ -99,6 +99,17 @@ cp "$D/Planters.png"       "$DEST/furniture/planters.png"
 cp "$D/Golden_Chest_Anim.png" "$DEST/furniture/chest_gold.png"
 cp "$D/Golden_Jeweled_Chest_Anim.png" "$DEST/furniture/chest_jeweled.png"
 cp "$D/Metal_Chest_Anim.png" "$DEST/furniture/chest_metal.png"
+cp "$D/windows.png"        "$DEST/furniture/windows.png"
+cp "$D/Placeable_Decoration.png" "$DEST/furniture/tabletop.png"
+cp "$D/Kitchen.png"        "$DEST/furniture/counters.png"
+cp "$KENMI/Cute_Fantasy_Christmass/Decorations/Decor.png"   "$DEST/furniture/festive.png"
+cp "$KENMI/Cute_Fantasy_Desert/Props/Desert_Rugs.png"       "$DEST/furniture/desert_rugs.png"
+cp "$KENMI/Cute_Fantasy_Desert/Props/Desert_Pots-Sacks.png" "$DEST/furniture/desert_pots.png"
+cp "$KENMI/Cute_Fantasy_Desert/Props/Golden_Pots.png"       "$DEST/furniture/golden_pots.png"
+# Only a few vases and candlesticks come from the Dungeons pack, so it's optional.
+if [ -f "$KENMI/Cute_Fantasy_Dungeons/Objects/Dungeon_Objects.png" ]; then
+  cp "$KENMI/Cute_Fantasy_Dungeons/Objects/Dungeon_Objects.png" "$DEST/furniture/curios.png"
+fi
 
 P="$CF/Player"
 cp "$P/Player_Base/Player_Base_animations.png" "$DEST/character/base.png"

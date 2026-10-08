@@ -105,6 +105,9 @@ export default class BootScene extends Phaser.Scene {
       if (!this.textures.exists(entry.textureKey)) continue;
       const [x, y, w, h] = entry.rect;
       this.textures.get(entry.textureKey).add(entry.frameKey, 0, x, y, w, h);
+      for (const [view, dy] of Object.entries(entry.views ?? {})) {
+        this.textures.get(entry.textureKey).add(`${entry.frameKey}@${view}`, 0, x, y + dy, w, h);
+      }
     }
 
     const facings: Array<['down' | 'right' | 'up', number]> = [
