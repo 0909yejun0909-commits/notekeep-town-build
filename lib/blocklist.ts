@@ -23,6 +23,12 @@ export function normalizeDomain(input: string): string | null {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
 }
 
+// Typed without a scheme, only these read as a website: `node.js` or `main.py` is a search.
+const WEB_TLDS = new Set([
+  'com', 'org', 'net', 'edu', 'gov', 'io', 'dev', 'app', 'ai', 'co', 'me', 'tv', 'gg', 'info',
+  'uk', 'us', 'ca', 'au', 'de', 'fr', 'jp', 'kr', 'in', 'nz', 'eu', 'xyz', 'site', 'blog', 'wiki',
+]);
+
 export type Target = { kind: 'url'; url: string; host: string } | { kind: 'search'; query: string };
 
 export function parseTarget(input: string): Target | null {
@@ -36,7 +42,8 @@ export function parseTarget(input: string): Target | null {
       return { kind: 'search', query: text };
     }
   }
-  if (!/\s/.test(text) && normalizeDomain(text) && /\.[a-z]{2,}(?:[/?#:]|$)/i.test(text)) {
+  const host = /\s/.test(text) ? null : normalizeDomain(text);
+  if (host && (/^www\./i.test(text) || WEB_TLDS.has(host.split('.').pop()!))) {
     return { kind: 'url', url: `https://${text}`, host: text.toLowerCase().replace(/[/?#:].*$/, '') };
   }
   return { kind: 'search', query: text };

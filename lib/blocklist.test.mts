@@ -52,3 +52,10 @@ test('search engines build https URLs with the query encoded', () => {
   assert.ok(ENGINES.wikipedia.search('cell').startsWith('https://en.wikipedia.org/'));
   assert.ok(ENGINES.scholar.search('cell').startsWith('https://scholar.google.com/'));
 });
+
+test('dotted study terms are searches, not websites', () => {
+  for (const q of ['node.js', 'chart.js', 'index.html', 'main.py']) assert.deepEqual(parseTarget(q), { kind: 'search', query: q });
+  assert.equal(parseTarget('x.ai')?.kind, 'url');
+  assert.equal(parseTarget('www.example.xyz')?.kind, 'url');
+  assert.equal(parseTarget('khanacademy.org/math')?.kind, 'url');
+});
