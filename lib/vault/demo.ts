@@ -80,13 +80,26 @@ Order of tests to try:
 4. Comparison or limit comparison for rational terms.
 5. Alternating series test last.
 
-The ratio test is inconclusive when the limit is exactly 1.`,
+The ratio test is inconclusive when the limit is exactly 1.
+
+## Flashcards
+
+Ratio test :: converges if the limit of |a(n+1) / a(n)| is below 1
+p-series :: the sum of 1/n^p, which converges exactly when p > 1
+Harmonic series :: the p-series with p = 1, which diverges
+Divergence test :: if the terms don't go to zero, the series diverges
+
+An alternating series converges when its terms ==decrease to zero==.`,
 
   'Coursework/Calculus II/Integration by Parts.md': `# Integration by Parts
 
 Pick u by LIATE: Logarithmic, Inverse trig, Algebraic, Trig, Exponential. Whatever comes first in that list is u.
 
-Tabular method saves time when u is a polynomial. Alternate signs down the column.`,
+Tabular method saves time when u is a polynomial. Alternate signs down the column.
+
+LIATE :: the order for choosing u: logs, inverse trig, algebraic, trig, exponential
+Q: What is the integration by parts formula?
+A: ∫u dv = uv − ∫v du`,
 
   'Coursework/Intro to CS/Recursion.md': `# Recursion
 
@@ -97,7 +110,15 @@ def fact(n):
     return 1 if n <= 1 else n * fact(n - 1)
 \`\`\`
 
-Python's default recursion limit is 1000. Use iteration for anything deeper than that.`,
+Python's default recursion limit is 1000. Use iteration for anything deeper than that.
+
+Base case :: the input small enough to answer without recursing
+Recursive case :: the step that calls the function again on a smaller input
+Stack overflow :: what happens when recursion never reaches its base case
+Memoization :: caching each call's result so repeated subproblems are solved once
+
+Q: What does fact(0) return?
+A: 1`,
 
   'Coursework/Intro to CS/Big O Cheatsheet.md': `# Big O Cheatsheet
 
