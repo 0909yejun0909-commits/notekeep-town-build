@@ -1,13 +1,32 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Element, ElementContent } from 'hast';
 import { safeUrl } from '@/lib/safeUrl';
 import type { NoteRef, VaultHandle } from '@/lib/types';
 import { useVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
 import { noteProgress, noteSaved } from '@/lib/walletStore';
+import {
+  HIGHLIGHTS,
+  addMark,
+  clearMarks,
+  piecesInRange,
+  remarkMarks,
+  selectSegments,
+  toggleUnderline,
+  trackedReplace,
+  type ExistingMark,
+  type HighlightId,
+  type MarkEdit,
+  type Piece,
+  type Range as SourceRange,
+  type SelectedPiece,
+  type SourceMap,
+} from '@/lib/noteMarks';
+import { BOOK_SRC, paperBookUrl } from '@/lib/paperBook';
 import Coin from './Coin';
 
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'mov'];
@@ -23,6 +42,15 @@ const PAGES_H = 400;
 const SPINE_GAP = 140;
 const PAGE_STRIDE = PAGES_W + SPINE_GAP; // one "turn" = two columns + one gap
 const EDIT_LINE = 21; // .note-editor's line-height: edit pages turn by whole lines
+
+// The panel is laid out at 4x and then scaled to the biggest whole multiple of the art that
+// fits the window, so every art pixel stays square.
+const ART_W = 224;
+const ART_H = 144;
+function bookZoom(): number {
+  const fit = Math.floor(Math.min((window.innerWidth - 32) / ART_W, (window.innerHeight - 32) / ART_H));
+  return Math.min(6, Math.max(4, fit)) / 4;
+}
 
 const INK = '#3b2a20';
 const INK_SOFT = 'rgba(59, 42, 32, 0.6)';
@@ -42,11 +70,11 @@ function isRemote(path: string): boolean {
 }
 
 // [[Note]], [[Note#Heading]], [[Note|alias]] -> markdown links. Embeds (![[...]]) are left alone.
-function wikilinksToMarkdown(md: string): string {
-  return md.replace(
+function linkWikilinks(md: string | SourceMap): SourceMap {
+  return trackedReplace(
+    md,
     /(?<!!)\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g,
-    (_m, target: string, alias?: string) =>
-      `[${(alias ?? target).trim()}](wikilink:${encodeURIComponent(target.trim())})`,
+    (m) => `[${(m[2] ?? m[1]).trim()}](wikilink:${encodeURIComponent(m[1].trim())})`,
   );
 }
 
@@ -68,39 +96,114 @@ async function resolveEmbeds(
   raw: string,
   vault: VaultHandle,
   notePath: string,
-): Promise<{ content: string; urls: string[] }> {
+): Promise<{ map: SourceMap; urls: string[] }> {
   const wikiRe = /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   const stdRe = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
-  const jobs: { match: string; path: string; alt: string }[] = [];
-
-  for (const m of raw.matchAll(wikiRe)) {
-    jobs.push({ match: m[0], path: m[1], alt: m[2] ?? m[1] });
-  }
-  for (const m of raw.matchAll(stdRe)) {
-    if (isRemote(m[2])) continue;
-    jobs.push({ match: m[0], path: m[2], alt: m[1] || m[2] });
-  }
+  const paths = [...raw.matchAll(wikiRe)].map((m) => m[1]);
+  for (const m of raw.matchAll(stdRe)) if (!isRemote(m[2])) paths.push(m[2]);
 
   const cache = new Map<string, string | null>();
   const urls: string[] = [];
 
-  for (const job of jobs) {
-    if (cache.has(job.path)) continue;
-    const url = await resolveBinary(vault, notePath, job.path);
-    cache.set(job.path, url);
+  for (const path of paths) {
+    if (cache.has(path)) continue;
+    const url = await resolveBinary(vault, notePath, path);
+    cache.set(path, url);
     if (url) urls.push(url);
   }
 
-  let content = raw;
-  for (const job of jobs) {
-    const url = cache.get(job.path);
-    if (!url) continue;
-    const replacement = `![${job.alt}](${url} "${job.path}")`;
-    content = content.split(job.match).join(replacement);
-  }
+  const embed = (match: string, path: string, alt: string) => {
+    const url = cache.get(path);
+    return url ? `![${alt}](${url} "${path}")` : match;
+  };
+  const wiki = trackedReplace(raw, wikiRe, (m) => embed(m[0], m[1], m[2] ?? m[1]));
+  const map = trackedReplace(wiki, stdRe, (m) => (isRemote(m[2]) ? m[0] : embed(m[0], m[2], m[1] || m[2])));
+  return { map, urls };
+}
 
-  return { content, urls };
+function hastText(node: Element | ElementContent | undefined): string {
+  if (!node) return '';
+  if (node.type === 'text') return node.value;
+  return 'children' in node ? node.children.map(hastText).join('') : '';
+}
+
+// ---- Selections in the rendered note, as places in the note's source ----
+
+function pieceOf(el: HTMLElement): Piece {
+  return { s: Number(el.dataset.s), e: Number(el.dataset.e), lin: el.dataset.lin === '1' };
+}
+
+function pieces(root: HTMLElement, map: SourceMap): Piece[] {
+  return [...root.querySelectorAll<HTMLElement>('[data-s]')].map((el) => map.toSourcePiece(pieceOf(el)));
+}
+
+function existingMarks(root: HTMLElement, map: SourceMap): ExistingMark[] {
+  return [...root.querySelectorAll<HTMLElement>('[data-k]')].map((el) => ({
+    kind: el.dataset.k as 'hl' | 'u',
+    open: { start: map.toSource(Number(el.dataset.os), 'start'), end: map.toSource(Number(el.dataset.oe), 'end') },
+    close: { start: map.toSource(Number(el.dataset.cs), 'start'), end: map.toSource(Number(el.dataset.ce), 'end') },
+  }));
+}
+
+function boundary(container: Node, offset: number, el: HTMLElement, len: number, isStart: boolean): number {
+  if (!el.contains(container)) return isStart ? 0 : len;
+  if (container.nodeType === Node.TEXT_NODE) return offset;
+  return offset === 0 ? 0 : len;
+}
+
+function selectedPieces(root: HTMLElement, range: globalThis.Range, map: SourceMap): SelectedPiece[] {
+  const out: SelectedPiece[] = [];
+  for (const el of root.querySelectorAll<HTMLElement>('[data-s]')) {
+    if (!range.intersectsNode(el)) continue;
+    const len = el.textContent?.length ?? 0;
+    out.push({
+      ...map.toSourcePiece(pieceOf(el)),
+      from: boundary(range.startContainer, range.startOffset, el, len, true),
+      to: boundary(range.endContainer, range.endOffset, el, len, false),
+    });
+  }
+  return out;
+}
+
+type MarkOp = (raw: string, segs: SourceRange[], existing: ExistingMark[]) => MarkEdit;
+const highlightOp =
+  (color: HighlightId): MarkOp =>
+  (raw, segs, existing) =>
+    addMark(raw, segs, { kind: 'hl', color }, existing);
+
+function MarkTools({
+  onHighlight,
+  onUnderline,
+  onClear,
+}: {
+  onHighlight: (color: HighlightId) => void;
+  onUnderline: () => void;
+  onClear: () => void;
+}) {
+  return (
+    // Buttons mustn't take focus or the selection they act on goes away.
+    <div className="note-tools" onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
+      {HIGHLIGHTS.map((h) => (
+        <button
+          key={h.id}
+          className="note-swatch"
+          style={{ background: h.hex }}
+          title={`Highlight ${h.label.toLowerCase()}${h.id === 'yellow' ? ' (⌘⇧H)' : ''}`}
+          aria-label={`Highlight ${h.label.toLowerCase()}`}
+          onClick={() => onHighlight(h.id)}
+        />
+      ))}
+      <span className="note-tools-sep" />
+      <button className="note-tool" title="Underline (⌘U)" aria-label="Underline" onClick={onUnderline}>
+        <span style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>U</span>
+      </button>
+      <button className="note-tool" title="Clear highlight and underline" aria-label="Clear formatting" onClick={onClear}>
+        <span style={{ textDecoration: 'line-through' }}>T</span>
+        <span style={{ fontSize: 10, marginLeft: 1 }}>x</span>
+      </button>
+    </div>
+  );
 }
 
 const READER_CSS = `
@@ -144,7 +247,7 @@ const READER_CSS = `
     appearance: none; width: 14px; height: 14px; flex: none; margin: 0; position: relative; top: 2px;
     border: 2px solid ${INK}; border-radius: 3px; background: transparent;
   }
-  .note-prose li.task-list-item input[type=checkbox]:checked { background: ${INK}; box-shadow: inset 0 0 0 2px #f3dfbf; }
+  .note-prose li.task-list-item input[type=checkbox]:checked { background: ${INK}; box-shadow: inset 0 0 0 2px #fcf8ef; }
   .note-prose li.task-list-item:has(input:checked) { text-decoration: line-through; color: ${INK_SOFT}; }
   .note-prose a { color: #8a3b12; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
   .note-prose a[href^="wikilink:"]::before { content: '[['; opacity: 0.45; }
@@ -169,6 +272,12 @@ const READER_CSS = `
     display: block; max-width: 100%; max-height: 240px; margin: 4px 0 12px; break-inside: avoid;
     border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); image-rendering: pixelated;
   }
+  .note-prose mark.hl {
+    background: var(--hl); color: inherit; border-radius: 3px; padding: 0 2px;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  ${HIGHLIGHTS.map((h) => `.note-prose mark.hl-${h.id} { --hl: ${h.hex}; }`).join('\n  ')}
+  .note-prose u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
   .note-title {
     font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 28px; line-height: 36px; color: ${INK};
     margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid ${INK_LINE}; word-break: break-word;
@@ -186,14 +295,32 @@ const READER_CSS = `
 
   .note-btn {
     font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;
-    color: ${INK}; background: rgba(255, 248, 232, 0.65); border: 2px solid ${INK_LINE}; border-radius: 4px;
+    color: ${INK}; background: rgba(255, 252, 245, 0.75); border: 2px solid ${INK_LINE}; border-radius: 4px;
     padding: 5px 9px; cursor: pointer; line-height: 1; white-space: nowrap; flex: none;
   }
-  .note-btn:hover { background: rgba(255, 248, 232, 0.95); border-color: ${INK}; }
+  .note-btn:hover { background: #fffdf8; border-color: ${INK}; }
   .note-btn:disabled { opacity: 0.4; cursor: default; }
-  .note-btn.primary { background: ${INK}; color: #f6e7c8; border-color: ${INK}; }
+  .note-btn.primary { background: ${INK}; color: #fcf8ef; border-color: ${INK}; }
   .note-btn.primary:hover { background: #2a1a12; }
   .note-hint { font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; color: ${INK_SOFT}; text-transform: uppercase; }
+
+  .note-tools {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px;
+    background: #fffdf8; border: 2px solid ${INK_LINE}; border-radius: 6px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  }
+  .note-swatch {
+    width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(59, 42, 32, 0.25); cursor: pointer; padding: 0;
+  }
+  .note-swatch:hover { border-color: ${INK}; transform: scale(1.12); }
+  .note-tools-sep { width: 1px; height: 18px; background: ${INK_LINE}; margin: 0 2px; }
+  .note-tool {
+    min-width: 24px; height: 24px; padding: 0 4px; border-radius: 4px; border: 0; background: transparent; cursor: pointer;
+    font-family: Georgia, serif; font-size: 15px; font-weight: 700; color: ${INK}; line-height: 1;
+  }
+  .note-tool:hover { background: ${INK_WASH}; }
+  .note-float { position: absolute; z-index: 60; transform: translate(-50%, calc(-100% - 8px)); }
+  .note-float.below { transform: translate(-50%, 8px); }
 `;
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -202,6 +329,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const { vault } = useVault();
   const [raw, setRaw] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
+  const contentMapRef = useRef<SourceMap | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [errorText, setErrorText] = useState<string | null>(null);
   const urlsRef = useRef<string[]>([]);
@@ -213,6 +341,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const overlayRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -222,7 +351,13 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const [editPage, setEditPage] = useState(0);
   const [editPageCount, setEditPageCount] = useState(1);
 
+  const [zoom, setZoom] = useState(1);
+  const [bookUrl, setBookUrl] = useState(BOOK_SRC);
+  const [floatAt, setFloatAt] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  const lastColorRef = useRef<HighlightId>('yellow');
+
   const canWrite = !!vault?.writeNote;
+  const previewMap = useMemo(() => linkWikilinks(draft), [draft]);
 
   useEffect(() => {
     return () => {
@@ -230,17 +365,31 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     };
   }, []);
 
+  useEffect(() => {
+    let live = true;
+    void paperBookUrl().then((url) => live && setBookUrl(url));
+    const onResize = () => setZoom(bookZoom());
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => {
+      live = false;
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
   const display = useCallback(
     async (text: string, cancelled: () => boolean) => {
       if (!note || !vault) return;
-      const { content: resolved, urls } = await resolveEmbeds(text, vault, note.id);
+      const { map, urls } = await resolveEmbeds(text, vault, note.id);
       if (cancelled()) {
         urls.forEach((u) => URL.revokeObjectURL(u));
         return;
       }
       urlsRef.current.forEach((u) => URL.revokeObjectURL(u));
       urlsRef.current = urls;
-      setContent(wikilinksToMarkdown(resolved));
+      const linked = linkWikilinks(map);
+      contentMapRef.current = linked;
+      setContent(linked.text);
     },
     [note, vault],
   );
@@ -257,6 +406,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     setErrorText(null);
     setPage(0);
     setPageCount(1);
+    setFloatAt(null);
 
     if (!note || !vault) return;
 
@@ -300,11 +450,85 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     el.scrollLeft = p * PAGE_STRIDE;
   }, [content, page, editing]);
 
+  // ---- Highlight and underline while reading ----
+
+  const readingSelection = useCallback((): globalThis.Range | null => {
+    const sel = window.getSelection();
+    const root = pagesRef.current;
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !root) return null;
+    const range = sel.getRangeAt(0);
+    return root.contains(range.commonAncestorContainer) ? range : null;
+  }, []);
+
+  const placeFloat = useCallback(() => {
+    const range = editingRef.current || !canWrite ? null : readingSelection();
+    const overlay = overlayRef.current;
+    if (!range || !overlay) return setFloatAt(null);
+    const r = range.getBoundingClientRect();
+    const o = overlay.getBoundingClientRect();
+    const below = r.top - o.top < 56;
+    const x = Math.min(Math.max(r.left + r.width / 2 - o.left, 110), o.width - 110);
+    setFloatAt({ x, y: below ? r.bottom - o.top : r.top - o.top, below });
+  }, [canWrite, readingSelection]);
+
+  useEffect(() => {
+    if (!note) return;
+    const onUp = () => requestAnimationFrame(placeFloat);
+    const onChange = () => {
+      if (!readingSelection()) setFloatAt(null);
+    };
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('keyup', onUp);
+    document.addEventListener('selectionchange', onChange);
+    return () => {
+      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('keyup', onUp);
+      document.removeEventListener('selectionchange', onChange);
+    };
+  }, [note, placeFloat, readingSelection]);
+
+  // The float sits over the page, so it has to go when the page turns under it.
+  useEffect(() => {
+    setFloatAt(null);
+    window.getSelection()?.removeAllRanges();
+  }, [page]);
+
+  const markWhileReading = useCallback(
+    async (op: MarkOp) => {
+      const range = readingSelection();
+      const root = pagesRef.current;
+      const map = contentMapRef.current;
+      if (!range || !root || !map || raw === null || !note || !vault?.writeNote) return;
+      const segs = selectSegments(raw, selectedPieces(root, range, map));
+      window.getSelection()?.removeAllRanges();
+      setFloatAt(null);
+      if (segs.length === 0) return;
+      const next = op(raw, segs, existingMarks(root, map)).text;
+      if (next === raw) return;
+      setRaw(next);
+      await display(next, () => false);
+      setSaveState('saving');
+      setSaveError(null);
+      try {
+        await vault.writeNote(note.id, next);
+        noteSaved(note.id, next, note.title);
+        setSaveState('saved');
+      } catch (err) {
+        setSaveState('error');
+        setSaveError(err instanceof Error ? err.message : 'Could not save');
+      }
+    },
+    [readingSelection, raw, note, vault, display],
+  );
+
+  // ---- Editing ----
+
   const startEdit = useCallback(() => {
     if (raw === null) return;
     setDraft(raw);
     setSaveState('idle');
     setSaveError(null);
+    setFloatAt(null);
     setEditing(true);
     editingRef.current = true;
     requestAnimationFrame(() => textareaRef.current?.focus());
@@ -341,6 +565,30 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     t.focus({ preventScroll: true });
   };
 
+  // Goes through the browser's own editing so ⌘Z undoes a highlight like any typing.
+  const markWhileEditing = (op: MarkOp) => {
+    const t = textareaRef.current;
+    const preview = previewRef.current;
+    if (!t || !preview || t.selectionStart === t.selectionEnd) return;
+    const a = t.selectionStart;
+    const b = t.selectionEnd;
+    const segs = selectSegments(draft, piecesInRange(pieces(preview, previewMap), a, b));
+    if (segs.length === 0) return;
+    const edit = op(draft, segs, existingMarks(preview, previewMap));
+    const next = edit.text;
+    if (next === draft) return;
+    let pre = 0;
+    while (pre < draft.length && pre < next.length && draft[pre] === next[pre]) pre++;
+    let suf = 0;
+    while (suf < draft.length - pre && suf < next.length - pre && draft[draft.length - 1 - suf] === next[next.length - 1 - suf]) suf++;
+    t.focus({ preventScroll: true });
+    t.setSelectionRange(pre, draft.length - suf);
+    const insert = next.slice(pre, next.length - suf);
+    const ok = insert ? document.execCommand('insertText', false, insert) : document.execCommand('delete');
+    if (!ok || t.value !== next) setDraft(next);
+    t.setSelectionRange(edit.map(a, 'start'), edit.map(b, 'end'));
+  };
+
   const cancelEdit = useCallback(() => {
     setEditing(false);
     editingRef.current = false;
@@ -375,16 +623,25 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         return;
       }
       if (editingRef.current) return;
+      if ((e.metaKey || e.ctrlKey) && readingSelection()) {
+        const k = e.key.toLowerCase();
+        if (k === 'u' || (k === 'h' && e.shiftKey)) {
+          e.preventDefault();
+          e.stopPropagation();
+          void markWhileReading(k === 'u' ? toggleUnderline : highlightOp(lastColorRef.current));
+          return;
+        }
+      }
       if (e.key === 'ArrowRight' || e.key === 'PageDown') setPage((p) => Math.min(p + 1, pageCount - 1));
       if (e.key === 'ArrowLeft' || e.key === 'PageUp') setPage((p) => Math.max(p - 1, 0));
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [note, pageCount, cancelEdit]);
+  }, [note, pageCount, cancelEdit, readingSelection, markWhileReading]);
 
   const components = {
-    h1: ({ children }: { children?: React.ReactNode }) =>
-      note && String(children).trim() === note.title.trim() ? null : <h1>{children}</h1>,
+    h1: ({ node, children }: { node?: Element; children?: React.ReactNode }) =>
+      note && hastText(node).trim() === note.title.trim() ? null : <h1>{children}</h1>,
     a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
       const wiki = href?.startsWith('wikilink:');
       return (
@@ -419,12 +676,20 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     e.stopPropagation();
   };
 
+  const pick = (color: HighlightId) => {
+    lastColorRef.current = color;
+    return highlightOp(color);
+  };
+
   return (
     <>
       <style>{READER_CSS}</style>
       <div
+        ref={overlayRef}
         className="absolute inset-0 z-50 flex items-center justify-center bg-black/70"
         onClick={() => {
+          // A drag-select that ends off the book lands its click here; that isn't a close.
+          if (window.getSelection()?.isCollapsed === false) return;
           if (!editingRef.current) bus.emit('close-note', undefined);
         }}
       >
@@ -434,7 +699,9 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
           style={{
             width: PANEL_W,
             height: PANEL_H,
-            backgroundImage: "url('/assets/ui/book.png')",
+            flex: 'none',
+            scale: zoom,
+            backgroundImage: `url('${bookUrl}')`,
             backgroundPosition: '-32px 0px',
             backgroundSize: '6720px 1728px',
             backgroundRepeat: 'no-repeat',
@@ -450,7 +717,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 {status === 'loading' && <p style={{ color: INK_SOFT }}>Opening…</p>}
                 {status === 'error' && <p style={{ color: INK_SOFT }}>{errorText ?? 'Could not read this note.'}</p>}
                 {content && (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeUrl} components={components}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMarks]} urlTransform={safeUrl} components={components}>
                     {content}
                   </ReactMarkdown>
                 )}
@@ -475,12 +742,20 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   onScroll={syncEditPages}
                   onKeyDown={(e) => {
                     stopKeys(e);
+                    const mod = e.metaKey || e.ctrlKey;
+                    const k = e.key.toLowerCase();
                     if (e.key === 'Escape') {
                       e.preventDefault();
                       cancelEdit();
-                    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+                    } else if (mod && k === 's') {
                       e.preventDefault();
                       void save();
+                    } else if (mod && k === 'u') {
+                      e.preventDefault();
+                      markWhileEditing(toggleUnderline);
+                    } else if (mod && e.shiftKey && k === 'h') {
+                      e.preventDefault();
+                      markWhileEditing(highlightOp(lastColorRef.current));
                     }
                   }}
                   onKeyUp={stopKeys}
@@ -488,13 +763,33 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 />
                 <div ref={previewRef} className="note-scroll note-prose">
                   <h2 className="note-title">{note.title}</h2>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeUrl} components={components}>
-                    {wikilinksToMarkdown(draft)}
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkMarks]} urlTransform={safeUrl} components={components}>
+                    {previewMap.text}
                   </ReactMarkdown>
                 </div>
               </div>
             )}
           </div>
+
+          {/* Formatting for the editor, in the left page's top margin */}
+          {editing && (
+            <div
+              style={{
+                position: 'absolute',
+                left: PAGES_LEFT,
+                width: (PAGES_W - SPINE_GAP) / 2,
+                top: PAGES_TOP - 40,
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
+              <MarkTools
+                onHighlight={(c) => markWhileEditing(pick(c))}
+                onUnderline={() => markWhileEditing(toggleUnderline)}
+                onClear={() => markWhileEditing(clearMarks)}
+              />
+            </div>
+          )}
 
           {/* Controls in the page margins */}
           <div
@@ -511,13 +806,15 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
           >
             {!editing ? (
               <>
-                <button className="note-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-                  ‹ Prev
-                </button>
-                <span className="note-hint">
-                  Page {page + 1} / {pageCount}
-                  {saveState === 'saved' ? ' · Saved' : ''}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <button className="note-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                    ‹ Prev
+                  </button>
+                  <span className="note-hint" title={saveError ?? undefined}>
+                    Page {page + 1} / {pageCount}
+                    {saveState === 'saving' ? ' · Saving…' : saveState === 'saved' ? ' · Saved' : saveState === 'error' ? ' · Could not save' : ''}
+                  </span>
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     className="note-btn"
@@ -586,6 +883,18 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             )}
           </div>
         </div>
+
+        {floatAt && !editing && (
+          <div className={`note-float${floatAt.below ? ' below' : ''}`} style={{ left: floatAt.x, top: floatAt.y }}>
+            <div style={{ zoom }}>
+              <MarkTools
+                onHighlight={(c) => void markWhileReading(pick(c))}
+                onUnderline={() => void markWhileReading(toggleUnderline)}
+                onClear={() => void markWhileReading(clearMarks)}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
