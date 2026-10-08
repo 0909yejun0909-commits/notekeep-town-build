@@ -22,6 +22,8 @@ import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
+import { setPlace } from '@/game/audio/music';
+import { setGround, type Ground } from '@/game/audio/sfx';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 import { MINIMAP_TILE, getMinimapSource, setMinimapSource, type MinimapSource } from '@/game/minimap';
 import { currentPresences, setSelfPresence } from '@/lib/multiplayer/session';
@@ -98,6 +100,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (!world || world.regions.length === 0) return;
 
     const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    setPlace(biome);
     if (biome === 'snow') ensureWinterTextures(this);
     if (biome === 'desert') ensureDesertTextures(this);
 
@@ -202,6 +205,8 @@ export default class OverworldScene extends Phaser.Scene {
     const { plazas, anchors, wells } = placePlazas(grid);
     placePonds(grid);
     grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
+    const underfoot: Ground = biome === 'snow' ? 'snow' : biome === 'desert' ? 'sand' : 'grass';
+    setGround((gx, gy) => (grid.plaza.has(key(gx, gy)) ? 'stone' : grid.road.has(key(gx, gy)) ? 'road' : underfoot));
     const ground = buildGround(this, grid);
     renderWater(this, grid, ground.map, GID_WATER);
     renderPlazas(this, grid, plazas, wells);

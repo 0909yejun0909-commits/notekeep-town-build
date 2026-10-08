@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { useWallet, type Notice } from '@/lib/walletStore';
+import { sfx } from '@/game/audio/sfx';
 import Coin from './Coin';
 import styles from './CoinPurse.module.css';
 
@@ -13,6 +14,7 @@ export default function CoinPurse() {
   useEffect(() => {
     if (!wallet.notice) return;
     setShown(wallet.notice);
+    sfx('coin');
     const t = setTimeout(() => setShown(null), 5000);
     return () => clearTimeout(t);
   }, [wallet.notice]);

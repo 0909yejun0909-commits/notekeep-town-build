@@ -8,6 +8,7 @@ import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, structuralOcc
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
 import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
+import { sfx } from '@/game/audio/sfx';
 import { useSession } from '@/lib/multiplayer/session';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import Coin from './Coin';
@@ -234,9 +235,11 @@ export default function InteriorEditor() {
     const price = priceOf(item);
     if (price === null) return false;
     if (!buy(item)) {
+      sfx('error');
       setError(`${nameOf(item)} costs ${price} coins. Write notes to earn more!`);
       return false;
     }
+    sfx('buy');
     return true;
   }
 

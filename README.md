@@ -96,9 +96,16 @@ extending the game.
 ## Credits
 
 - Art: [Kenmi — Cute Fantasy](https://kenmi-art.itch.io/) (not redistributed, see above).
+- Instruments: the FluidR3 GM soundfont by Frank Wen, as rendered to mp3 by
+  [gleitz/midi-js-soundfonts](https://github.com/gleitz/midi-js-soundfonts), licensed
+  [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The notes the music uses are in
+  `public/audio/`; `npm run fetch-samples` downloads them again after the tracks change.
+- Sound effects: [Kenney — RPG Audio](https://kenney.nl/assets/rpg-audio) and
+  [Impact Sounds](https://kenney.nl/assets/impact-sounds) (CC0), in `public/sfx/`.
 - Built by the Notekeep Town team.
 
 ## License
 
 MIT — see [LICENSE](LICENSE). The MIT license covers the code in this repository only; it
 does not grant any rights to the Kenmi art assets, which are not included in this repo.
+The recordings in `public/audio/` and `public/sfx/` keep their own licences, listed under Credits.

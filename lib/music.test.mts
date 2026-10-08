@@ -1,0 +1,60 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { noteMidi, parsePattern, stepSeconds, stepsPerBar } from './music.ts';
+import { TRACKS } from './tracks.ts';
+import { SFX_FILES, nearestSample, requiredSamples, sampleName, sampleUrl, sfxUrl } from './samples.ts';
+
+const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 0.01, `${a} != ${b}`);
+
+test('noteMidi puts A4 at 69 and handles sharps, flats and octaves', () => {
+  assert.equal(noteMidi('A4'), 69);
+  assert.equal(noteMidi('C4'), 60);
+  assert.equal(noteMidi('C#5'), 73);
+  assert.equal(noteMidi('Bb3'), 58);
+  assert.equal(noteMidi('C-1'), 0);
+  assert.throws(() => noteMidi('H4'));
+});
+
+test('parsePattern lays tokens out in steps, with rests, holds, chords and hits', () => {
+  const p = parsePattern('E5*2 . | C4+E4 x*3');
+  assert.equal(p.length, 7);
+  assert.equal(p.events.length, 3);
+  assert.deepEqual(p.events.map((e) => [e.step, e.len]), [[0, 2], [3, 1], [4, 3]]);
+  assert.deepEqual(p.events[1].midis, [60, 64]);
+  assert.deepEqual(p.events[2].midis, []);
+  assert.throws(() => parsePattern('E5*0'));
+});
+
+test('step timing follows tempo and subdivision', () => {
+  close(stepSeconds({ bpm: 120, div: 2 }), 0.25);
+  assert.equal(stepsPerBar({ div: 2, beats: 3 }), 6);
+});
+
+test('every part of every track parses and fills whole bars', () => {
+  for (const [place, track] of Object.entries(TRACKS)) {
+    const bar = stepsPerBar(track);
+    const lengths = track.parts.map((part) => parsePattern(part.pattern).length);
+    lengths.forEach((len, i) => assert.equal(len % bar, 0, `${place} part ${i} is ${len / bar} bars`));
+    const loop = Math.max(...lengths);
+    lengths.forEach((len, i) => assert.equal(loop % len, 0, `${place} part ${i} doesn't divide the ${loop / bar}-bar loop`));
+    const seconds = loop * stepSeconds(track);
+    assert.ok(seconds >= 40 && seconds <= 95, `${place} loops every ${seconds.toFixed(0)}s`);
+  }
+});
+
+test('every note is pitched from a recording at most a semitone away, named the soundfont way', () => {
+  for (let m = 21; m <= 108; m++) assert.ok(Math.abs(nearestSample(m) - m) <= 1, `${m}`);
+  assert.equal(sampleName(60), 'C4');
+  assert.equal(sampleName(63), 'Eb4');
+  assert.equal(sampleName(66), 'Gb4');
+  assert.equal(sampleName(21), 'A0');
+});
+
+test('every recording the music and sound effects need is on disk', () => {
+  const root = new URL('../public', import.meta.url).pathname;
+  const missing = [...requiredSamples()].flatMap(([inst, midis]) =>
+    [...midis].map((m) => sampleUrl(inst, m)).filter((url) => !existsSync(root + url)),
+  ).concat(SFX_FILES.map(sfxUrl).filter((url) => !existsSync(root + url)));
+  assert.deepEqual(missing, [], 'run: npm run fetch-samples');
+});

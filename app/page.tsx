@@ -20,6 +20,7 @@ import Wardrobe from '@/components/Wardrobe';
 import BedMenu from '@/components/BedMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
+import SoundToggle from '@/components/SoundToggle';
 import { bus } from '@/game/bus';
 import { readInvite, type Invite } from '@/lib/multiplayer/guest';
 import { RELAY_URL } from '@/lib/multiplayer/session';
@@ -74,6 +75,7 @@ function Game() {
       <Wardrobe />
       <BedMenu />
       <BiomePicker />
+      <SoundToggle />
       <MissingArtBanner />
 
       {npcLine && (
