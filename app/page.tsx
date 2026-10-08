@@ -18,6 +18,7 @@ import Minimap from '@/components/Minimap';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
 import StudyDesk from '@/components/StudyDesk';
+import Computer from '@/components/Computer';
 import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
@@ -75,6 +76,7 @@ function Game() {
       <CoinPurse />
       <Wardrobe />
       <StudyDesk />
+      <Computer />
       <ChoiceMenu />
       <BiomePicker />
       <SoundToggle />
