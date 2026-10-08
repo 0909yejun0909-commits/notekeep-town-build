@@ -1,17 +1,24 @@
 import { useSyncExternalStore } from 'react';
 import type { CatalogItemId } from './types';
 import {
-  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, priceOf, qualifies, settle, wordCount,
-  type Inventory, type WalletData,
+  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, currentStreak, localDay, priceOf, qualifies, settle,
+  settleStudy, withStreak, wordCount, type Inventory, type WalletData,
 } from './wallet';
 
 export type Notice = { id: number; amount: number; text: string };
-export type WalletView = { active: boolean; balance: number; inventory: Inventory; notice: Notice | null };
+export type WalletView = {
+  active: boolean;
+  balance: number;
+  inventory: Inventory;
+  notice: Notice | null;
+  streak: number;
+  studiedToday: boolean;
+};
 
 // key null = the demo town, whose notes reset on reload, so its wallet does too.
 type Session = { key: string | null; qualifying: Set<string>; data: WalletData };
 
-const INACTIVE: WalletView = { active: false, balance: 0, inventory: {}, notice: null };
+const INACTIVE: WalletView = { active: false, balance: 0, inventory: {}, notice: null, streak: 0, studiedToday: false };
 
 let session: Session | null = null;
 let view: WalletView = INACTIVE;
@@ -30,7 +37,11 @@ function load(key: string): WalletData | null {
     ) {
       return null;
     }
-    return d as WalletData;
+    // Saves from before the study streak have none; a malformed one is dropped, not the wallet.
+    if (d.streak !== undefined && (typeof d.streak !== 'object' || d.streak === null || typeof d.streak.days !== 'number')) {
+      delete d.streak;
+    }
+    return withStreak(d);
   } catch {
     return null;
   }
@@ -40,11 +51,14 @@ function publish(notice?: Notice | null) {
   if (!session) {
     view = INACTIVE;
   } else {
+    const today = localDay(new Date());
     view = {
       active: true,
       balance: session.data.balance,
       inventory: session.data.inventory,
       notice: notice === undefined ? view.notice : notice,
+      streak: currentStreak(session.data.streak, today),
+      studiedToday: session.data.streak.lastDay === today,
     };
     if (session.key) {
       try {
@@ -97,6 +111,24 @@ export function noteProgress(id: string, draft: string): { words: number; needed
   if (!session || session.qualifying.has(id)) return null;
   if (session.qualifying.size + 1 <= session.data.record) return null;
   return { words: wordCount(draft), needed: MIN_WORDS, reward: NOTE_REWARD };
+}
+
+// Passing a quiz at a desk. Returns the coins paid: 0 when today's reward is already taken.
+export function studyPassed(): number {
+  if (!session) return 0;
+  const { data, earned } = settleStudy(session.data, localDay(new Date()));
+  session.data = data;
+  if (earned > 0) {
+    const days = data.streak.days;
+    publish(notice(earned, days === 1 ? 'Studied today! Come back tomorrow to start a streak.' : `Study streak: ${days} days!`));
+  }
+  return earned;
+}
+
+// Per-vault storage for things that aren't money (the computer's blocklist, arcade scores),
+// next to the wallet. Null in the demo town, whose wallet doesn't persist either.
+export function vaultStorageKey(suffix: string): string | null {
+  return session?.key ? `${session.key}:${suffix}` : null;
 }
 
 export function buy(item: CatalogItemId): boolean {

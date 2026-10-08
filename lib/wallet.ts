@@ -5,6 +5,14 @@ export const NOTE_REWARD = 10;
 export const MIN_WORDS = 30;
 export const STARTER_GRANT = 50;
 
+// Passing a quiz at a desk pays once a day, a coin more for each day in a row.
+export const STUDY_REWARD = 5;
+export const STREAK_BONUS_CAP = 10;
+
+// days in a row a quiz was passed, through lastDay (the player's local YYYY-MM-DD).
+export type Streak = { days: number; lastDay: string | null };
+export const NO_STREAK: Streak = { days: 0, lastDay: null };
+
 // Per tier, so catalog pieces added later are priced by the tier they're given in lib/catalog.ts.
 export const TIER_PRICE: Record<CatalogTier, number> = {
   common: 15, uncommon: 30, rare: 60, treasure: 150,
@@ -14,7 +22,7 @@ export type Inventory = Record<CatalogItemId, number>;
 
 // `record` is the most qualifying notes ever paid for. Counting instead of remembering paths
 // means a note renamed or moved in Obsidian never pays twice.
-export type WalletData = { balance: number; record: number; inventory: Inventory };
+export type WalletData = { balance: number; record: number; inventory: Inventory; streak: Streak };
 
 const WORD = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
 
@@ -36,7 +44,7 @@ export function settle(
   qualifyingCount: number,
 ): { data: WalletData; earned: number; fresh: boolean } {
   if (!saved) {
-    return { data: { balance: STARTER_GRANT, record: qualifyingCount, inventory: {} }, earned: 0, fresh: true };
+    return { data: { balance: STARTER_GRANT, record: qualifyingCount, inventory: {}, streak: NO_STREAK }, earned: 0, fresh: true };
   }
   const earned = Math.max(0, qualifyingCount - saved.record) * NOTE_REWARD;
   if (earned === 0) return { data: saved, earned, fresh: false };
@@ -45,6 +53,31 @@ export function settle(
     earned,
     fresh: false,
   };
+}
+
+export function withStreak(d: Omit<WalletData, 'streak'> & { streak?: Streak }): WalletData {
+  return { ...d, streak: d.streak ?? NO_STREAK };
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+export function localDay(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function dayBefore(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return localDay(new Date(y, m - 1, d - 1));
+}
+
+export function currentStreak(s: Streak, today: string): number {
+  return s.lastDay === today || s.lastDay === dayBefore(today) ? s.days : 0;
+}
+
+export function settleStudy(data: WalletData, today: string): { data: WalletData; earned: number } {
+  if (data.streak.lastDay === today) return { data, earned: 0 };
+  const days = data.streak.lastDay === dayBefore(today) ? data.streak.days + 1 : 1;
+  const earned = STUDY_REWARD + Math.min(days - 1, STREAK_BONUS_CAP);
+  return { data: { ...data, balance: data.balance + earned, streak: { days, lastDay: today } }, earned };
 }
 
 export function priceOf(item: CatalogItemId): number | null {
