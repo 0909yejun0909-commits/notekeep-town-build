@@ -18,7 +18,7 @@ const SOUND_FOR = {
   'talk-npc': 'talk',
   'open-wardrobe': 'wardrobe',
   'close-wardrobe': 'close',
-  'open-bed-menu': 'open',
+  'open-choice-menu': 'open',
   'open-interior-editor': 'open',
   'close-interior-editor': 'close',
   'open-exterior-editor': 'open',
