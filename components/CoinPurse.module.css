@@ -28,6 +28,39 @@
   cursor: help;
 }
 
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Grey until a quiz is passed today, so a streak about to lapse looks it. */
+.streak {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 8px;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 3px 0 #6d483b, 0 4px 0 rgba(24, 20, 37, 0.45);
+  color: #ffb347;
+  font-size: 28px;
+  line-height: 36px;
+  pointer-events: auto;
+  cursor: help;
+  filter: grayscale(1);
+  opacity: 0.65;
+}
+
+.streak.lit {
+  filter: none;
+  opacity: 1;
+}
+
+.flame {
+  font-family: system-ui, sans-serif;
+  font-size: 22px;
+}
+
 .amount {
   display: inline-block;
   min-width: 2ch;
