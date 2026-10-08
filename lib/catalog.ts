@@ -7,12 +7,14 @@ export const FURNITURE_SHEETS = [
   'tables', 'bookshelves', 'beds', 'chest', 'plants', 'decor', 'lamps', 'carpets',
   'chairs', 'other', 'bathroom', 'kitchen', 'clocks', 'fireplaces', 'planters',
   'chest_gold', 'chest_jeweled', 'chest_metal', 'windows', 'tabletop', 'counters', 'festive',
-  'desert_rugs', 'desert_pots', 'golden_pots', 'curios',
+  'desert_rugs', 'desert_pots', 'golden_pots', 'curios', 'tech',
 ] as const;
 export type FurnitureSheet = (typeof FURNITURE_SHEETS)[number];
 
 export const furnitureTextureKey = (sheet: FurnitureSheet) => `furn_${sheet}`;
-export const furnitureSheetUrl = (sheet: FurnitureSheet) => `/assets/furniture/${sheet}.png`;
+// Our own drawn art is committed under public/art; the licensed packs are gitignored under public/assets.
+export const furnitureSheetUrl = (sheet: FurnitureSheet) =>
+  sheet === 'tech' ? '/art/tech.png' : `/assets/furniture/${sheet}.png`;
 
 // The bookshelf isn't a catalog item (it's structural and always present), but
 // it's carved from the same sheet as the placeable bookcases.
@@ -48,6 +50,7 @@ const WALL: CatalogCategory[] = [
 ];
 const TABLETOP: CatalogCategory[] = [
   'table_lamp', 'candle', 'potion', 'book', 'dish', 'food', 'vase', 'trinket', 'toiletry', 'tabletop_plant', 'gift',
+  'computer', 'laptop',
 ];
 
 export function layerOf(category: CatalogCategory): CatalogLayer {
@@ -558,6 +561,13 @@ export const CATALOG: CatalogEntry[] = [
   item('chest_sapphire', 'Sapphire chest', 'chest', 'treasure', 'chest_jeweled', [0, 32, 16, 16]),
   item('chest_emerald', 'Emerald chest', 'chest', 'treasure', 'chest_jeweled', [0, 48, 16, 16]),
 
+  // Tech, drawn for Notekeep (scripts/draw-tech.py)
+  item('computer_crt', 'Desktop computer', 'computer', 'uncommon', 'tech', [0, 16, 16, 16]),
+  item('laptop', 'Laptop', 'laptop', 'uncommon', 'tech', [0, 0, 16, 16]),
+  item('arcade_cabinet', 'Arcade cabinet', 'arcade', 'treasure', 'tech', [16, 0, 16, 32], { base: [1, 1] }),
+  item('computer_desk', 'Computer desk', 'computer_desk', 'rare', 'tech', [32, 0, 32, 32], { base: [2, 1] }),
+  item('tv_console', 'TV and games console', 'tv_console', 'rare', 'tech', [64, 0, 32, 32], { base: [2, 1] }),
+
   ...generated(),
 ];
 
@@ -579,6 +589,7 @@ export const CATALOG_GROUPS = [
   { id: 'kitchen', label: 'Kitchen', categories: ['counter', 'stove', 'sink', 'fridge', 'barrel'] },
   { id: 'bathroom', label: 'Bath', categories: ['bathtub', 'bathtub_tall', 'toilet', 'basin', 'vanity', 'mirror'] },
   { id: 'hobby', label: 'Hobby', categories: ['piano', 'guitar', 'clock'] },
+  { id: 'tech', label: 'Tech', categories: ['computer', 'laptop', 'computer_desk', 'tv_console', 'arcade'] },
   { id: 'festive', label: 'Festive', categories: ['xmas_tree', 'candy_cane', 'gift', 'gift_pile', 'wreath', 'stocking'] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; categories: readonly CatalogCategory[] }>;
 export type CatalogGroupId = (typeof CATALOG_GROUPS)[number]['id'];
@@ -598,9 +609,9 @@ export function windowView(hour: number): 'dawn' | 'day' | 'dusk' | 'night' {
 // Pieces you walk over rather than around.
 export const WALKABLE: ReadonlySet<CatalogCategory> = new Set<CatalogCategory>(RUGS);
 
-// What Space does when you stand in front of a piece (InteriorScene). A note on the
-// piece, or on another piece sharing the same approach tile, comes first.
-export type FurnitureAction = 'sit' | 'lie' | 'wardrobe';
+// What Space does when you stand in front of a piece (InteriorScene). A note on the piece, or
+// another piece sharing the approach tile, turns Space into a menu.
+export type FurnitureAction = 'sit' | 'lie' | 'wardrobe' | 'study' | 'computer' | 'arcade';
 export const FURNITURE_ACTIONS: Partial<Record<CatalogCategory, FurnitureAction>> = {
   sofa: 'sit',
   armchair: 'sit',
@@ -610,4 +621,11 @@ export const FURNITURE_ACTIONS: Partial<Record<CatalogCategory, FurnitureAction>
   bed: 'lie',
   single_bed: 'lie',
   wardrobe: 'wardrobe',
+  desk: 'study',
+  writing_desk: 'study',
+  computer: 'computer',
+  laptop: 'computer',
+  computer_desk: 'computer',
+  tv_console: 'arcade',
+  arcade: 'arcade',
 };

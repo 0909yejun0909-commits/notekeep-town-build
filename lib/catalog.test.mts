@@ -18,9 +18,10 @@ test('every rect is whole tiles, as wide as the footprint and at least as tall',
 });
 
 // Poses redraw the piece's bottom rows over the player, measured from the footprint.
-test('pieces with an action are drawn exactly on their footprint', () => {
+test('pieces you sit or lie on are drawn exactly on their footprint', () => {
   for (const e of CATALOG) {
-    if (FURNITURE_ACTIONS[e.category]) assert.equal(e.rect[3], e.footprint[1] * 16, e.id);
+    const action = FURNITURE_ACTIONS[e.category];
+    if (action === 'sit' || action === 'lie') assert.equal(e.rect[3], e.footprint[1] * 16, e.id);
   }
 });
 
@@ -106,7 +107,14 @@ test('chairs seat you, beds lie you down, wardrobes dress you', () => {
   assert.equal(FURNITURE_ACTIONS.bed, 'lie');
   assert.equal(FURNITURE_ACTIONS.single_bed, 'lie');
   assert.equal(FURNITURE_ACTIONS.wardrobe, 'wardrobe');
-  assert.equal(FURNITURE_ACTIONS.desk, undefined);
+  assert.equal(FURNITURE_ACTIONS.desk, 'study');
+  assert.equal(FURNITURE_ACTIONS.writing_desk, 'study');
+  assert.equal(FURNITURE_ACTIONS.table, undefined);
+  assert.equal(FURNITURE_ACTIONS.computer, 'computer');
+  assert.equal(FURNITURE_ACTIONS.laptop, 'computer');
+  assert.equal(FURNITURE_ACTIONS.computer_desk, 'computer');
+  assert.equal(FURNITURE_ACTIONS.tv_console, 'arcade');
+  assert.equal(FURNITURE_ACTIONS.arcade, 'arcade');
 });
 
 // The art is licensed and gitignored, so this only runs where install-assets.sh has been run.
@@ -122,4 +130,14 @@ test('every rect lies inside its sheet', { skip: !existsSync('public/assets/furn
     assert.ok(x >= 0 && y >= 0 && x + w <= sw && y + h <= sh, `${e.id} ${e.rect} outside ${sw}x${sh}`);
     for (const dy of Object.values(e.views ?? {})) assert.ok(y + dy >= 0 && y + dy + h <= sh, `${e.id} view ${dy}`);
   }
+});
+
+test('tech pieces: tabletop computers, floor desk, console and cabinet', () => {
+  const by = (id: string) => CATALOG.find((e) => e.id === id)!;
+  assert.equal(by('computer_crt').layer, 'tabletop');
+  assert.equal(by('laptop').layer, 'tabletop');
+  assert.deepEqual(by('computer_desk').footprint, [2, 1]);
+  assert.deepEqual(by('tv_console').footprint, [2, 1]);
+  assert.deepEqual(by('arcade_cabinet').footprint, [1, 1]);
+  assert.equal(by('arcade_cabinet').sheetUrl, '/art/tech.png');
 });
