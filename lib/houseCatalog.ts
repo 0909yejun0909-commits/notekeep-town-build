@@ -77,3 +77,14 @@ export function canPlaceHouseVariant(
   }
   return true;
 }
+
+export type ExteriorLook = { variant: number; material: MaterialId; wallColor: WallColor; roofColor: RoofColor };
+
+export function exteriorChanged(before: ExteriorLook, after: ExteriorLook): boolean {
+  return (
+    before.variant !== after.variant ||
+    before.material !== after.material ||
+    before.wallColor !== after.wallColor ||
+    before.roofColor !== after.roofColor
+  );
+}

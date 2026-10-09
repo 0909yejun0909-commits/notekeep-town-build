@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
-import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, canPlaceHouseVariant } from '@/lib/houseCatalog';
+import { track } from '@/lib/achievementStore';
+import {
+  HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, canPlaceHouseVariant, exteriorChanged,
+} from '@/lib/houseCatalog';
 import type { MaterialId, RoofColor, WallColor } from '@/lib/types';
 
 function assetPath(variant: number, material: MaterialId, wallColor: WallColor, roofColor: RoofColor): string {
@@ -92,6 +95,11 @@ export default function ExteriorEditor() {
 
   function save() {
     if (!session) return;
+    const before = {
+      variant: session.currentVariant, material: session.currentMaterial,
+      wallColor: session.currentWallColor, roofColor: session.currentRoofColor,
+    };
+    if (exteriorChanged(before, { variant, material, wallColor, roofColor })) track('exteriorsChanged');
     bus.emit('commit-exterior-variant', { houseId: session.houseId, variant, material, wallColor, roofColor });
     setSession(null);
     bus.emit('close-exterior-editor', undefined);
