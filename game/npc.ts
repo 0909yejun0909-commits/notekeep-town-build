@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
-import type { Region } from '@/lib/types';
+import type { Region, TownBiome } from '@/lib/types';
+import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { bus } from './bus';
 import { tileToWorld } from './gridMovement';
+import { npcTexture } from './npcOutfits';
 
 // Hardcoded dialogue — no AI, no network call.
 const DIALOGUE: Record<string, string> = {
@@ -36,16 +38,17 @@ type LiveNpc = { npcId: string; sprite: Phaser.GameObjects.Sprite; gx: number; g
 // listener consumed the press and no other NPC could ever talk.
 const liveNpcs = new WeakMap<Phaser.Scene, LiveNpc[]>();
 
-function ensureNpcAnimations(scene: Phaser.Scene, npcId: string) {
-  if (scene.anims.exists(`${npcId}-idle-down`)) return;
+// Keyed by texture, so each biome's outfit has its own set.
+function ensureNpcAnimations(scene: Phaser.Scene, tex: string) {
+  if (scene.anims.exists(`${tex}-idle-down`)) return;
   const rows: [string, number][] = [
     ['idle-down', 0], ['idle-right', 1], ['idle-up', 2],
     ['walk-down', 3], ['walk-right', 4], ['walk-up', 5],
   ];
   for (const [name, row] of rows) {
     scene.anims.create({
-      key: `${npcId}-${name}`,
-      frames: scene.anims.generateFrameNumbers(npcId, { start: row * 6, end: row * 6 + 5 }),
+      key: `${tex}-${name}`,
+      frames: scene.anims.generateFrameNumbers(tex, { start: row * 6, end: row * 6 + 5 }),
       frameRate: 10,
       repeat: -1,
     });
@@ -128,17 +131,20 @@ export function spawnNpcs(scene: Phaser.Scene, _region: Region, area?: NpcSpawnA
   const rect: NpcSpawnArea = area ?? { originGx: 0, originGy: 0, width: 10, height: 10 };
   const list = ensureTalkHandler(scene);
 
+  const biome = (scene.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+
   NPC_IDS.forEach((npcId, i) => {
-    ensureNpcAnimations(scene, npcId);
+    const tex = npcTexture(scene, biome, npcId);
+    ensureNpcAnimations(scene, tex);
 
     const tile = findSpawnTile(scene, rect, list, rect.originGx + 3 + i * 3, rect.originGy + 3);
     if (!tile) return; // region is solid; nowhere to stand
 
     const spawnPos = tileToWorld(tile.gx, tile.gy);
-    const sprite = scene.add.sprite(spawnPos.x, spawnPos.y, npcId);
+    const sprite = scene.add.sprite(spawnPos.x, spawnPos.y, tex);
     sprite.setOrigin(0.5, 0.64);
     sprite.setDepth(sprite.y);
-    sprite.play(`${npcId}-idle-down`);
+    sprite.play(`${tex}-idle-down`);
 
     const npc: LiveNpc = { npcId, sprite, gx: tile.gx, gy: tile.gy };
     list.push(npc);
@@ -162,7 +168,7 @@ export function spawnNpcs(scene: Phaser.Scene, _region: Region, area?: NpcSpawnA
         npc.gy = ny;
         sprite.flipX = dir === 'left';
         const animDir = dir === 'left' ? 'right' : dir;
-        sprite.play(`${npcId}-walk-${animDir}`);
+        sprite.play(`${tex}-walk-${animDir}`);
 
         const target = tileToWorld(nx, ny);
         scene.tweens.add({
@@ -174,7 +180,7 @@ export function spawnNpcs(scene: Phaser.Scene, _region: Region, area?: NpcSpawnA
           onComplete: () => {
             moving = false;
             sprite.setDepth(sprite.y);
-            sprite.play(`${npcId}-idle-${animDir}`);
+            sprite.play(`${tex}-idle-${animDir}`);
           },
         });
       },
