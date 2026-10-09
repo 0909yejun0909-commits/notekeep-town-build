@@ -2,8 +2,8 @@
 
 ## Goal
 
-Milestones the player earns by playing. Each achievement unlocks a reward: a **special outfit**, a **pet**, or a
-**house style**. Rewards appear (locked) in the existing pickers and become selectable once earned.
+Milestones the player earns by playing. Each achievement unlocks a reward: a **class outfit** (knight, wizard, ninja…)
+or a **pet**. House styles are out of scope. Rewards appear (locked) in the existing pickers and become selectable once earned.
 
 Triggers: game activity plus a few secret achievements. Vault-growth triggers (writing or editing real notes)
 are out of scope.
@@ -37,8 +37,7 @@ Art flows through the existing pipeline: `scripts/install-assets.sh` copies it i
 ```ts
 type Reward =
   | { kind: 'skin'; id: SkinId }
-  | { kind: 'pet'; id: PetId }
-  | { kind: 'houseStyle'; material?: MaterialId; wallColor?: WallColor; roofColor?: RoofColor; shape?: number };
+  | { kind: 'pet'; id: PetId };
 
 type Achievement = {
   id: string; name: string; description: string;
@@ -80,14 +79,13 @@ Game code only calls `track*`. Wired at existing seams: `bus` events (`open-note
 `commit-interior-layout`, `commit-exterior-variant`), wallet earnings in `walletStore.noteSaved`, and a small
 per-scene idle/steps accumulator in the overworld update loop for the movement secrets.
 
-### UI (React overlay, per house style)
+### UI (React overlay, as elsewhere in the app)
 
 - `components/AchievementToast.tsx` — banner on unlock, reuses the wallet notice pattern and an audio-engine chime.
 - `components/AchievementsPanel.tsx` — opened from a trophy button next to the coin purse: progress bars; secret
   achievements show "???" until unlocked.
 - `CharacterCreator.tsx` — new "Special outfit" and "Pet" rows. Locked entries are greyed with
   "Unlock: <achievement name>". "None" always available.
-- `ExteriorEditor.tsx` — locked materials/colors/shapes greyed the same way.
 - Equipping goes through the existing `appearance` flow (`appearance-changed` bus event restarts the scene).
 
 ### Rewards in the game
@@ -97,10 +95,24 @@ per-scene idle/steps accumulator in the overworld update loop for the movement s
 - **Pet:** `game/pet.ts` — a sprite that trails the player a few tiles behind along the player's recent path, in
   both `OverworldScene` and `InteriorScene`. Ninja animal sheets are 32x16 (two 16x16 frames): a 2-frame walk plus a
   small bob, flip for facing. Never blocks movement or collision.
-- **House styles:** v1 locks *existing* materials (stone, limestone), wall/roof colors and shapes — no new art
-  needed. If the Ninja house tilesets prove usable as building sprites they can be added later as extra shapes.
-  Locking is enforced in `ExteriorEditor` and `canUse` helpers in `lib/houseCatalog.ts`; houses already saved
-  with a now-locked option keep it (no retroactive stripping).
+
+### Class roster (all from Ninja Adventure `Actor/Character`, CC0)
+
+Skins are grouped into classes, so the rewards read as a progression rather than a random list. Early achievements
+give common skins, hard and secret ones give gold/rare variants.
+
+| Class | Skins (folder names) |
+|---|---|
+| Knights | `Knight`, `KnightGold`, `FighterRed`, `FighterWhite`, `GladiatorBlue`, `RedGladiator` |
+| Wizards | `SorcererBlack`, `SorcererOrange`, `NinjaMageBlack`, `NinjaMageOrange`, `Shaman`, `Master` |
+| Ninjas | `NinjaBlue`, `NinjaDark`, `NinjaFire`, `NinjaThunder`, `NinjaWater`, `NinjaLeaf`, … |
+| Samurai | `Samurai`, `SamuraiBlue` |
+| Royalty | `Princess`, `Noble`, `Sultan`, `Sultan2` |
+| Spooky (secrets) | `Vampire`, `Skeleton`, `SkeletonDemon`, `Spirit`, `GoldStatue` |
+| Fun | `Monk`, `Hunter`, `Inspector`, `RobotGreen`, `Eskimo`, `Caveman` |
+
+The picker shows one tab per class. The exact skin-to-achievement mapping is a tuning table in the registry.
+(Tiny RPG Soldier & Orc also has a soldier and orc, but its license is unverified, so it is not used.)
 
 ## Risks and open questions
 
@@ -110,8 +122,6 @@ per-scene idle/steps accumulator in the overworld update loop for the movement s
    16x16 body-double, (c) drop skins and ship outfit rewards as locked recolors of the existing layers.
 2. **Style mismatch.** Ninja Adventure's palette differs from the Kenmi/Stardew look. Judge from a screenshot in
    the spike; pets are the least affected.
-3. **Gating vs. fun.** Locking existing house options changes what's free today. Existing saves are
-   grandfathered, but new players lose immediate access to stone/limestone/colors until earned.
 
 ## Testing
 
@@ -125,6 +135,6 @@ per-scene idle/steps accumulator in the overworld update loop for the movement s
 1. Spike: one skin + one pet rendered in the game (answers risks 1 and 2).
 2. Registry + store + tests.
 3. Event wiring + toast + panel.
-4. Picker locking (CharacterCreator, ExteriorEditor).
+4. Picker locking and class tabs (CharacterCreator).
 5. Pet follow, skin rendering.
 6. Art install script + `docs/ASSETS.md` provenance.
