@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
+import Coin from './Coin';
+import { unlockId } from '@/lib/wallet';
+import { unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
 import styles from './ExteriorEditor.module.css';
 import pixel from './pixelUi.module.css';
 import { HOUSE_FOOTPRINT, HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, canPlaceHouseVariant } from '@/lib/houseCatalog';
@@ -46,6 +49,7 @@ export default function ExteriorEditor() {
   const [roofColor, setRoofColor] = useState<RoofColor>('black');
   const [error, setError] = useState<string | null>(null);
   const [row, setRow] = useState(0);
+  const wallet = useWallet();
 
   useEffect(() => {
     const onOpen = (payload: Session) => {
@@ -130,8 +134,32 @@ export default function ExteriorEditor() {
     if (!availableWallColors(next, variant).includes(wallColor)) setWallColor('base');
   }
 
+  // Upgrades are bought once and then free on every house. Whatever this house already has is
+  // free to keep.
+  function costOf(kind: 'shape' | 'material' | 'wall' | 'roof', value: string | number): number {
+    if (!session) return 0;
+    const current = { shape: session.currentVariant, material: session.currentMaterial, wall: session.currentWallColor, roof: session.currentRoofColor }[kind];
+    return value === current ? 0 : unlockCost(wallet, unlockId(kind, value));
+  }
+
+  function upgrades(): string[] {
+    const picked: Array<['shape' | 'material' | 'wall' | 'roof', string | number]> = [
+      ['shape', variant], ['material', material], ['wall', wallColor], ['roof', roofColor],
+    ];
+    return picked.filter(([k, v]) => costOf(k, v) > 0).map(([k, v]) => unlockId(k, v));
+  }
+
   function save() {
     if (!session) return;
+    const total = upgrades().reduce((n, id) => n + unlockCost(wallet, id), 0);
+    if (total > 0 && !unlockAll(upgrades())) {
+      setError(
+        wallet.active
+          ? `These upgrades cost ${total} coins and you have ${wallet.balance}. Write notes to earn more!`
+          : 'Upgrades are bought with your own town\'s coins.',
+      );
+      return;
+    }
     bus.emit('commit-exterior-variant', { houseId: session.houseId, variant, material, wallColor, roofColor });
     setSession(null);
     bus.emit('close-exterior-editor', undefined);
@@ -143,6 +171,14 @@ export default function ExteriorEditor() {
   const wallChoices = availableWallColors(material, variant);
 
   const [cols, rows] = HOUSE_FOOTPRINT[variant];
+  const total = upgrades().reduce((n, id) => n + unlockCost(wallet, id), 0);
+  const price = (n: number) =>
+    n > 0 ? (
+      <span className={styles.price}>
+        <Coin size={14} />
+        {n}
+      </span>
+    ) : null;
   const cursor = (i: number) => `${pixel.cursor} ${i === row ? '' : pixel.cursorIdle}`;
   const keep = (e: React.MouseEvent) => e.preventDefault();
   const arrows = (which: (typeof ROWS)[number], value: string) => (
@@ -150,6 +186,7 @@ export default function ExteriorEditor() {
       <button className={`${styles.arrow} ${styles.left}`} aria-label={`Previous ${which}`} onMouseDown={keep} onClick={() => change(which, -1)} />
       <span className={styles.value}>{value}</span>
       <button className={styles.arrow} aria-label={`Next ${which}`} onMouseDown={keep} onClick={() => change(which, 1)} />
+      {price(which === 'shape' ? costOf('shape', variant) : costOf('material', material))}
     </div>
   );
 
@@ -157,6 +194,12 @@ export default function ExteriorEditor() {
     <div className={styles.screen} onClick={close}>
       <div className={`${pixel.parchment} ${styles.panel}`} onClick={(e) => e.stopPropagation()}>
         <h2 className={styles.heading}>Your house</h2>
+        {wallet.active && (
+          <span className={styles.balance} title="Your coins">
+            <Coin size={18} />
+            {wallet.balance}
+          </span>
+        )}
         <div className={styles.body}>
           <div className={styles.stage}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -191,12 +234,15 @@ export default function ExteriorEditor() {
                     key={c}
                     className={`${styles.swatch} ${c === wallColor ? styles.selected : ''}`}
                     style={{ backgroundColor: WALL_SWATCH[c] }}
-                    title={c}
+                    title={costOf('wall', c) ? `${c}: ${costOf('wall', c)} coins` : c}
                     aria-label={`${c} walls`}
                     onMouseDown={keep}
                     onClick={() => setWallColor(c)}
-                  />
+                  >
+                    {costOf('wall', c) > 0 && <Coin size={12} />}
+                  </button>
                 ))}
+                {price(costOf('wall', wallColor))}
               </div>
             </div>
 
@@ -209,12 +255,15 @@ export default function ExteriorEditor() {
                     key={c}
                     className={`${styles.swatch} ${c === roofColor ? styles.selected : ''}`}
                     style={{ backgroundColor: ROOF_SWATCH[c] }}
-                    title={c}
+                    title={costOf('roof', c) ? `${c}: ${costOf('roof', c)} coins` : c}
                     aria-label={`${c} roof`}
                     onMouseDown={keep}
                     onClick={() => setRoofColor(c)}
-                  />
+                  >
+                    {costOf('roof', c) > 0 && <Coin size={12} />}
+                  </button>
                 ))}
+                {price(costOf('roof', roofColor))}
               </div>
             </div>
 
@@ -228,8 +277,9 @@ export default function ExteriorEditor() {
                     onMouseDown={keep}
                     onClick={which === 'save' ? save : close}
                   >
-                    {which === 'save' ? 'Save' : 'Cancel'}
+                    {which === 'cancel' ? 'Cancel' : total > 0 ? 'Buy and save' : 'Save'}
                   </button>
+                  {which === 'save' && price(total)}
                 </div>
               );
             })}

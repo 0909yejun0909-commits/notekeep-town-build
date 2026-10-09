@@ -6,6 +6,9 @@ import pixel from './pixelUi.module.css';
 import { CLOTH_COLORS, HAIR_COLORS, HAIR_STYLES } from '@/lib/characterCatalog';
 import { loadAppearance, saveAppearance } from '@/lib/appearance';
 import type { Appearance, ClothColor, HairColor } from '@/lib/types';
+import Coin from './Coin';
+import { unlockId } from '@/lib/wallet';
+import { unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
 
 const HAIR_SWATCH: Record<HairColor, string> = {
   black: '#2b2320',
@@ -65,16 +68,49 @@ function Figure({ layers, crop: [x, y, w, h], scale, idle }: {
 
 export default function CharacterCreator({ onDone }: { onDone: () => void }) {
   const [appearance, setAppearance] = useState<Appearance | null>(null);
+  // What the hero wore when this opened: always free to keep.
+  const [worn, setWorn] = useState<Appearance | null>(null);
   const [row, setRow] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
+  const wallet = useWallet();
 
   useEffect(() => {
-    setAppearance(loadAppearance());
+    const a = loadAppearance();
+    setAppearance(a);
+    setWorn(a);
   }, []);
 
+  // Pieces beyond the starting outfit are bought once with coins, then free for good.
+  function costOf(key: keyof Appearance, value: string | number): number {
+    return worn && worn[key] === value ? 0 : unlockCost(wallet, unlockId(key, value));
+  }
+  function locked(a: Appearance): string[] {
+    return ROWS.filter(({ key }) => costOf(key, a[key]) > 0).map(({ key }) => unlockId(key, a[key]));
+  }
+  function totalOf(a: Appearance): number {
+    return ROWS.reduce((n, { key }) => n + costOf(key, a[key]), 0);
+  }
+
+  // Only a look you own is saved; one with pieces still to buy is a preview until Done.
   function update(patch: Partial<Appearance>) {
     const next = { ...appearance!, ...patch };
-    saveAppearance(next);
+    if (!wallet.active && totalOf(next) > 0) {
+      setNote('Unlock new looks with coins at the wardrobe, inside any house.');
+      return;
+    }
+    setNote(null);
+    if (totalOf(next) === 0) saveAppearance(next);
     setAppearance(next);
+  }
+
+  function finish() {
+    const total = totalOf(appearance!);
+    if (total > 0 && !unlockAll(locked(appearance!))) {
+      setNote(`This look costs ${total} coins and you have ${wallet.balance}. Write notes to earn more!`);
+      return;
+    }
+    if (total > 0) saveAppearance(appearance!);
+    onDone();
   }
 
   useEffect(() => {
@@ -87,9 +123,13 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
       else if (k === 'ArrowDown' || k === 's' || k === 'S') setRow((r) => (r + 1) % (DONE_ROW + 1));
       else if ((left || right) && row < DONE_ROW) {
         const { key, options } = ROWS[row];
-        const i = options.indexOf(appearance[key]);
-        update({ [key]: options[(i + (left ? -1 : 1) + options.length) % options.length] } as Partial<Appearance>);
-      } else if (k === 'Enter' || k === ' ' || k === 'Escape') {
+        // Without coins to spend, step over pieces that would have to be bought.
+        const open = wallet.active ? options : options.filter((o) => costOf(key, o) === 0);
+        const i = open.indexOf(appearance[key]);
+        update({ [key]: open[(i + (left ? -1 : 1) + open.length) % open.length] } as Partial<Appearance>);
+      } else if (k === 'Enter' || k === ' ') {
+        if (!e.repeat) finish();
+      } else if (k === 'Escape') {
         if (!e.repeat) onDone();
       } else return;
       e.preventDefault();
@@ -137,7 +177,9 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
                         aria-label={`Hair style ${value}`}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={pick}
+                        title={costOf(key, value) ? `${costOf(key, value)} coins` : undefined}
                       >
+                        {costOf(key, value) > 0 && <span className={styles.lock}><Coin size={12} /></span>}
                         <Figure
                           layers={[
                             '/assets/character/base.png',
@@ -156,11 +198,13 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
                       key={value}
                       className={`${styles.swatch} ${selected ? styles.selected : ''}`}
                       style={{ backgroundColor: color }}
-                      title={String(value)}
+                      title={costOf(key, value) ? `${value}: ${costOf(key, value)} coins` : String(value)}
                       aria-label={String(value)}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={pick}
-                    />
+                    >
+                      {costOf(key, value) > 0 && <Coin size={12} />}
+                    </button>
                   );
                 })}
               </div>
@@ -169,10 +213,17 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
 
           <div className={styles.row} onMouseEnter={() => setRow(DONE_ROW)}>
             <span className={cursor(DONE_ROW)} />
-            <button className={styles.done} onMouseDown={(e) => e.preventDefault()} onClick={onDone}>
-              Done
+            <button className={styles.done} onMouseDown={(e) => e.preventDefault()} onClick={finish}>
+              {totalOf(appearance) > 0 ? 'Buy and done' : 'Done'}
             </button>
+            {totalOf(appearance) > 0 && (
+              <span className={styles.price}>
+                <Coin size={14} />
+                {totalOf(appearance)}
+              </span>
+            )}
           </div>
+          {note && <p className={styles.note}>{note}</p>}
         </div>
       </div>
     </div>

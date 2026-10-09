@@ -48,6 +48,10 @@
 }
 
 .swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   width: 27px;
   height: 27px;
   border: 3px solid #3f2832;
@@ -55,6 +59,7 @@
 }
 
 .slot {
+  position: relative;
   padding: 0;
   background: #e69c69;
   border: 3px solid #bf6f4a;
@@ -107,4 +112,28 @@
   to {
     background-position: -384px 0;
   }
+}
+
+/* A coin on a piece marks one still to buy; .price is what the shown look costs. */
+.lock {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+}
+
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #9a6149;
+  font-size: 21px;
+}
+
+.note {
+  max-width: 360px;
+  margin: 0;
+  color: #a4402a;
+  font-size: 14px;
+  line-height: 18px;
 }

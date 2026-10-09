@@ -1,17 +1,25 @@
 import { useSyncExternalStore } from 'react';
 import type { CatalogItemId } from './types';
 import {
-  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, priceOf, qualifies, settle, wordCount,
+  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, priceOf, qualifies, settle, unlockPrice, wordCount,
   type Inventory, type WalletData,
 } from './wallet';
+import { DEFAULT_APPEARANCE } from './characterCatalog';
 
 export type Notice = { id: number; amount: number; text: string };
-export type WalletView = { active: boolean; balance: number; inventory: Inventory; notice: Notice | null };
+export type WalletView = {
+  active: boolean;
+  balance: number;
+  inventory: Inventory;
+  unlocks: readonly string[];
+  notice: Notice | null;
+};
 
 // key null = the demo town, whose notes reset on reload, so its wallet does too.
 type Session = { key: string | null; qualifying: Set<string>; data: WalletData };
 
-const INACTIVE: WalletView = { active: false, balance: 0, inventory: {}, notice: null };
+const INACTIVE: WalletView = { active: false, balance: 0, inventory: {}, unlocks: [], notice: null };
+const NO_UNLOCKS: readonly string[] = [];
 
 let session: Session | null = null;
 let view: WalletView = INACTIVE;
@@ -26,7 +34,8 @@ function load(key: string): WalletData | null {
     if (
       typeof d !== 'object' || d === null ||
       typeof d.balance !== 'number' || typeof d.record !== 'number' ||
-      typeof d.inventory !== 'object' || d.inventory === null
+      typeof d.inventory !== 'object' || d.inventory === null ||
+      (d.unlocks !== undefined && !Array.isArray(d.unlocks))
     ) {
       return null;
     }
@@ -44,6 +53,7 @@ function publish(notice?: Notice | null) {
       active: true,
       balance: session.data.balance,
       inventory: session.data.inventory,
+      unlocks: session.data.unlocks ?? NO_UNLOCKS,
       notice: notice === undefined ? view.notice : notice,
     };
     if (session.key) {
@@ -104,6 +114,28 @@ export function buy(item: CatalogItemId): boolean {
   if (!session || price === null || session.data.balance < price) return false;
   const inventory = { ...session.data.inventory, [item]: (session.data.inventory[item] ?? 0) + 1 };
   session.data = { ...session.data, balance: session.data.balance - price, inventory };
+  publish();
+  return true;
+}
+
+// What an unlock costs right now: 0 when it's free or already bought.
+export function unlockCost(view: WalletView, id: string): number {
+  return view.unlocks.includes(id) ? 0 : unlockPrice(id, DEFAULT_APPEARANCE);
+}
+
+// Buys every id at once, or none if they cost more than the balance. Without a wallet (the
+// title screen, a study-session guest) only free things can be had.
+export function unlockAll(ids: string[]): boolean {
+  const todo = [...new Set(ids)].filter((id) => unlockCost(view, id) > 0);
+  if (todo.length === 0) return true;
+  if (!session) return false;
+  const price = todo.reduce((n, id) => n + unlockPrice(id, DEFAULT_APPEARANCE), 0);
+  if (session.data.balance < price) return false;
+  session.data = {
+    ...session.data,
+    balance: session.data.balance - price,
+    unlocks: [...(session.data.unlocks ?? []), ...todo],
+  };
   publish();
   return true;
 }

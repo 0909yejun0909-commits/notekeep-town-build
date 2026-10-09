@@ -70,3 +70,26 @@
     display: none;
   }
 }
+
+/* What a biome still to buy costs, and the one-line answer to a click on it. */
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #f7c948;
+}
+
+.selected .price {
+  color: #9a6149;
+}
+
+.note {
+  max-width: 320px;
+  margin: 0 0 8px auto;
+  padding: 4px 9px;
+  color: #fff7e6;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  font-size: 18px;
+  line-height: 27px;
+}

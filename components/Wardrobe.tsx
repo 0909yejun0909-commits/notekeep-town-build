@@ -26,7 +26,7 @@ export default function Wardrobe() {
   return (
     <div className={styles.screen}>
       <CharacterCreator onDone={close} />
-      <p className={styles.hint}>Up/Down picks a row, Left/Right changes it, Enter when done</p>
+      <p className={styles.hint}>Up/Down picks a row, Left/Right changes it, Enter when done, Esc to leave</p>
     </div>
   );
 }

@@ -23,6 +23,7 @@
 }
 
 .panel {
+  position: relative;
   padding: 0 12px;
 }
 
@@ -102,6 +103,9 @@
 }
 
 .swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 27px;
   height: 27px;
   padding: 0;
@@ -144,4 +148,25 @@
   font-size: 21px;
   line-height: 27px;
   text-align: center;
+}
+
+/* What the selected option costs; a coin inside a swatch marks one not bought yet. */
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  color: #9a6149;
+  font-size: 21px;
+}
+
+.balance {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 21px;
+  line-height: 36px;
 }
