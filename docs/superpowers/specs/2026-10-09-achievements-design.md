@@ -138,3 +138,13 @@ The picker shows one tab per class. The exact skin-to-achievement mapping is a t
 4. Picker locking and class tabs (CharacterCreator).
 5. Pet follow, skin rendering.
 6. Art install script + `docs/ASSETS.md` provenance.
+
+## Changes made while planning and building
+
+- **Roster trimmed to what achievements grant:** 16 skins and 8 pets, 24 achievements. The "Fun" class is dropped for now; adding more later is one catalog line plus one registry line. Pets are limited to the 8 animals whose `SpriteSheet.png` is a confirmed 32x16 (two 16x16 frames).
+- **`furniturePlaced` became `roomFurniture`:** the bus reports one room's layout per commit, so the stat is the most pieces in a single room (`layout.placements.length`, max), not a lifetime total.
+- **"Enter every biome" became `biomesTried`:** biome is a town-wide picker (forest/snow/desert), not a place you walk into.
+- **Class tabs became a grouped strip:** skins are shown in one wrapping strip ordered by class, with the class in the tooltip.
+- **Rewards UI only in the in-game wardrobe**, not the title screen, because no vault is open there to unlock anything.
+- **No game-input pause while the achievements panel is open** (v1 limitation).
+- **Skin height:** Ninja skins are 16px against the default character's ~26px; accepted as "chibi" skins after a visual check (spec risk 1, fallback a).
