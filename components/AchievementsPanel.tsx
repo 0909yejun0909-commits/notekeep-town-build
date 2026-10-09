@@ -31,7 +31,15 @@ export default function AchievementsPanel() {
       setOpen(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // The scenes keep reading the keyboard behind a React overlay, so switch Phaser's off while the
+    // panel is up; keys released meanwhile are reset so none is left stuck down on close.
+    const game = (window as any).__game;
+    if (game?.input?.keyboard) game.input.keyboard.enabled = false;
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (game?.input?.keyboard) game.input.keyboard.enabled = true;
+      game?.scene?.getScenes(true).forEach((s: any) => s.input?.keyboard?.resetKeys());
+    };
   }, [open]);
 
   if (!active) return null;
