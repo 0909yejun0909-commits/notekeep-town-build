@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TILE } from '@/game/gridMovement';
-import { outfitTextureKeys } from '@/game/playerSprite';
+import { SKIN_SCALE, outfitTextureKeys } from '@/game/playerSprite';
 import { skinTextureKey, type SkinId } from '@/lib/rewards';
 import type { Appearance, CatalogCategory, CatalogEntry, FurniturePlacement } from '@/lib/types';
 
@@ -93,7 +93,7 @@ export function lie(
   const skinKey = skin ? skinTextureKey(skin) : null;
   const head =
     skinKey && scene.textures.exists(skinKey)
-      ? [scene.add.image(headX + cw / 2, headY + ch / 2, skinKey, 0).setAngle(90).setDepth(OVER_PLAYER)]
+      ? [scene.add.image(headX + cw / 2, headY + ch / 2, skinKey, 0).setScale(SKIN_SCALE).setAngle(90).setDepth(OVER_PLAYER)]
       : ['player', ...outfitTextureKeys(appearance)].map((key, i) =>
           scene.add
             .image(headX - cx, headY - cy, key, SLEEP_FRAME)

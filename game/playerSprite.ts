@@ -26,6 +26,9 @@ const BASE_WALK_FRAMES = 6;
 const SKIN_WALK_ROWS = 4;
 // The base sprite's origin sits a little above its feet; skins are drawn feet-aligned to it.
 const SKIN_FEET_OFFSET = 2;
+// Ninja characters are drawn smaller than the Kenmi default: 1x reads as too short and 2x as a
+// giant, so 1.5x. It is the one deliberate non-integer scale in the game; revisit if it looks soft.
+export const SKIN_SCALE = 1.5;
 
 function skinFrame(sprite: Phaser.GameObjects.Sprite): number {
   const [mode, dir] = (sprite.anims.currentAnim?.key ?? 'idle-down').split('-');
@@ -37,7 +40,7 @@ function skinFrame(sprite: Phaser.GameObjects.Sprite): number {
 }
 
 function wearSkin(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite, skin: SkinId): () => void {
-  const view = scene.add.sprite(sprite.x, sprite.y, skinTextureKey(skin), 0).setOrigin(0.5, 15 / 16);
+  const view = scene.add.sprite(sprite.x, sprite.y, skinTextureKey(skin), 0).setOrigin(0.5, 15 / 16).setScale(SKIN_SCALE);
   sprite.setAlpha(0);
   const tick = () => {
     view.x = sprite.x;
