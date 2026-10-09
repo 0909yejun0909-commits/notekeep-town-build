@@ -20,11 +20,9 @@ PALETTES = {
     'black': [(110, 110, 134, 255), (66, 66, 88, 255), (40, 40, 58, 255)],
     'red': [(240, 134, 122, 255), (205, 72, 72, 255), (150, 40, 52, 255)],
 }
-CONE_HEIGHT = 12
-
-
-def half_width(k):
-    return 4 - k // 4  # 4,4,4,4,3,3,3,3,2,2,2,2
+# Fill half-width of the cone, base to tip. The base matches the Farmer hat's crown so the cone
+# grows straight out of the brim, with no step and no outline line between them.
+HALF_WIDTHS = [3, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1]
 
 
 def tip_shift(k):
@@ -45,14 +43,18 @@ def make(src, palette):
                 for x in range(CELL):
                     if px[x, y] in STRAW:
                         px[x, y] = palette[STRAW[px[x, y]]]
-            x0, y0, x1, _ = bbox
-            cx = (x0 + x1 - 1) // 2
+            _, y0, _, _ = bbox
+            top = [x for x in range(CELL) if px[x, y0][3]]
+            cx = (min(top) + max(top)) // 2
+            # The straw crown is its top outline row and the fill row under it: the cone replaces both.
+            for y in (y0, y0 + 1):
+                for x in range(min(top) - 1, max(top) + 2):
+                    px[x, y] = (0, 0, 0, 0)
             body = set()
-            for k in range(CONE_HEIGHT):
-                y = y0 - 1 - k
+            for k, hw in enumerate(HALF_WIDTHS):
+                y = y0 + 1 - k
                 if y < 1:
                     break
-                hw = half_width(k)
                 for x in range(cx - hw + tip_shift(k), cx + hw + tip_shift(k) + 1):
                     body.add((x, y))
             for (x, y) in body:
