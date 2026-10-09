@@ -6,6 +6,10 @@ import pixel from './pixelUi.module.css';
 import { CLOTH_COLORS, HAIR_COLORS, HAIR_STYLES } from '@/lib/characterCatalog';
 import { loadAppearance, saveAppearance } from '@/lib/appearance';
 import type { Appearance, ClothColor, HairColor } from '@/lib/types';
+import { SKINS, PETS, SKIN_CLASS_LABEL } from '@/lib/rewards';
+import { achievementFor } from '@/lib/achievements';
+import { equip, getEquipped, isUnlocked, type Equipped } from '@/lib/achievementStore';
+import { useAchievements } from '@/lib/useAchievements';
 
 const HAIR_SWATCH: Record<HairColor, string> = {
   black: '#2b2320',
@@ -35,7 +39,19 @@ const ROWS: Row[] = [
   { key: 'pantsColor', label: 'Pants', options: CLOTH_COLORS },
   { key: 'shoesColor', label: 'Shoes', options: CLOTH_COLORS },
 ];
-const DONE_ROW = ROWS.length;
+type RewardKind = 'skin' | 'pet';
+const REWARD_ROWS: { kind: RewardKind; label: string }[] = [
+  { kind: 'skin', label: 'Outfit' },
+  { kind: 'pet', label: 'Pet' },
+];
+
+function Portrait({ src, scale }: { src: string; scale: number }) {
+  return (
+    <div style={{ width: 16 * scale, height: 16 * scale }}>
+      <div className={styles.portrait} style={{ backgroundImage: `url('${src}')`, transform: `scale(${scale})` }} />
+    </div>
+  );
+}
 
 // Where the character stands inside each 64px Kenmi frame (measured from the sheets' alpha):
 // the whole body, and just the head for the hair-style slots.
@@ -63,9 +79,35 @@ function Figure({ layers, crop: [x, y, w, h], scale, idle }: {
   );
 }
 
-export default function CharacterCreator({ onDone }: { onDone: () => void }) {
+export default function CharacterCreator({ onDone, rewards = false }: { onDone: () => void; rewards?: boolean }) {
   const [appearance, setAppearance] = useState<Appearance | null>(null);
   const [row, setRow] = useState(0);
+  const [equipped, setEquipped] = useState<Equipped>({ skin: null, pet: null });
+  const [lockHint, setLockHint] = useState<string | null>(null);
+  useAchievements();
+  const rewardRows = rewards ? REWARD_ROWS : [];
+  const doneRow = ROWS.length + rewardRows.length;
+
+  useEffect(() => {
+    setEquipped(getEquipped());
+  }, []);
+
+  function choose(kind: RewardKind, id: string | null) {
+    if (id !== null && !isUnlocked(kind, id)) {
+      const a = achievementFor(kind, id);
+      setLockHint(a ? (a.secret ? 'Unlocked by a secret achievement.' : `Locked. ${a.name}: ${a.description}`) : 'Locked.');
+      return;
+    }
+    setLockHint(null);
+    equip({ [kind]: id } as Partial<Equipped>);
+    setEquipped(getEquipped());
+  }
+
+  function cycle(kind: RewardKind, dir: 1 | -1) {
+    const ids = [null, ...(kind === 'skin' ? SKINS : PETS).map((e) => e.id).filter((id) => isUnlocked(kind, id))];
+    const i = ids.indexOf(equipped[kind] as never);
+    choose(kind, ids[(i + dir + ids.length) % ids.length] as string | null);
+  }
 
   useEffect(() => {
     setAppearance(loadAppearance());
@@ -83,12 +125,14 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
       const k = e.key;
       const left = k === 'ArrowLeft' || k === 'a' || k === 'A';
       const right = k === 'ArrowRight' || k === 'd' || k === 'D';
-      if (k === 'ArrowUp' || k === 'w' || k === 'W') setRow((r) => (r + DONE_ROW) % (DONE_ROW + 1));
-      else if (k === 'ArrowDown' || k === 's' || k === 'S') setRow((r) => (r + 1) % (DONE_ROW + 1));
-      else if ((left || right) && row < DONE_ROW) {
+      if (k === 'ArrowUp' || k === 'w' || k === 'W') setRow((r) => (r + doneRow) % (doneRow + 1));
+      else if (k === 'ArrowDown' || k === 's' || k === 'S') setRow((r) => (r + 1) % (doneRow + 1));
+      else if ((left || right) && row < ROWS.length) {
         const { key, options } = ROWS[row];
         const i = options.indexOf(appearance[key]);
         update({ [key]: options[(i + (left ? -1 : 1) + options.length) % options.length] } as Partial<Appearance>);
+      } else if ((left || right) && row < doneRow) {
+        cycle(rewardRows[row - ROWS.length].kind, left ? -1 : 1);
       } else if (k === 'Enter' || k === ' ' || k === 'Escape') {
         if (!e.repeat) onDone();
       } else return;
@@ -117,7 +161,11 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
       <h2 className={styles.heading}>Your hero</h2>
       <div className={styles.body}>
         <div className={styles.stage}>
-          <Figure layers={layers} crop={BODY} scale={5} idle />
+          {equipped.skin ? (
+            <Portrait src={`/assets/skins/${equipped.skin}.png`} scale={5} />
+          ) : (
+            <Figure layers={layers} crop={BODY} scale={5} idle />
+          )}
         </div>
 
         <div className={styles.rows}>
@@ -167,8 +215,47 @@ export default function CharacterCreator({ onDone }: { onDone: () => void }) {
             </div>
           ))}
 
-          <div className={styles.row} onMouseEnter={() => setRow(DONE_ROW)}>
-            <span className={cursor(DONE_ROW)} />
+          {rewardRows.map(({ kind, label }, i) => {
+            const index = ROWS.length + i;
+            const entries = kind === 'skin' ? SKINS : PETS;
+            return (
+              <div key={kind} className={styles.row} onMouseEnter={() => setRow(index)}>
+                <span className={cursor(index)} />
+                <span className={styles.label}>{label}</span>
+                <div className={`${styles.options} ${styles.rewardOptions}`}>
+                  <button
+                    className={`${styles.slot} ${styles.none} ${equipped[kind] === null ? styles.selected : ''}`}
+                    aria-label={`No ${label.toLowerCase()}`}
+                    title="None"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => choose(kind, null)}
+                  >
+                    -
+                  </button>
+                  {entries.map((e) => {
+                    const open = isUnlocked(kind, e.id);
+                    const title = 'cls' in e ? `${SKIN_CLASS_LABEL[e.cls]}: ${e.name}` : e.name;
+                    return (
+                      <button
+                        key={e.id}
+                        className={`${styles.slot} ${equipped[kind] === e.id ? styles.selected : ''} ${open ? '' : styles.locked}`}
+                        aria-label={open ? title : `${title} (locked)`}
+                        title={open ? title : `${title} (locked)`}
+                        onMouseDown={(ev) => ev.preventDefault()}
+                        onClick={() => choose(kind, e.id)}
+                      >
+                        <Portrait src={`/assets/${kind === 'skin' ? 'skins' : 'pets'}/${e.id}.png`} scale={2} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {lockHint && <p className={styles.lockHint}>{lockHint}</p>}
+
+          <div className={styles.row} onMouseEnter={() => setRow(doneRow)}>
+            <span className={cursor(doneRow)} />
             <button className={styles.done} onMouseDown={(e) => e.preventDefault()} onClick={onDone}>
               Done
             </button>
