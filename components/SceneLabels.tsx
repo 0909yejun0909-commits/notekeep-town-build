@@ -70,6 +70,7 @@ export default function SceneLabels() {
             else boxes.current.delete(l.id);
           }}
           data-tour={l.tour}
+          data-hud
           className="absolute left-0 top-0 flex items-center whitespace-nowrap"
           style={{
             fontFamily: "'ArcadeClassic', 'CuteFantasy', monospace",

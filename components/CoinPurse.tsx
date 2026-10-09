@@ -32,7 +32,7 @@ export default function CoinPurse() {
   if (!wallet.active) return null;
 
   return (
-    <div className={styles.corner}>
+    <div className={styles.corner} data-hud>
       <div className={styles.bar}>
         <button className={styles.home} data-tour="home" title="Back to the title screen" onClick={goHome}>
           <svg width={27} height={27} viewBox="0 0 9 9" shapeRendering="crispEdges" aria-hidden>

@@ -105,7 +105,7 @@ export default function BiomePicker() {
   }
 
   return (
-    <div className={styles.corner}>
+    <div className={styles.corner} data-hud>
       {note && <p className={styles.note}>{note}</p>}
       <div className={styles.plank} role="group" aria-label="Town biome">
         <span className={styles.label}>Town</span>

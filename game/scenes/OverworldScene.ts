@@ -173,6 +173,7 @@ export default class OverworldScene extends Phaser.Scene {
           const img = result.houseImages.get(house.id);
           if (!img) continue;
           img
+            .setData('houseId', house.id)
             .setInteractive({ useHandCursor: true })
             .on('pointerdown', () => this.openExteriorEditor(house, region));
         }

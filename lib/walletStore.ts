@@ -140,6 +140,15 @@ export function unlockAll(ids: string[]): boolean {
   return true;
 }
 
+// The tutorial makes sure every purchase it asks for is affordable. Only the tutorial town's
+// wallet, which isn't saved, is ever topped up.
+export function topUpTutorial(min: number) {
+  if (!session || session.key !== null || session.data.balance >= min) return;
+  const gift = min - session.data.balance;
+  session.data = { ...session.data, balance: min };
+  publish(notice(gift, 'Tutorial bonus, so you can try everything.'));
+}
+
 export function commitLayoutChange(saved: { item: CatalogItemId }[], draft: { item: CatalogItemId }[]) {
   if (!session) return;
   session.data = { ...session.data, inventory: applyLayoutChange(session.data.inventory, saved, draft) };

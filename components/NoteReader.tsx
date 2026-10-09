@@ -430,6 +430,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
       >
         <div
           className="note-book relative"
+          data-panel="note"
           onClick={(e) => e.stopPropagation()}
           style={{
             width: PANEL_W,
@@ -497,30 +498,64 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             )}
           </div>
 
-          {/* Controls in the page margins */}
+          {/* Controls: one group under each page, clear of the spine between them */}
           <div
             data-tour="note-controls"
             style={{
               position: 'absolute',
               left: PAGES_LEFT,
-              right: PANEL_W - PAGES_LEFT - PAGES_W,
               top: PAGES_TOP + PAGES_H + 14,
-              display: 'flex',
+              width: PAGES_W,
+              display: 'grid',
+              gridTemplateColumns: `minmax(0, 1fr) ${SPINE_GAP}px minmax(0, 1fr)`,
               alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
             }}
           >
-            {!editing ? (
-              <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              {!editing ? (
                 <button className="note-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
                   ‹ Prev
                 </button>
-                <span className="note-hint">
-                  Page {page + 1} / {pageCount}
-                  {saveState === 'saved' ? ' · Saved' : ''}
-                </span>
-                <div style={{ display: 'flex', gap: 8 }}>
+              ) : (
+                <button className="note-btn" disabled={editPage === 0} onClick={() => turnEditPage(-1)}>
+                  ‹ Prev
+                </button>
+              )}
+              <span className="note-hint" style={{ flex: 'none' }}>
+                {editing ? `${editPage + 1}/${editPageCount}` : `${page + 1}/${pageCount}`}
+              </span>
+              <span
+                className="note-hint"
+                title={saveError ?? undefined}
+                style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {!editing ? (
+                  saveState === 'saved' ? 'Saved' : null
+                ) : saveState === 'saving' ? (
+                  'Saving…'
+                ) : saveState === 'error' ? (
+                  `Could not save: ${saveError ?? ''}`
+                ) : !canWrite ? (
+                  'Read-only vault'
+                ) : progress ? (
+                  <span data-tour="note-progress" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
+                    <Coin size={10} />
+                    {progress.words >= progress.needed
+                      ? `Save to earn +${progress.reward}`
+                      : `${progress.words}/${progress.needed} words`}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+
+            <div />
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              {!editing ? (
+                <>
+                  <button className="note-btn" data-tour="note-close" onClick={() => bus.emit('close-note', undefined)} title="Close (Esc)">
+                    Close
+                  </button>
                   <button
                     className="note-btn"
                     disabled={raw === null}
@@ -536,37 +571,10 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   >
                     Next ›
                   </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <button className="note-btn" disabled={editPage === 0} onClick={() => turnEditPage(-1)}>
-                  ‹ Prev
-                </button>
-                <span
-                  className="note-hint"
-                  title={saveError ?? undefined}
-                  style={{ flex: 1, minWidth: 0, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  Page {editPage + 1} / {editPageCount} ·{' '}
-                  {saveState === 'saving'
-                    ? 'Saving…'
-                    : saveState === 'error'
-                      ? `Could not save: ${saveError ?? ''}`
-                      : canWrite
-                        ? '⌘S / Ctrl+S save · Esc cancel'
-                        : 'Read-only vault'}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {progress && (
-                    <span data-tour="note-progress" className="note-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
-                      <Coin size={10} />
-                      {progress.words >= progress.needed
-                        ? `Save to earn +${progress.reward}`
-                        : `${progress.words}/${progress.needed} words for +${progress.reward}`}
-                    </span>
-                  )}
-                  <button className="note-btn" onClick={cancelEdit}>
+                </>
+              ) : (
+                <>
+                  <button className="note-btn" data-tour="note-cancel" onClick={cancelEdit} title="Stop editing (Esc)">
                     Cancel
                   </button>
                   <button
@@ -574,19 +582,16 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     data-tour="note-save"
                     disabled={!canWrite || saveState === 'saving'}
                     onClick={() => void save()}
+                    title="Save (Ctrl+S / ⌘S)"
                   >
                     Save
                   </button>
-                  <button
-                    className="note-btn"
-                    disabled={editPage >= editPageCount - 1}
-                    onClick={() => turnEditPage(1)}
-                  >
+                  <button className="note-btn" disabled={editPage >= editPageCount - 1} onClick={() => turnEditPage(1)}>
                     Next ›
                   </button>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

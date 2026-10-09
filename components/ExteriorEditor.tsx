@@ -192,7 +192,7 @@ export default function ExteriorEditor() {
 
   return (
     <div className={styles.screen} onClick={close}>
-      <div className={`${pixel.parchment} ${styles.panel}`} data-tour="house-editor" onClick={(e) => e.stopPropagation()}>
+      <div className={`${pixel.parchment} ${styles.panel}`} data-tour="house-editor" data-panel="house-editor" onClick={(e) => e.stopPropagation()}>
         <h2 className={styles.heading}>Your house</h2>
         {wallet.active && (
           <span className={styles.balance} title="Your coins">

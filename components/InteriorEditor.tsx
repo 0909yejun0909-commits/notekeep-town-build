@@ -369,6 +369,7 @@ export default function InteriorEditor() {
     >
       <div
         className={styles.panel}
+        data-panel="room-editor"
         onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.header}>

@@ -124,11 +124,17 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
       )}
       {firstVisit && view === 'menu' && !busy && (
         <Spotlight
-          target={() => document.querySelector('[data-tour="tutorial"]')?.getBoundingClientRect() ?? null}
+          holes={() => [document.querySelector('[data-tour="tutorial"]')?.getBoundingClientRect() ?? null]}
+          avoid={() => [document.querySelector('[role="menu"]')?.getBoundingClientRect() ?? null]}
           actions={
-            <button className={`${spot.button} ${spot.quiet}`} onMouseDown={(e) => e.preventDefault()} onClick={dismissPointer}>
-              No thanks
-            </button>
+            <>
+              <button className={`${spot.button} ${spot.quiet}`} onMouseDown={(e) => e.preventDefault()} onClick={dismissPointer}>
+                No thanks
+              </button>
+              <button className={`${spot.button} ${spot.primary}`} onMouseDown={(e) => e.preventDefault()} onClick={() => choose('demo')}>
+                Start tutorial
+              </button>
+            </>
           }
         >
           <p>New here? Start with the Tutorial: it shows you how to write notes, earn coins and spend them.</p>

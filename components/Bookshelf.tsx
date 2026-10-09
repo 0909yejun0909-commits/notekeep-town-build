@@ -214,7 +214,7 @@ export default function Bookshelf() {
 
   return (
     <div className={styles.backdrop} onClick={close}>
-      <div className={styles.panel} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.panel} data-panel="shelf" onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <button className={styles.btn} disabled={path.length === 0} onClick={() => setPath((p) => p.slice(0, -1))}>
             &lt; Back
@@ -236,7 +236,7 @@ export default function Bookshelf() {
               </span>
             ))}
           </div>
-          <button className={styles.btn} onClick={close}>X</button>
+          <button className={styles.btn} data-tour="shelf-close" title="Close (Esc)" onClick={close}>X</button>
         </div>
 
         <div className={styles.shelves}>

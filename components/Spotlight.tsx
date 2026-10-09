@@ -8,15 +8,18 @@ import pixel from './pixelUi.module.css';
 export type Rect = { left: number; top: number; width: number; height: number };
 
 const PAD = 6;
-const BUBBLE_W = 380;
+const MARGIN = 12;
+const ARROW_GAP = 56; // room for the arrow between a target and the bubble beside it
 
-// Pixel arrow, pointing down; flipped to point up.
+// Pixel arrow, pointing down; turned to point any way.
 const ARROW = ['..OOOOO..', '..OYYYO..', '..OYYYO..', '..OYYYO..', 'OOOYYYOOO', 'OYYYYYYYO', '.OYYYYYO.', '..OYYYO..', '...OYO...', '....O....'];
 const ARROW_COLOR: Record<string, string> = { O: '#3f2832', Y: '#ffe066' };
+const TURN = { down: 'none', up: 'scaleY(-1)', left: 'rotate(90deg)', right: 'rotate(-90deg)' } as const;
+type Dir = keyof typeof TURN;
 
-function Arrow({ up }: { up: boolean }) {
+function Arrow({ dir }: { dir: Dir }) {
   return (
-    <svg width={36} height={40} viewBox="0 0 9 10" shapeRendering="crispEdges" aria-hidden style={up ? { transform: 'scaleY(-1)' } : undefined}>
+    <svg width={36} height={40} viewBox="0 0 9 10" shapeRendering="crispEdges" aria-hidden style={{ transform: TURN[dir] }}>
       {ARROW.flatMap((row, y) =>
         [...row].map((c, x) => (ARROW_COLOR[c] ? <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} fill={ARROW_COLOR[c]} /> : null)),
       )}
@@ -24,114 +27,181 @@ function Arrow({ up }: { up: boolean }) {
   );
 }
 
-function measure(target: () => Rect | null): Rect | null {
-  const r = target();
-  return r && r.width > 0 && r.height > 0
-    ? { left: Math.round(r.left) - PAD, top: Math.round(r.top) - PAD, width: Math.round(r.width) + 2 * PAD, height: Math.round(r.height) + 2 * PAD }
-    : null;
+function Bubble({ compact, actions, children }: { compact: boolean; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <div className={compact ? `${styles.bubble} ${styles.compact}` : `${pixel.parchment} ${styles.bubble}`}>
+      <div className={styles.text}>{children}</div>
+      {actions && <div className={styles.actions}>{actions}</div>}
+    </div>
+  );
 }
 
-function same(a: Rect | null, b: Rect | null) {
-  if (!a || !b) return a === b;
-  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+const padded = (r: Rect): Rect => ({
+  left: Math.round(r.left) - PAD,
+  top: Math.round(r.top) - PAD,
+  width: Math.round(r.width) + 2 * PAD,
+  height: Math.round(r.height) + 2 * PAD,
+});
+const visible = (r: Rect | null | undefined): r is Rect => !!r && r.width > 0 && r.height > 0;
+const key = (rs: Rect[]) => rs.map((r) => `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`).join(';');
+
+function overlap(a: Rect, b: Rect) {
+  const w = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
+  const h = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
 }
 
-// Shades the whole page except `target` (re-measured every frame, so it follows a moving
-// sprite or a panel that opens), points a yellow arrow at it and explains what to do there.
-// The shade takes every click; the hole lets clicks through to the target unless
-// `keysOnly`, for steps done with the keyboard (walking somewhere).
+function union(rs: Rect[]): Rect | null {
+  if (rs.length === 0) return null;
+  const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top));
+  const r = Math.max(...rs.map((x) => x.left + x.width)), b = Math.max(...rs.map((x) => x.top + x.height));
+  return { left: l, top: t, width: r - l, height: b - t };
+}
+
+// The bubble's possible sizes, roomiest first: the full parchment box, then a compact one
+// (smaller text, thin border) for the narrow margins around a big panel.
+const SIZES = [
+  ...[380, 300, 240].map((w) => ({ w, compact: false })),
+  ...[300, 240, 200, 170, 140].map((w) => ({ w, compact: true })),
+];
+type Size = { w: number; compact: boolean; h: number };
+type Spot = Rect & { compact: boolean };
+
+// Where the bubble goes: beside the target if there's room, else beside any of the things it
+// must not cover, else in a corner; at the roomiest size that covers nothing. Failing that,
+// wherever it covers least.
+function placeBubble(target: Rect | null, blockers: Rect[], sizes: Size[], vw: number, vh: number): Spot {
+  const clampX = (x: number, w: number) => Math.max(MARGIN, Math.min(vw - MARGIN - w, x));
+  const clampY = (y: number, h: number) => Math.max(MARGIN, Math.min(vh - MARGIN - h, y));
+  const candidates: Spot[] = [];
+  for (const { w: width, h, compact } of sizes.filter((z) => z.w <= vw - 2 * MARGIN)) {
+    const at = (left: number, top: number): Spot => ({ left, top, width, height: h, compact });
+    const around = (r: Rect, gap: number) => {
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      candidates.push(
+        at(clampX(cx - width / 2, width), r.top + r.height + gap),
+        at(clampX(cx - width / 2, width), r.top - gap - h),
+        at(r.left + r.width + gap, clampY(cy - h / 2, h)),
+        at(r.left - gap - width, clampY(cy - h / 2, h)),
+      );
+    };
+    if (target) around(target, ARROW_GAP);
+    for (const b of blockers) around(b, MARGIN);
+    candidates.push(
+      at(MARGIN, 90), at(vw - MARGIN - width, 90),
+      at(MARGIN, vh - MARGIN - h), at(vw - MARGIN - width, vh - MARGIN - h),
+      at(vw / 2 - width / 2, vh / 2 - h / 2),
+    );
+  }
+  const inside = (c: Rect) =>
+    c.left >= MARGIN - 1 && c.top >= MARGIN - 1 && c.left + c.width <= vw - MARGIN + 1 && c.top + c.height <= vh - MARGIN + 1;
+  const covered = (c: Rect) =>
+    blockers.reduce((n, b) => n + overlap(c, { left: b.left - 6, top: b.top - 6, width: b.width + 12, height: b.height + 12 }), 0);
+  const fits = candidates.filter(inside);
+  return (
+    fits.find((c) => covered(c) === 0) ??
+    fits.sort((a, b) => covered(a) - covered(b))[0] ??
+    { left: MARGIN, top: MARGIN, width: vw - 2 * MARGIN, height: 170, compact: true }
+  );
+}
+
+// Shades the whole page except the highlighted rects (re-measured every frame, so they follow
+// a walking sprite or a panel that opens), points a yellow arrow at the first one and explains
+// what to do. The shade takes every click; holes let clicks through unless `keysOnly`, for
+// steps done with the keyboard. The bubble keeps clear of the holes and of `avoid` (the
+// interface the player needs to see).
 export default function Spotlight({
-  target,
+  holes,
+  avoid,
   children,
   actions,
   keysOnly,
-  pin = 'top',
 }: {
-  target: () => Rect | null;
+  holes: () => (Rect | null)[];
+  avoid?: () => (Rect | null)[];
   children: ReactNode;
   actions?: ReactNode;
   keysOnly?: boolean;
-  // Where the bubble goes when the target leaves no room above or below it (a whole panel).
-  pin?: 'top' | 'bottom';
 }) {
-  // Measured before the first paint too, so the bubble doesn't flash in the middle first.
-  const [rect, setRect] = useState<Rect | null>(() => measure(target));
-  const targetRef = useRef(target);
-  targetRef.current = target;
+  const measure = () => ({
+    holes: holes().map((r) => (visible(r) ? padded(r) : null)),
+    avoid: (avoid?.() ?? []).filter(visible),
+  });
+  // Measured before the first paint too, so nothing flashes in the wrong place.
+  const [shape, setShape] = useState(measure);
+  // The bubble's height at each width it can take, from hidden copies: measuring the placed
+  // bubble instead would feed its placement back into its size and make it jump around.
+  const [heights, setHeights] = useState<number[]>([]);
+  const live = useRef({ measure, heights });
+  live.current = { measure, heights };
+  const sizers = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     let raf = 0;
-    let last = rect;
+    let last = '';
     const tick = () => {
-      const next = measure(targetRef.current);
-      if (!same(next, last)) {
-        last = next;
-        setRect(next);
+      const next = live.current.measure();
+      const k = key(next.holes.filter(visible)) + '|' + key(next.avoid) + '|' + next.holes.map((h) => (h ? 1 : 0)).join('');
+      if (k !== last) {
+        last = k;
+        setShape(next);
       }
+      const hs = sizers.current.map((d) => d?.offsetHeight ?? 0);
+      if (hs.join() !== live.current.heights.join()) setHeights(hs);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const vw = typeof window === 'undefined' ? 1024 : window.innerWidth;
-  const vh = typeof window === 'undefined' ? 768 : window.innerHeight;
-  const bubbleW = Math.min(BUBBLE_W, vw - 32);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const target = shape.holes[0] ?? null;
+  const lit = shape.holes.filter(visible);
+  const sizes = SIZES.map((z, i) => ({ ...z, h: heights[i] || 170 }));
+  const spot = placeBubble(target, [...lit, ...shape.avoid], sizes, vw, vh);
 
-  const bubble = (
-    <div className={`${pixel.parchment} ${styles.bubble}`} style={{ width: bubbleW }}>
-      <div className={styles.text}>{children}</div>
-      {actions && <div className={styles.actions}>{actions}</div>}
-    </div>
-  );
-
-  // On <body>, so no panel's stacking context can lift anything above the shade.
-  const portal = (node: ReactNode) => createPortal(node, document.body);
-
-  if (!rect) {
-    return portal(
-      <div className={styles.layer}>
-        <div className={styles.shade} style={{ inset: 0 }} />
-        <div className={styles.center}>{bubble}</div>
-      </div>
-    );
+  let arrow: { dir: Dir; left: number; top: number } | null = null;
+  if (target) {
+    const tb = target.top + target.height, tr = target.left + target.width;
+    const cx = target.left + target.width / 2, cy = target.top + target.height / 2;
+    if (spot.top >= tb) arrow = { dir: 'up', left: cx - 18, top: tb + 8 };
+    else if (spot.top + spot.height <= target.top) arrow = { dir: 'down', left: cx - 18, top: target.top - 48 };
+    else if (spot.left >= tr) arrow = { dir: 'left', left: tr + 6, top: cy - 20 };
+    else if (spot.left + spot.width <= target.left) arrow = { dir: 'right', left: target.left - 42, top: cy - 20 };
   }
 
-  const right = rect.left + rect.width;
-  const bottom = rect.top + rect.height;
-  // Bubble on whichever side of the target has more room; over the target's edge if neither
-  // side has enough.
-  const above = rect.top > vh - bottom;
-  const room = Math.max(rect.top, vh - bottom) > 200;
-  const cx = rect.left + rect.width / 2;
-  const bubbleLeft = Math.max(16, Math.min(vw - 16 - bubbleW, cx - bubbleW / 2));
+  // One path: the screen minus each hole (even-odd), so clicks land only on the shade.
+  const path = `M0 0H${vw}V${vh}H0Z` + lit.map((r) => `M${r.left} ${r.top}h${r.width}v${r.height}h${-r.width}Z`).join('');
 
-  return portal(
+  return createPortal(
     <div className={styles.layer}>
-      <div className={styles.shade} style={{ left: 0, top: 0, right: 0, height: Math.max(0, rect.top) }} />
-      <div className={styles.shade} style={{ left: 0, top: bottom, right: 0, bottom: 0 }} />
-      <div className={styles.shade} style={{ left: 0, top: rect.top, width: Math.max(0, rect.left), height: rect.height }} />
-      <div className={styles.shade} style={{ left: right, top: rect.top, right: 0, height: rect.height }} />
-      {keysOnly && <div className={styles.block} style={rect} />}
-      <div className={styles.ring} style={rect} />
-      {room && (
+      <svg className={styles.shade} width={vw} height={vh}>
+        <path d={path} fillRule="evenodd" />
+      </svg>
+      {keysOnly && target && <div className={styles.block} style={target} />}
+      {lit.map((r, i) => (
+        <div key={i} className={i === 0 && target ? styles.ring : styles.softRing} style={r} />
+      ))}
+      {arrow && (
         <div
-          className={`${styles.arrow} ${above ? styles.down : styles.up}`}
-          style={{ left: cx - 18, top: above ? rect.top - 48 : bottom + 8 }}
+          className={`${styles.arrow} ${arrow.dir === 'up' || arrow.dir === 'down' ? styles.bobY : styles.bobX}`}
+          style={{ left: arrow.left, top: arrow.top }}
         >
-          <Arrow up={!above} />
+          <Arrow dir={arrow.dir} />
         </div>
       )}
-      <div
-        className={styles.placed}
-        style={!room
-          ? { left: bubbleLeft, [pin]: 16 }
-          : above
-            ? { left: bubbleLeft, bottom: vh - rect.top + 56 }
-            : { left: bubbleLeft, top: bottom + 56 }}
-      >
-        {bubble}
+      <div className={styles.placed} style={{ left: spot.left, top: spot.top, width: spot.width }}>
+        <Bubble compact={spot.compact} actions={actions}>{children}</Bubble>
       </div>
-    </div>
+      {SIZES.map((z, i) => (
+        <div key={i} className={styles.sizer} style={{ width: z.w }} aria-hidden>
+          <div ref={(d) => { sizers.current[i] = d; }}>
+            <Bubble compact={z.compact} actions={actions}>{children}</Bubble>
+          </div>
+        </div>
+      ))}
+    </div>,
+    document.body,
   );
 }
