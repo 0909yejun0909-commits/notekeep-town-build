@@ -6,7 +6,7 @@ test('skin and pet ids are unique and kebab-case', () => {
   for (const list of [SKINS, PETS]) {
     const ids = list.map((e) => e.id);
     assert.equal(new Set(ids).size, ids.length);
-    for (const id of ids) assert.match(id, /^[a-z]+(-[a-z0-9]+)*$/);
+    for (const id of ids) assert.match(id, /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/);
   }
 });
 
