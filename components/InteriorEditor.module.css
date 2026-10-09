@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.7);
+  background: #91533b;
   font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
   word-spacing: 0.4em;
   image-rendering: pixelated;
@@ -16,8 +16,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 90vh;
-  max-width: 96vw;
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
   padding: 18px;
   background: #91533b;
@@ -140,7 +140,6 @@
   color: #ffe066;
 }
 .hint {
-  max-width: 436px;
   color: #f4e4c1;
 }
 .small {
@@ -165,14 +164,15 @@
 
 .side {
   display: flex;
-  width: 436px;
+  flex: 1;
+  min-width: 436px;
   flex-direction: column;
   gap: 12px;
 }
 
 .shelf {
   display: flex;
-  max-height: 50vh;
+  max-height: 60vh;
   flex-wrap: wrap;
   align-content: flex-start;
   gap: 6px;
