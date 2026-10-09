@@ -518,3 +518,11 @@ Per-biome mapping — Track B's `game/tilemap.ts` picks one of these by `region.
 The five sheets have different sizes and different edge-set origins, so `tilemap.ts` needs a
 small per-biome descriptor instead of one shared index table. All the numbers it needs are in
 the Terrain section above.
+
+## Achievement rewards (skins and pets)
+
+Source: **Ninja Adventure Asset Pack** by Pixel-boy & AAA, https://pixel-boy.itch.io/ninja-adventure-asset-pack
+License: **CC0 1.0** (commercial use and redistribution allowed; attribution not required, given here anyway).
+Installed by `npm run install-rewards` from `Actor/Character/<folder>/SpriteSheet.png` (skins, 64x112, 16x16 frames,
+columns = down/up/left/right, rows 0-3 = walk) and `Actor/Animal/<folder>/SpriteSheet.png` (pets, 32x16, two frames).
+The id-to-folder mapping lives in `lib/rewards.ts`. No other downloaded pack is used.
