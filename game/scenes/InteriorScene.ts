@@ -4,6 +4,7 @@ import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLab
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnPet } from '@/game/pet';
+import { trackMovement } from '@/game/achievementHooks';
 import { getEquipped } from '@/lib/achievementStore';
 import type { SkinId } from '@/lib/rewards';
 import { lie, sit } from '@/game/furniturePoses';
@@ -350,6 +351,7 @@ export default class InteriorScene extends Phaser.Scene {
     if (back) this.movement.ignoreHeldKeys();
     const sceneId = `house:${this.roomId}` as const;
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: sceneId, gx, gy, facing });
+    trackMovement(this, this.movement);
     setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: arriveNote ? 'up' : 'down' });
     attachRemotePlayers(this, sceneId, this.player);
 

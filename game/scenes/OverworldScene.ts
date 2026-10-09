@@ -6,6 +6,7 @@ import { buildHouses, buildRoads, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
 import { spawnPet } from '@/game/pet';
+import { trackMovement } from '@/game/achievementHooks';
 import { getEquipped } from '@/lib/achievementStore';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
@@ -252,6 +253,7 @@ export default class OverworldScene extends Phaser.Scene {
 
     this.movement = new GridMovement(this, player, isWalkable);
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: 'overworld', gx, gy, facing });
+    trackMovement(this, this.movement);
     setSelfPresence({ scene: 'overworld', gx: spawnGx, gy: spawnGy, facing: 'down' });
     attachRemotePlayers(this, 'overworld', player);
 

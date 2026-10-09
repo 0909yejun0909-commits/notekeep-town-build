@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
+import { trackDistinct } from '@/lib/achievementStore';
 import { TOWN_BIOMES, TOWN_BIOME_LABEL, loadTownBiome, saveTownBiome } from '@/lib/biome';
 import type { TownBiome } from '@/lib/types';
 import styles from './BiomePicker.module.css';
@@ -57,6 +58,8 @@ export default function BiomePicker() {
 
   function pick(next: TownBiome) {
     if (next === biome) return;
+    if (biome) trackDistinct('biomesTried', biome);
+    trackDistinct('biomesTried', next);
     setBiome(next);
     saveTownBiome(next);
     (window as any).__game?.registry.set('townBiome', next);
