@@ -69,6 +69,7 @@ export default function SceneLabels() {
             if (el) boxes.current.set(l.id, el);
             else boxes.current.delete(l.id);
           }}
+          data-tour={l.tour}
           className="absolute left-0 top-0 flex items-center whitespace-nowrap"
           style={{
             fontFamily: "'ArcadeClassic', 'CuteFantasy', monospace",
@@ -96,6 +97,7 @@ export default function SceneLabels() {
           {l.action && (
             <span
               role="button"
+              data-tour={l.action.tour}
               className="pointer-events-auto cursor-pointer"
               style={{ background: '#3f2832', padding: `${PAD_Y * l.px}px ${PAD_X * l.px}px`, color: l.action.color }}
               onPointerDown={(e) => {

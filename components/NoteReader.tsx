@@ -468,6 +468,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               >
                 <textarea
                   ref={textareaRef}
+                  data-tour="note-text"
                   className="note-editor"
                   value={draft}
                   spellCheck={false}
@@ -498,6 +499,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
 
           {/* Controls in the page margins */}
           <div
+            data-tour="note-controls"
             style={{
               position: 'absolute',
               left: PAGES_LEFT,
@@ -557,7 +559,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {progress && (
-                    <span className="note-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
+                    <span data-tour="note-progress" className="note-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
                       <Coin size={10} />
                       {progress.words >= progress.needed
                         ? `Save to earn +${progress.reward}`
@@ -569,6 +571,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   </button>
                   <button
                     className="note-btn primary"
+                    data-tour="note-save"
                     disabled={!canWrite || saveState === 'saving'}
                     onClick={() => void save()}
                   >

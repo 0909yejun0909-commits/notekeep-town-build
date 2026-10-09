@@ -23,8 +23,8 @@ export type WalletData = { balance: number; record: number; inventory: Inventory
 const UNLOCK_PRICES: Record<string, number> = {
   'biome:snow': 120,
   'biome:desert': 120,
-  // House shapes by size: 0 and 3 are the small cottages, 4 the big hall.
-  'shape:0': 20, 'shape:3': 20, 'shape:1': 40, 'shape:2': 40, 'shape:4': 80,
+  // House shapes, the cheapest first: every house starts as shape 0, the plain cottage.
+  'shape:3': 30, 'shape:1': 50, 'shape:2': 50, 'shape:4': 100,
   'material:stone': 60, 'material:limestone': 90,
   'wall:green': 20, 'wall:red': 20,
   'roof:black': 15, 'roof:blue': 15, 'roof:red': 15,

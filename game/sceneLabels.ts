@@ -14,7 +14,8 @@ export type SceneLabel = {
   maxWidth?: number; // CSS px
   color?: string;
   bare?: boolean; // no wooden box behind it
-  action?: { text: string; color: string; onClick: () => void }; // a button at its right end
+  action?: { text: string; color: string; onClick: () => void; tour?: string }; // a button at its right end
+  tour?: string; // data-tour name, for the tutorial to point at
 };
 
 let source: (() => SceneLabel[]) | null = null;

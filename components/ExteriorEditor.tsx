@@ -192,7 +192,7 @@ export default function ExteriorEditor() {
 
   return (
     <div className={styles.screen} onClick={close}>
-      <div className={`${pixel.parchment} ${styles.panel}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`${pixel.parchment} ${styles.panel}`} data-tour="house-editor" onClick={(e) => e.stopPropagation()}>
         <h2 className={styles.heading}>Your house</h2>
         {wallet.active && (
           <span className={styles.balance} title="Your coins">
@@ -246,7 +246,7 @@ export default function ExteriorEditor() {
               </div>
             </div>
 
-            <div className={styles.row} onMouseEnter={() => setRow(3)}>
+            <div className={styles.row} data-tour="house-roof" onMouseEnter={() => setRow(3)}>
               <span className={cursor(3)} />
               <span className={styles.label}>Roof</span>
               <div className={styles.options}>
@@ -274,6 +274,7 @@ export default function ExteriorEditor() {
                   <span className={cursor(i)} />
                   <button
                     className={`${styles.action} ${i === row ? styles.current : ''}`}
+                    data-tour={which === 'save' ? 'house-save' : undefined}
                     onMouseDown={keep}
                     onClick={which === 'save' ? save : close}
                   >

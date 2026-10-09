@@ -247,6 +247,7 @@ export default function Bookshelf() {
                   key={keyOf(item)}
                   className={`${styles.book} ${item.kind === 'folder' ? styles.folder : ''} ${item.kind === 'new' ? styles.newBook : ''}`}
                   style={bookStyle(item)}
+                  data-tour={item.kind === 'new' ? 'new-note' : undefined}
                   title={
                     item.kind === 'note'
                       ? item.note.preview || item.name
@@ -277,6 +278,7 @@ export default function Bookshelf() {
           <div className={styles.namerBackdrop} onClick={() => setNaming(false)}>
             <form
               className={styles.namer}
+              data-tour="note-namer"
               onClick={(e) => e.stopPropagation()}
               onSubmit={(e) => {
                 e.preventDefault();

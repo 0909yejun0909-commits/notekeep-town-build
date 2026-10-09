@@ -31,7 +31,7 @@ export function publishWorld(
       game.registry.set('vaultFingerprint', fingerprint);
     }
     // Read fresh (not cached at module load) so a change made in the picker seconds before
-    // clicking "Open your vault" / "Try the demo town" is never missed.
+    // clicking "Open your vault" / "Tutorial" is never missed.
     game.registry.set('appearance', loadAppearance());
     // Last: TitleScene starts the overworld the moment this lands.
     game.registry.set('world', world);
@@ -107,7 +107,7 @@ export async function openVault(): Promise<VaultHandle | null> {
     | ((opts?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>)
     | undefined;
   if (!picker) {
-    alert('Opening a vault needs the File System Access API. Use Chrome or Edge, or try the demo town.');
+    alert('Opening a vault needs the File System Access API. Use Chrome or Edge, or try the tutorial.');
     return null;
   }
 

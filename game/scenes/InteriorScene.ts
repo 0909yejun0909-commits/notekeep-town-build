@@ -289,7 +289,7 @@ export default class InteriorScene extends Phaser.Scene {
       suffix: ` (${this.isEntrance ? noteCount : room.notes.length})`,
       maxWidth: labelRightX - Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE,
       action: this.game.registry.get('role') === 'guest' ? undefined
-        : { text: 'CUSTOMIZE', color: '#ffe066', onClick: () => this.openEditor() },
+        : { text: 'CUSTOMIZE', color: '#ffe066', onClick: () => this.openEditor(), tour: 'customize' },
     });
 
     for (const door of this.doors.values()) this.drawDoorLabel(door);
@@ -299,7 +299,7 @@ export default class InteriorScene extends Phaser.Scene {
       this.renderPlacement(placement, allNotes);
     }
 
-    this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1);
+    this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1, { tour: 'exit' });
 
     // Back from a room: stand just inside its doorway, not at the house's front door.
     const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;

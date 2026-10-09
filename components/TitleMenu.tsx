@@ -5,15 +5,18 @@ import styles from './TitleMenu.module.css';
 import pixel from './pixelUi.module.css';
 import CharacterCreator from './CharacterCreator';
 import TitleFrame from './TitleFrame';
+import Spotlight from './Spotlight';
+import spot from './Spotlight.module.css';
 import { openDemoVault, openVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
 import type { VaultHandle } from '@/lib/types';
+import { endTutorial, markTutorialOffered, startTutorial, tutorialOffered } from '@/lib/tutorial';
 
 type Choice = 'vault' | 'demo' | 'hero';
 
 const ITEMS: Array<[Choice, string]> = [
   ['vault', 'Open your vault'],
-  ['demo', 'Visit the demo town'],
+  ['demo', 'Tutorial'],
   ['hero', 'Your hero'],
 ];
 
@@ -22,6 +25,14 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
   const [cursor, setCursor] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // The very first visit points at the Tutorial, with everything else shaded.
+  const [firstVisit, setFirstVisit] = useState(false);
+
+  useEffect(() => {
+    if (tutorialOffered()) return;
+    setFirstVisit(true);
+    setCursor(ITEMS.findIndex(([c]) => c === 'demo'));
+  }, []);
 
   // open() must be called synchronously from the click/keydown handler: the folder picker
   // needs the user activation that event carries.
@@ -35,14 +46,26 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
     } catch {
       setStatus("Couldn't read that folder.");
     }
+    endTutorial();
     setBusy(false);
   };
 
   const choose = (choice: Choice) => {
     if (busy) return;
+    if (choice !== 'hero') {
+      markTutorialOffered();
+      setFirstVisit(false);
+    }
     if (choice === 'vault') load(openVault, 'Reading your vault...');
-    else if (choice === 'demo') load(openDemoVault, 'Walking to the demo town...');
-    else setView('hero');
+    else if (choice === 'demo') {
+      startTutorial();
+      load(openDemoVault, 'Starting the tutorial...');
+    } else setView('hero');
+  };
+
+  const dismissPointer = () => {
+    markTutorialOffered();
+    setFirstVisit(false);
   };
 
   const closeHero = () => {
@@ -81,6 +104,7 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
               <li key={choice} role="none">
                 <button
                   role="menuitem"
+                  data-tour={choice === 'demo' ? 'tutorial' : undefined}
                   className={`${pixel.item} ${i === cursor ? pixel.current : ''}`}
                   disabled={busy}
                   onMouseEnter={() => setCursor(i)}
@@ -97,6 +121,18 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
         </div>
       ) : (
         <CharacterCreator onDone={closeHero} />
+      )}
+      {firstVisit && view === 'menu' && !busy && (
+        <Spotlight
+          target={() => document.querySelector('[data-tour="tutorial"]')?.getBoundingClientRect() ?? null}
+          actions={
+            <button className={`${spot.button} ${spot.quiet}`} onMouseDown={(e) => e.preventDefault()} onClick={dismissPointer}>
+              No thanks
+            </button>
+          }
+        >
+          <p>New here? Start with the Tutorial: it shows you how to write notes, earn coins and spend them.</p>
+        </Spotlight>
       )}
     </TitleFrame>
   );

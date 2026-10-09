@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import { canPlace, canPlaceShelf, resizeLayout, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
 import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
@@ -385,7 +385,7 @@ export default function InteriorEditor() {
             <button className={styles.btn} onClick={close}>
               Cancel
             </button>
-            <button className={`${styles.btn} ${styles.primary}`} onClick={save}>
+            <button className={`${styles.btn} ${styles.primary}`} data-tour="room-save" onClick={save}>
               Save
             </button>
           </div>
@@ -430,17 +430,19 @@ export default function InteriorEditor() {
               key={size}
               className={`${styles.btn} ${draft.roomSize === size ? styles.on : ''}`}
               onClick={() => {
-                if (!canResize(draft, CATALOG_BY_ID, size)) {
-                  setError("Something's in the way at that size — move furniture or the shelf, then try again.");
-                  return;
-                }
-                if (!canResize(draft, CATALOG_BY_ID, size, doorsNeeded)) {
+                if (size === draft.roomSize) return;
+                const resized = resizeLayout(draft, CATALOG_BY_ID, size, doorsNeeded);
+                if (!resized) {
                   setError("These doors won't fit at that size.");
                   return;
                 }
-                setError(null);
+                setError(
+                  resized.putAway > 0
+                    ? `${resized.putAway} ${resized.putAway === 1 ? 'piece' : 'pieces'} didn't fit and went back to your inventory.`
+                    : null,
+                );
                 setPicking(null);
-                setDraft({ ...draft, roomSize: size });
+                setDraft(resized.layout);
               }}
             >
               {size[0].toUpperCase() + size.slice(1)}
@@ -502,6 +504,7 @@ export default function InteriorEditor() {
           <div className="flex flex-col gap-2">
             <div
               className={styles.grid}
+              data-tour="room-grid"
               style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
             >
               {Array.from({ length: h }).map((_, gy) =>
@@ -636,8 +639,8 @@ export default function InteriorEditor() {
               ))}
             </div>
 
-            {error && <span className={styles.error}>{error}</span>}
-            {moving !== null && <span className={styles.note}>Drag it, or click a cell to move it there.</span>}
+            {error && <span className={`${styles.error} ${styles.under}`}>{error}</span>}
+            {moving !== null && <span className={`${styles.note} ${styles.under}`}>Drag it, or click a cell to move it there.</span>}
           </div>
 
           <div className={styles.side}>
@@ -657,7 +660,7 @@ export default function InteriorEditor() {
                     </button>
                   ))}
                 </div>
-                <div className={styles.shelf}>
+                <div className={styles.shelf} data-tour="furniture">
                   {CATALOG_BY_GROUP[tab].map((entry) => (
                     <ShopTile
                       key={entry.id}

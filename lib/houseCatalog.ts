@@ -10,6 +10,8 @@ export const HOUSE_DOOR: Record<number, [number, number]> = {
   0: [2, 6], 1: [2, 6], 2: [5, 6], 3: [2, 4], 4: [5, 6],
 };
 export const HOUSE_VARIANTS = [0, 1, 2, 3, 4] as const;
+// New towns build every house as this shape (shown as "1 of 5"); the rest are upgrades.
+export const STARTER_HOUSE_VARIANT = 0;
 export const REGION_MARGIN = 2;
 export const HOUSE_GAP = 3;
 

@@ -139,6 +139,11 @@
 .note {
   color: #ffe066;
 }
+/* Messages under the room wrap to its width instead of stretching the panel. */
+.under {
+  width: 0;
+  min-width: 100%;
+}
 .hint {
   max-width: 436px;
   color: #f4e4c1;

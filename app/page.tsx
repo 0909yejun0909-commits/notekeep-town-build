@@ -13,6 +13,7 @@ import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
 import PlayerTags from '@/components/PlayerTags';
 import SceneLabels from '@/components/SceneLabels';
+import Tutorial from '@/components/Tutorial';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
 import BedMenu from '@/components/BedMenu';
@@ -71,6 +72,7 @@ function Game() {
       <BedMenu />
       <BiomePicker />
       <MissingArtBanner />
+      <Tutorial />
 
       {npcLine && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">
