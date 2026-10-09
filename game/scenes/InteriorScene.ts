@@ -3,6 +3,7 @@ import { bus } from '@/game/bus';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
+import { spawnPet } from '@/game/pet';
 import { getEquipped } from '@/lib/achievementStore';
 import type { SkinId } from '@/lib/rewards';
 import { lie, sit } from '@/game/furniturePoses';
@@ -91,6 +92,7 @@ export default class InteriorScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Sprite;
   private appearance!: Appearance;
   private skin: SkinId | null = null;
+  private stopPet: (() => void) | null = null;
   private undress: (() => void) | null = null;
   private movement!: GridMovement;
   private indicator!: RoomLabel;
@@ -143,8 +145,11 @@ export default class InteriorScene extends Phaser.Scene {
     this.appearance = loadAppearance();
     this.game.registry.set('appearance', this.appearance);
     this.undress?.();
-    this.skin = getEquipped().skin;
+    const equipped = getEquipped();
+    this.skin = equipped.skin;
     this.undress = dressPlayer(this, this.player, this.appearance, this.skin);
+    this.stopPet?.();
+    this.stopPet = spawnPet(this, this.player, equipped.pet, () => 9.9);
   };
 
   private onMenuChoice = ({ index }: { index: number | null }) => {
@@ -337,6 +342,7 @@ export default class InteriorScene extends Phaser.Scene {
     this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
     this.skin = getEquipped().skin;
     this.undress = dressPlayer(this, this.player, this.appearance, this.skin);
+    this.stopPet = spawnPet(this, this.player, getEquipped().pet, () => 9.9);
 
     this.movement = new GridMovement(this, this.player, isWalkable);
     // Back from a room you're often still holding the key that walked you out, and a bottom-wall
