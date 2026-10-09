@@ -58,11 +58,9 @@ function Portrait({ src, scale }: { src: string; scale: number }) {
 // the whole body, and just the head for the hair-style slots.
 const BODY: [number, number, number, number] = [22, 17, 20, 26];
 const HEAD: [number, number, number, number] = [23, 17, 18, 18];
-// Outfits reach higher than the default head: a wizard hat's tip is at y=5, a helmet's top near y=15.
-// Slot thumbnails stop at the chest and are the same height, so only wizards start at the hat tip.
-const OUTFIT_BODY: [number, number, number, number] = [22, 5, 20, 38];
-const OUTFIT_SLOT: [number, number, number, number] = [22, 10, 20, 26];
-const WIZARD_SLOT: [number, number, number, number] = [22, 5, 20, 26];
+// Outfits reach higher than the default head: a wizard hat's tip is at y=12. Slot thumbnails stop at the chest.
+const OUTFIT_BODY: [number, number, number, number] = [22, 10, 20, 33];
+const OUTFIT_SLOT: [number, number, number, number] = [22, 10, 20, 24];
 
 function Figure({ layers, crop: [x, y, w, h], scale, idle }: {
   layers: string[];
@@ -252,7 +250,7 @@ export default function CharacterCreator({ onDone, rewards = false }: { onDone: 
                         onClick={() => choose(kind, e.id)}
                       >
                         {'layers' in e ? (
-                          <Figure layers={['/assets/character/base.png', ...outfitLayerUrls(e.id, appearance)]} crop={e.cls === 'wizard' ? WIZARD_SLOT : OUTFIT_SLOT} scale={2} />
+                          <Figure layers={['/assets/character/base.png', ...outfitLayerUrls(e.id, appearance)]} crop={OUTFIT_SLOT} scale={2} />
                         ) : (
                           <Portrait src={`/assets/pets/${e.id}.png`} scale={2} />
                         )}

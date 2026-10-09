@@ -22,11 +22,11 @@ PALETTES = {
 }
 # Fill half-width of the cone, base to tip. The base matches the Farmer hat's crown so the cone
 # grows straight out of the brim, with no step and no outline line between them.
-HALF_WIDTHS = [3, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1]
+HALF_WIDTHS = [3, 3, 3, 2, 2, 2, 1, 1]
 
 
 def tip_shift(k):
-    return 0 if k < 7 else (1 if k < 10 else 2)  # the tip leans over
+    return 0 if k < 4 else (1 if k < 6 else 2)  # the tip leans over
 
 
 def make(src, palette):
