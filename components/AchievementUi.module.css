@@ -1,0 +1,60 @@
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 3px 0 #6d483b, 0 4px 0 rgba(24, 20, 37, 0.45);
+  color: #f7c948;
+  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  word-spacing: 0.4em;
+  image-rendering: pixelated;
+  cursor: pointer;
+  animation: drop 0.4s steps(5);
+}
+.toastTitle { font-size: 22px; line-height: 28px; }
+.toastBody { font-size: 16px; line-height: 20px; color: #f7e8c8; }
+@keyframes drop { from { transform: translate(-50%, -80px); } to { transform: translate(-50%, 0); } }
+
+.trophy {
+  position: absolute;
+  left: 16px;
+  bottom: 72px;
+  z-index: 55;
+  padding: 6px;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 3px 0 #6d483b, 0 4px 0 rgba(24, 20, 37, 0.45);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(24, 20, 37, 0.6);
+  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  word-spacing: 0.4em;
+}
+.panel { width: min(720px, 92vw); max-height: 86vh; display: flex; flex-direction: column; padding: 14px 18px; }
+.heading { margin: 0 0 4px; font-size: 28px; line-height: 36px; text-align: center; }
+.count { margin: 0 0 10px; text-align: center; font-size: 18px; }
+.list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px; }
+.item { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 10px; background: #e69c69; box-shadow: inset 0 0 0 3px #bf6f4a; }
+.item.done { background: #f2c98a; }
+.name { font-size: 20px; line-height: 26px; }
+.desc { grid-column: 1; font-size: 15px; line-height: 19px; }
+.reward { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-size: 15px; text-align: right; }
+.bar { grid-column: 1 / span 2; height: 8px; background: #bf6f4a; }
+.fill { height: 100%; background: #3f2832; }
+.close { align-self: center; margin-top: 10px; font: inherit; font-size: 24px; background: none; border: 0; color: inherit; cursor: pointer; }

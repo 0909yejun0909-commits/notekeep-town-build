@@ -17,6 +17,8 @@ import SceneLabels from '@/components/SceneLabels';
 import Minimap from '@/components/Minimap';
 import CoinPurse from '@/components/CoinPurse';
 import AchievementTracker from '@/components/AchievementTracker';
+import AchievementToast from '@/components/AchievementToast';
+import AchievementsPanel from '@/components/AchievementsPanel';
 import Wardrobe from '@/components/Wardrobe';
 import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
@@ -74,6 +76,8 @@ function Game() {
       <RoomPanel />
       <AchievementTracker />
       <CoinPurse />
+      <AchievementToast />
+      <AchievementsPanel />
       <Wardrobe />
       <ChoiceMenu />
       <BiomePicker />
