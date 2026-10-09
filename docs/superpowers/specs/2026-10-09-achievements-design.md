@@ -148,3 +148,15 @@ The picker shows one tab per class. The exact skin-to-achievement mapping is a t
 - **Rewards UI only in the in-game wardrobe**, not the title screen, because no vault is open there to unlock anything.
 - **No game-input pause while the achievements panel is open** (v1 limitation).
 - **Skin height:** Ninja skins are 16px against the default character's ~26px; accepted as "chibi" skins after a visual check (spec risk 1, fallback a).
+
+## Outfits rebuilt on the Kenmi kit (2026-10-09, after first playtest)
+
+The Ninja Adventure character skins were built, tried in game and rejected: they are 16px chibi sprites and
+looked pasted-in next to the Kenmi player and NPCs at every scale (1x too short, 2x a giant, 1.5x a blur of
+non-integer pixels). Outfit rewards are now **layer stacks from the Kenmi player kit** (plate armour in several
+metals, royal, lumberjack, farmer) plus **generated wizard hats**, so they match the NPCs and need no scaling.
+- Roster: 7 knights, 4 wizards, 3 royal, 2 villagers = 16 outfits; the achievements still grant them 1:1.
+- Ninjas, samurai and spooky classes are dropped; they would need hand-drawn art.
+- An outfit may include the player's own hair (`@hair` layer) and always replaces the picked clothes.
+- Sitting and lying poses work for free because they already composite from layers.
+- Pets still use Ninja Adventure (CC0); small animals look fine.

@@ -7,6 +7,7 @@ import { CLOTH_COLORS, HAIR_COLORS, HAIR_STYLES } from '@/lib/characterCatalog';
 import { loadAppearance, saveAppearance } from '@/lib/appearance';
 import type { Appearance, ClothColor, HairColor } from '@/lib/types';
 import { SKINS, PETS, SKIN_CLASS_LABEL } from '@/lib/rewards';
+import { outfitLayerUrls } from '@/lib/outfitLayers';
 import { achievementFor } from '@/lib/achievements';
 import { equip, getEquipped, isUnlocked, type Equipped } from '@/lib/achievementStore';
 import { useAchievements } from '@/lib/useAchievements';
@@ -57,6 +58,11 @@ function Portrait({ src, scale }: { src: string; scale: number }) {
 // the whole body, and just the head for the hair-style slots.
 const BODY: [number, number, number, number] = [22, 17, 20, 26];
 const HEAD: [number, number, number, number] = [23, 17, 18, 18];
+// Outfits reach higher than the default head: a wizard hat's tip is at y=5, a helmet's top near y=15.
+// Slot thumbnails stop at the chest and are the same height, so only wizards start at the hat tip.
+const OUTFIT_BODY: [number, number, number, number] = [22, 5, 20, 38];
+const OUTFIT_SLOT: [number, number, number, number] = [22, 10, 20, 26];
+const WIZARD_SLOT: [number, number, number, number] = [22, 5, 20, 26];
 
 function Figure({ layers, crop: [x, y, w, h], scale, idle }: {
   layers: string[];
@@ -161,11 +167,12 @@ export default function CharacterCreator({ onDone, rewards = false }: { onDone: 
       <h2 className={styles.heading}>Your hero</h2>
       <div className={styles.body}>
         <div className={styles.stage}>
-          {equipped.skin ? (
-            <Portrait src={`/assets/skins/${equipped.skin}.png`} scale={5} />
-          ) : (
-            <Figure layers={layers} crop={BODY} scale={5} idle />
-          )}
+          <Figure
+            layers={equipped.skin ? ['/assets/character/base.png', ...outfitLayerUrls(equipped.skin, appearance)] : layers}
+            crop={equipped.skin ? OUTFIT_BODY : BODY}
+            scale={5}
+            idle
+          />
         </div>
 
         <div className={styles.rows}>
@@ -244,7 +251,11 @@ export default function CharacterCreator({ onDone, rewards = false }: { onDone: 
                         onMouseDown={(ev) => ev.preventDefault()}
                         onClick={() => choose(kind, e.id)}
                       >
-                        <Portrait src={`/assets/${kind === 'skin' ? 'skins' : 'pets'}/${e.id}.png`} scale={2} />
+                        {'layers' in e ? (
+                          <Figure layers={['/assets/character/base.png', ...outfitLayerUrls(e.id, appearance)]} crop={e.cls === 'wizard' ? WIZARD_SLOT : OUTFIT_SLOT} scale={2} />
+                        ) : (
+                          <Portrait src={`/assets/pets/${e.id}.png`} scale={2} />
+                        )}
                       </button>
                     );
                   })}

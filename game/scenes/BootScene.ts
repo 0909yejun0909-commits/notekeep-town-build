@@ -1,4 +1,4 @@
-import { PETS, SKINS, petAssetPath, petTextureKey, skinAssetPath, skinTextureKey } from '@/lib/rewards';
+import { HAIR_LAYER, PETS, SKINS, outfitAssetPath, outfitTextureKey, petAssetPath, petTextureKey } from '@/lib/rewards';
 import Phaser from 'phaser';
 import { CATALOG, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
@@ -36,7 +36,7 @@ export default class BootScene extends Phaser.Scene {
     // Reward art is optional (installed by `npm run install-rewards`); its absence just means no rewards show.
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
       const url = file.url as string;
-      if (!/assets\/(skins|pets)\//.test(url)) missing.push(url);
+      if (!/assets\/(outfits|pets)\//.test(url)) missing.push(url);
     });
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       if (missing.length === 0) return;
@@ -97,7 +97,13 @@ export default class BootScene extends Phaser.Scene {
       this.load.spritesheet(shoesTextureKey(color), shoesAssetPath(color), { frameWidth: 64, frameHeight: 64 });
     }
 
-    for (const s of SKINS) this.load.spritesheet(skinTextureKey(s.id), skinAssetPath(s.id), { frameWidth: 16, frameHeight: 16 });
+    SKINS.forEach((outfit) =>
+      outfit.layers.forEach((layer, i) => {
+        if (layer !== HAIR_LAYER) {
+          this.load.spritesheet(outfitTextureKey(outfit.id, i), outfitAssetPath(outfit.id, i), { frameWidth: 64, frameHeight: 64 });
+        }
+      }),
+    );
     for (const p of PETS) this.load.spritesheet(petTextureKey(p.id), petAssetPath(p.id), { frameWidth: 16, frameHeight: 16 });
 
     preloadScenery(this);

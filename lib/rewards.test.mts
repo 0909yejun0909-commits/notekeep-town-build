@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PETS, SKINS, SKIN_CLASSES, petAssetPath, rewardName, skinAssetPath, skinTextureKey } from './rewards.ts';
+import {
+  HAIR_LAYER, PETS, SKINS, SKIN_CLASSES, outfitAssetPath, outfitTextureKey, petAssetPath, rewardName,
+} from './rewards.ts';
 
 test('skin and pet ids are unique and kebab-case', () => {
   for (const list of [SKINS, PETS]) {
@@ -10,18 +12,29 @@ test('skin and pet ids are unique and kebab-case', () => {
   }
 });
 
-test('every skin belongs to a known class', () => {
-  for (const s of SKINS) assert.ok(SKIN_CLASSES.includes(s.cls), s.id);
+test('every outfit belongs to a known class and has at least one drawn layer', () => {
+  for (const s of SKINS) {
+    assert.ok(SKIN_CLASSES.includes(s.cls), s.id);
+    assert.ok(s.layers.some((l) => l !== HAIR_LAYER), s.id);
+  }
 });
 
-test('asset paths and keys are derived from the id', () => {
-  assert.equal(skinAssetPath('knight'), 'assets/skins/knight.png');
+test('every outfit layer is the player hair marker, a generated hat, or a Kenmi player-kit png', () => {
+  for (const s of SKINS) {
+    for (const l of s.layers) {
+      assert.match(l, /^(@hair|@gen\/wizard-hat-[a-z]+|(Feet|Legs|Chest|Head|Accessories)(\/[A-Za-z0-9_]+)+\.png)$/, `${s.id}: ${l}`);
+    }
+  }
+});
+
+test('asset paths and keys are derived from the id and layer index', () => {
+  assert.equal(outfitAssetPath('knight-iron', 2), 'assets/outfits/knight-iron/2.png');
+  assert.equal(outfitTextureKey('knight-iron', 2), 'outfit-knight-iron-2');
   assert.equal(petAssetPath('cat'), 'assets/pets/cat.png');
-  assert.equal(skinTextureKey('knight'), 'skin-knight');
 });
 
 test('rewardName looks up display names and tolerates unknown ids', () => {
-  assert.equal(rewardName('skin', 'knight'), 'Knight');
+  assert.equal(rewardName('skin', 'knight-iron'), 'Iron Knight');
   assert.equal(rewardName('pet', 'cat'), 'Tabby Cat');
   assert.equal(rewardName('pet', 'nope'), 'nope');
 });

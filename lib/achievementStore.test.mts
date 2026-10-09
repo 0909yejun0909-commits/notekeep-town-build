@@ -64,19 +64,19 @@ test('a huge jump unlocks every crossed reward', () => {
   startAchievements('v', true);
   track('coinsEarned', 6000);
   for (const id of ['cat-black', 'cat-cyclop']) assert.equal(isUnlocked('pet', id), true, id);
-  assert.equal(isUnlocked('skin', 'noble'), true);
+  assert.equal(isUnlocked('skin', 'royal-purple'), true);
 });
 
 test('trackMax unlocks on the best single room', () => {
   startAchievements('v', true);
   trackMax('roomFurniture', 4);
   assert.equal(isUnlocked('pet', 'dog2'), true);
-  assert.equal(isUnlocked('skin', 'gladiator'), false);
+  assert.equal(isUnlocked('skin', 'knight-bronze'), false);
 });
 
 test('equipped only returns unlocked, known ids', () => {
   startAchievements('v', true);
-  equip({ skin: 'knight', pet: 'cat' });
+  equip({ skin: 'farmer', pet: 'cat' });
   assert.deepEqual(getEquipped(), { skin: null, pet: null });
   trackDistinct('notesRead', 'a.md');
   assert.deepEqual(getEquipped(), { skin: null, pet: 'cat' });
@@ -88,7 +88,7 @@ test('equipped only returns unlocked, known ids', () => {
 
 test('the dev unlock-all flag unlocks everything', () => {
   mem.set('notekeep-town:unlock-all', '1');
-  assert.equal(isUnlocked('skin', 'gold-statue'), true);
-  equip({ skin: 'gold-statue' });
-  assert.equal(getEquipped().skin, 'gold-statue');
+  assert.equal(isUnlocked('skin', 'royal-red'), true);
+  equip({ skin: 'royal-red' });
+  assert.equal(getEquipped().skin, 'royal-red');
 });

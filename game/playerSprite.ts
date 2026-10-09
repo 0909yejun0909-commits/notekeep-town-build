@@ -7,7 +7,8 @@ import {
   shirtTextureKey,
   shoesTextureKey,
 } from '@/lib/characterCatalog';
-import { skinTextureKey, type SkinId } from '@/lib/rewards';
+import { outfitLayerKeys } from '@/lib/outfitLayers';
+import type { SkinId } from '@/lib/rewards';
 
 // Bottom to top, drawn over the 'player' base texture.
 export function outfitTextureKeys(appearance: Appearance): string[] {
@@ -19,44 +20,15 @@ export function outfitTextureKeys(appearance: Appearance): string[] {
   ];
 }
 
-// A skin is a whole 16x16 character sheet that replaces the base + layers. Columns are the
-// facings (down, up, left, right) and rows 0-3 the walk cycle, so the base sprite's animation
-// state maps straight onto a skin frame: base walk frames (6) onto 4 rows.
-const BASE_WALK_FRAMES = 6;
-const SKIN_WALK_ROWS = 4;
-// The base sprite's origin sits a little above its feet; skins are drawn feet-aligned to it.
-const SKIN_FEET_OFFSET = 2;
-// Ninja characters are drawn smaller than the Kenmi default: 1x reads as too short and 2x as a
-// giant, so 1.5x. It is the one deliberate non-integer scale in the game; revisit if it looks soft.
-export const SKIN_SCALE = 1.5;
-
-function skinFrame(sprite: Phaser.GameObjects.Sprite): number {
-  const [mode, dir] = (sprite.anims.currentAnim?.key ?? 'idle-down').split('-');
-  const col = dir === 'right' ? (sprite.flipX ? 2 : 3) : dir === 'up' ? 1 : 0;
-  if (mode !== 'walk') return col;
-  const index = sprite.anims.currentFrame?.index ?? 1;
-  const row = Math.min(SKIN_WALK_ROWS - 1, Math.floor(((index - 1) / BASE_WALK_FRAMES) * SKIN_WALK_ROWS));
-  return row * 4 + col;
-}
-
-function wearSkin(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite, skin: SkinId): () => void {
-  const view = scene.add.sprite(sprite.x, sprite.y, skinTextureKey(skin), 0).setOrigin(0.5, 15 / 16).setScale(SKIN_SCALE);
-  sprite.setAlpha(0);
-  const tick = () => {
-    view.x = sprite.x;
-    view.y = sprite.y + SKIN_FEET_OFFSET;
-    view.visible = sprite.visible;
-    view.setFrame(skinFrame(sprite));
-    view.setDepth(sprite.depth + 0.01);
-  };
-  tick();
-  scene.events.on(Phaser.Scenes.Events.POST_UPDATE, tick);
-  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick));
-  return () => {
-    scene.events.off(Phaser.Scenes.Events.POST_UPDATE, tick);
-    view.destroy();
-    sprite.setAlpha(1);
-  };
+// What gets drawn over the base: an equipped outfit's stack, or the picked clothes. If any texture
+// of an outfit failed to load (reward art not installed) the picked look is used instead, rather
+// than drawing a half-dressed player.
+export function layerKeys(scene: Phaser.Scene, appearance: Appearance, skin: SkinId | null): string[] {
+  if (skin) {
+    const keys = outfitLayerKeys(skin, appearance);
+    if (keys.length > 0 && keys.every((key) => scene.textures.exists(key))) return keys;
+  }
+  return outfitTextureKeys(appearance);
 }
 
 // Layers share the base's grid and frame indices, so they animate for free — never call
@@ -68,8 +40,7 @@ export function dressPlayer(
   appearance: Appearance = DEFAULT_APPEARANCE,
   skin: SkinId | null = null,
 ): () => void {
-  if (skin && scene.textures.exists(skinTextureKey(skin))) return wearSkin(scene, sprite, skin);
-  const layers = outfitTextureKeys(appearance).map((key) => {
+  const layers = layerKeys(scene, appearance, skin).map((key) => {
     const layer = scene.add.sprite(sprite.x, sprite.y, key, sprite.frame.name);
     layer.setOrigin(sprite.originX, sprite.originY);
     return layer;
