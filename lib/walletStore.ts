@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { track } from './achievementStore';
 import type { CatalogItemId } from './types';
 import {
   MIN_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, priceOf, qualifies, settle, wordCount,
@@ -68,6 +69,7 @@ export function startWallet(vaultName: string, persist: boolean, heads: Map<stri
   const { data, earned, fresh } = settle(key ? load(key) : null, qualifying.size);
   session = { key, qualifying, data };
   const n = earned / NOTE_REWARD;
+  if (earned > 0) track('coinsEarned', earned);
   publish(
     fresh
       ? notice(STARTER_GRANT, `Welcome to town! Every new note of ${MIN_WORDS}+ words earns ${NOTE_REWARD} coins.`)
@@ -88,6 +90,7 @@ export function noteSaved(id: string, content: string, title: string) {
   else session.qualifying.delete(id);
   const { data, earned } = settle(session.data, session.qualifying.size);
   session.data = data;
+  if (earned > 0) track('coinsEarned', earned);
   publish(earned > 0 ? notice(earned, `You wrote "${title}"!`) : undefined);
 }
 
