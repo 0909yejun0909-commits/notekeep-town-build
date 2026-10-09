@@ -1,3 +1,4 @@
+import { PETS, SKINS, petAssetPath, petTextureKey, skinAssetPath, skinTextureKey } from '@/lib/rewards';
 import Phaser from 'phaser';
 import { CATALOG, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
@@ -32,7 +33,11 @@ export default class BootScene extends Phaser.Scene {
     // Phaser draws any texture that failed to load as a black box, which looks like broken
     // code; collect the failures so components/MissingArtBanner.tsx can say what's missing.
     const missing: string[] = [];
-    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => missing.push(file.url as string));
+    // Reward art is optional (installed by `npm run install-rewards`); its absence just means no rewards show.
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      const url = file.url as string;
+      if (!/assets\/(skins|pets)\//.test(url)) missing.push(url);
+    });
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       if (missing.length === 0) return;
       this.game.registry.set('missingAssets', missing);
@@ -91,6 +96,9 @@ export default class BootScene extends Phaser.Scene {
       this.load.spritesheet(pantsTextureKey(color), pantsAssetPath(color), { frameWidth: 64, frameHeight: 64 });
       this.load.spritesheet(shoesTextureKey(color), shoesAssetPath(color), { frameWidth: 64, frameHeight: 64 });
     }
+
+    for (const s of SKINS) this.load.spritesheet(skinTextureKey(s.id), skinAssetPath(s.id), { frameWidth: 16, frameHeight: 16 });
+    for (const p of PETS) this.load.spritesheet(petTextureKey(p.id), petAssetPath(p.id), { frameWidth: 16, frameHeight: 16 });
 
     preloadScenery(this);
 

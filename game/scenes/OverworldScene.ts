@@ -5,6 +5,7 @@ import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
+import { getEquipped } from '@/lib/achievementStore';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
@@ -238,7 +239,8 @@ export default class OverworldScene extends Phaser.Scene {
     player.setOrigin(0.5, 0.64);
     player.setDepth(player.y);
     const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    dressPlayer(this, player, appearance);
+    const equipped = getEquipped();
+    dressPlayer(this, player, appearance, equipped.skin);
     this.player = player;
 
     const isWalkable = (gx: number, gy: number) => {

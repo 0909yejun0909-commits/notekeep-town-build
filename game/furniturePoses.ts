@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TILE } from '@/game/gridMovement';
 import { outfitTextureKeys } from '@/game/playerSprite';
+import { skinTextureKey, type SkinId } from '@/lib/rewards';
 import type { Appearance, CatalogCategory, CatalogEntry, FurniturePlacement } from '@/lib/types';
 
 // Kenmi's character sheets have no sit or sleep animation, so both poses are put together
@@ -81,6 +82,7 @@ export function lie(
   entry: CatalogEntry,
   placement: FurniturePlacement,
   appearance: Appearance,
+  skin: SkinId | null = null,
 ): () => void {
   const [fw] = entry.footprint;
   const [cx, cy, cw, ch] = HEAD;
@@ -88,13 +90,17 @@ export function lie(
   const headY = placement.gy * TILE - PILLOW_RISE;
 
   player.setVisible(false);
-  const head = ['player', ...outfitTextureKeys(appearance)].map((key, i) =>
-    scene.add
-      .image(headX - cx, headY - cy, key, SLEEP_FRAME)
-      .setOrigin(0, 0)
-      .setCrop(cx, cy, cw, ch)
-      .setDepth(OVER_PLAYER + i * 0.01),
-  );
+  const skinKey = skin ? skinTextureKey(skin) : null;
+  const head =
+    skinKey && scene.textures.exists(skinKey)
+      ? [scene.add.image(headX + cw / 2, headY + ch / 2, skinKey, 0).setAngle(90).setDepth(OVER_PLAYER)]
+      : ['player', ...outfitTextureKeys(appearance)].map((key, i) =>
+          scene.add
+            .image(headX - cx, headY - cy, key, SLEEP_FRAME)
+            .setOrigin(0, 0)
+            .setCrop(cx, cy, cw, ch)
+            .setDepth(OVER_PLAYER + i * 0.01),
+        );
   const blanket = redrawBottom(scene, entry, placement, BLANKET_TOP, OVER_PLAYER + 1);
 
   makeSleepZ(scene);

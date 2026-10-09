@@ -3,6 +3,8 @@ import { bus } from '@/game/bus';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
+import { getEquipped } from '@/lib/achievementStore';
+import type { SkinId } from '@/lib/rewards';
 import { lie, sit } from '@/game/furniturePoses';
 import { setPlace } from '@/game/audio/music';
 import { setGround, sfx } from '@/game/audio/sfx';
@@ -88,6 +90,7 @@ export default class InteriorScene extends Phaser.Scene {
 
   private player!: Phaser.GameObjects.Sprite;
   private appearance!: Appearance;
+  private skin: SkinId | null = null;
   private undress: (() => void) | null = null;
   private movement!: GridMovement;
   private indicator!: RoomLabel;
@@ -140,7 +143,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.appearance = loadAppearance();
     this.game.registry.set('appearance', this.appearance);
     this.undress?.();
-    this.undress = dressPlayer(this, this.player, this.appearance);
+    this.skin = getEquipped().skin;
+    this.undress = dressPlayer(this, this.player, this.appearance, this.skin);
   };
 
   private onMenuChoice = ({ index }: { index: number | null }) => {
@@ -331,7 +335,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.player.setOrigin(0.5, 0.64);
     this.player.setDepth(10);
     this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    this.undress = dressPlayer(this, this.player, this.appearance);
+    this.skin = getEquipped().skin;
+    this.undress = dressPlayer(this, this.player, this.appearance, this.skin);
 
     this.movement = new GridMovement(this, this.player, isWalkable);
     // Back from a room you're often still holding the key that walked you out, and a bottom-wall
@@ -514,7 +519,7 @@ export default class InteriorScene extends Phaser.Scene {
     const undo =
       piece.action === 'sit'
         ? sit(this, this.player, piece.entry, piece.placement)
-        : lie(this, this.player, piece.entry, piece.placement, this.appearance);
+        : lie(this, this.player, piece.entry, piece.placement, this.appearance, this.skin);
     this.pose = { undo, gx, gy, held: new Set(this.standKeys.filter((k) => k.isDown)) };
   }
 
