@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
+import { track } from '@/lib/achievementStore';
 import Coin from './Coin';
 import { unlockId } from '@/lib/wallet';
 import { unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
 import styles from './ExteriorEditor.module.css';
 import pixel from './pixelUi.module.css';
-import { HOUSE_FOOTPRINT, HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, canPlaceHouseVariant } from '@/lib/houseCatalog';
+import {
+  HOUSE_FOOTPRINT, HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, canPlaceHouseVariant, exteriorChanged,
+} from '@/lib/houseCatalog';
 import type { MaterialId, RoofColor, WallColor } from '@/lib/types';
 
 function assetPath(variant: number, material: MaterialId, wallColor: WallColor, roofColor: RoofColor): string {
@@ -160,6 +163,11 @@ export default function ExteriorEditor() {
       );
       return;
     }
+    const before = {
+      variant: session.currentVariant, material: session.currentMaterial,
+      wallColor: session.currentWallColor, roofColor: session.currentRoofColor,
+    };
+    if (exteriorChanged(before, { variant, material, wallColor, roofColor })) track('exteriorsChanged');
     bus.emit('commit-exterior-variant', { houseId: session.houseId, variant, material, wallColor, roofColor });
     setSession(null);
     bus.emit('close-exterior-editor', undefined);

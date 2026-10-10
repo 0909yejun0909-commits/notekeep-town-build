@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
+import { trackDistinct } from '@/lib/achievementStore';
 import { DEFAULT_TOWN_BIOME, TOWN_BIOMES, TOWN_BIOME_LABEL, loadTownBiome, saveTownBiome } from '@/lib/biome';
 import { biomeUnlockId } from '@/lib/wallet';
 import { unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
@@ -55,11 +56,13 @@ export default function BiomePicker() {
     const onBuild = () => setBuilding(true);
     const onBuilt = () => setBuilding(false);
     bus.on('enter-house', onEnter);
+    bus.on('fast-travel', onEnter);
     bus.on('exit-house', onExit);
     bus.on('open-town-editor', onBuild);
     bus.on('close-town-editor', onBuilt);
     return () => {
       bus.off('enter-house', onEnter);
+      bus.off('fast-travel', onEnter);
       bus.off('exit-house', onExit);
       bus.off('open-town-editor', onBuild);
       bus.off('close-town-editor', onBuilt);
@@ -106,6 +109,8 @@ export default function BiomePicker() {
   }
 
   function apply(next: TownBiome) {
+    if (biome) trackDistinct('biomesTried', biome);
+    trackDistinct('biomesTried', next);
     setBiome(next);
     saveTownBiome(next);
     (window as any).__game?.registry.set('townBiome', next);

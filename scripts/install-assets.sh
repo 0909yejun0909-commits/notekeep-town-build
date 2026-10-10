@@ -90,12 +90,14 @@ cp "$D/Indoor_Decor.png"   "$DEST/furniture/decor.png"
 cp "$D/Standing_Lamps.png" "$DEST/furniture/lamps.png"
 cp "$D/Carpets.png"        "$DEST/furniture/carpets.png"
 # Later furniture sheets. Kenmi has moved and renamed files between pack versions, so each is
-# looked for by name anywhere in the packs, and a missing one is skipped with a warning
-# instead of stopping the whole install: the game just leaves those pieces out of the shop.
+# looked for in its usual folder and then by name anywhere in the packs, and a missing one is
+# skipped with a note instead of stopping the whole install: the game just leaves those
+# pieces out of the shop. A third argument names the usual folder when it isn't House_Decor;
+# those names are too generic to search for elsewhere.
 SKIPPED=""
 extra() {
-  local src="$D/$1"
-  if [ ! -f "$src" ]; then src="$(find "$KENMI" -type f -iname "$1" 2>/dev/null | head -n 1 || true)"; fi
+  local src="${3:-$D}/$1"
+  if [ ! -f "$src" ] && [ -z "${3:-}" ]; then src="$(find "$KENMI" -type f -iname "$1" 2>/dev/null | head -n 1 || true)"; fi
   if [ -n "$src" ] && [ -f "$src" ]; then
     cp "$src" "$DEST/furniture/$2"
   else
@@ -112,6 +114,15 @@ extra Planters.png                  planters.png
 extra Golden_Chest_Anim.png         chest_gold.png
 extra Golden_Jeweled_Chest_Anim.png chest_jeweled.png
 extra Metal_Chest_Anim.png          chest_metal.png
+extra windows.png                   windows.png
+extra Placeable_Decoration.png      tabletop.png
+extra Kitchen.png                   counters.png
+extra Decor.png                     festive.png      "$KENMI/Cute_Fantasy_Christmass/Decorations"
+extra Desert_Rugs.png               desert_rugs.png  "$KENMI/Cute_Fantasy_Desert/Props"
+extra Desert_Pots-Sacks.png         desert_pots.png  "$KENMI/Cute_Fantasy_Desert/Props"
+extra Golden_Pots.png               golden_pots.png  "$KENMI/Cute_Fantasy_Desert/Props"
+# Only a few vases and candlesticks come from the Dungeons pack, so it's optional too.
+extra Dungeon_Objects.png           curios.png       "$KENMI/Cute_Fantasy_Dungeons/Objects"
 
 P="$CF/Player"
 cp "$P/Player_Base/Player_Base_animations.png" "$DEST/character/base.png"

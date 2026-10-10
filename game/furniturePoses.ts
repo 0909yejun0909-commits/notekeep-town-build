@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TILE } from '@/game/gridMovement';
-import { outfitTextureKeys } from '@/game/playerSprite';
+import { layerKeys } from '@/game/playerSprite';
+import type { SkinId } from '@/lib/rewards';
 import type { Appearance, CatalogCategory, CatalogEntry, FurniturePlacement } from '@/lib/types';
 
 // Kenmi's character sheets have no sit or sleep animation, so both poses are put together
@@ -9,9 +10,14 @@ import type { Appearance, CatalogCategory, CatalogEntry, FurniturePlacement } fr
 // function that takes it apart again.
 
 // How far the player is lifted onto the seat, and how many rows of the piece's bottom edge
-// are drawn again over their legs. A stool is one tile tall, so the body has to sit higher.
+// are drawn again over their legs. A stool or bench is one tile tall, so the body sits higher.
 type Seat = { lift: number; front: number };
-const SEATS: Partial<Record<CatalogCategory, Seat>> = { stool: { lift: 6, front: 8 } };
+const SEATS: Partial<Record<CatalogCategory, Seat>> = {
+  stool: { lift: 6, front: 8 },
+  bench: { lift: 6, front: 8 },
+  beanbag: { lift: 4, front: 7 },
+  cushion: { lift: 2, front: 4 },
+};
 const DEFAULT_SEAT: Seat = { lift: 3, front: 5 };
 
 // Frame 2 of idle-down is the one with 1px eyes, which reads as closed.
@@ -81,6 +87,7 @@ export function lie(
   entry: CatalogEntry,
   placement: FurniturePlacement,
   appearance: Appearance,
+  skin: SkinId | null = null,
 ): () => void {
   const [fw] = entry.footprint;
   const [cx, cy, cw, ch] = HEAD;
@@ -88,7 +95,7 @@ export function lie(
   const headY = placement.gy * TILE - PILLOW_RISE;
 
   player.setVisible(false);
-  const head = ['player', ...outfitTextureKeys(appearance)].map((key, i) =>
+  const head = ['player', ...layerKeys(scene, appearance, skin)].map((key, i) =>
     scene.add
       .image(headX - cx, headY - cy, key, SLEEP_FRAME)
       .setOrigin(0, 0)

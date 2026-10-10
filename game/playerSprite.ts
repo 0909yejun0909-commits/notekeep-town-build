@@ -7,6 +7,8 @@ import {
   shirtTextureKey,
   shoesTextureKey,
 } from '@/lib/characterCatalog';
+import { outfitLayerKeys } from '@/lib/outfitLayers';
+import type { SkinId } from '@/lib/rewards';
 
 // Bottom to top, drawn over the 'player' base texture.
 export function outfitTextureKeys(appearance: Appearance): string[] {
@@ -18,6 +20,17 @@ export function outfitTextureKeys(appearance: Appearance): string[] {
   ];
 }
 
+// What gets drawn over the base: an equipped outfit's stack, or the picked clothes. If any texture
+// of an outfit failed to load (reward art not installed) the picked look is used instead, rather
+// than drawing a half-dressed player.
+export function layerKeys(scene: Phaser.Scene, appearance: Appearance, skin: SkinId | null): string[] {
+  if (skin) {
+    const keys = outfitLayerKeys(skin, appearance);
+    if (keys.length > 0 && keys.every((key) => scene.textures.exists(key))) return keys;
+  }
+  return outfitTextureKeys(appearance);
+}
+
 // Layers share the base's grid and frame indices, so they animate for free — never call
 // .play() on them. `appearance` defaults to the original fixed outfit for callers that don't
 // track a per-avatar look (e.g. remote players in game/remotePlayers.ts).
@@ -25,8 +38,9 @@ export function dressPlayer(
   scene: Phaser.Scene,
   sprite: Phaser.GameObjects.Sprite,
   appearance: Appearance = DEFAULT_APPEARANCE,
+  skin: SkinId | null = null,
 ): () => void {
-  const layers = outfitTextureKeys(appearance).map((key) => {
+  const layers = layerKeys(scene, appearance, skin).map((key) => {
     const layer = scene.add.sprite(sprite.x, sprite.y, key, sprite.frame.name);
     layer.setOrigin(sprite.originX, sprite.originY);
     return layer;

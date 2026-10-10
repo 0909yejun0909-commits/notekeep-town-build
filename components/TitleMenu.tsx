@@ -9,6 +9,7 @@ import Spotlight from './Spotlight';
 import spot from './Spotlight.module.css';
 import { openDemoVault, openVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
+import { sfx } from '@/game/audio/sfx';
 import type { VaultHandle } from '@/lib/types';
 import { endTutorial, markTutorialOffered, startTutorial, tutorialOffered } from '@/lib/tutorial';
 
@@ -50,8 +51,15 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
     setBusy(false);
   };
 
+  const moveTo = (i: number) => {
+    if (i === cursor) return;
+    sfx('move');
+    setCursor(i);
+  };
+
   const choose = (choice: Choice) => {
     if (busy) return;
+    sfx('select');
     if (choice !== 'hero') {
       markTutorialOffered();
       setFirstVisit(false);
@@ -77,8 +85,8 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
     if (view !== 'menu') return;
     const onKey = (e: KeyboardEvent) => {
       const k = e.key;
-      if (k === 'ArrowUp' || k === 'w' || k === 'W') setCursor((c) => (c + ITEMS.length - 1) % ITEMS.length);
-      else if (k === 'ArrowDown' || k === 's' || k === 'S') setCursor((c) => (c + 1) % ITEMS.length);
+      if (k === 'ArrowUp' || k === 'w' || k === 'W') moveTo((cursor + ITEMS.length - 1) % ITEMS.length);
+      else if (k === 'ArrowDown' || k === 's' || k === 'S') moveTo((cursor + 1) % ITEMS.length);
       else if (k === 'Enter' || k === ' ') {
         if (!e.repeat) choose(ITEMS[cursor][0]);
       } else return;
@@ -107,7 +115,7 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
                   data-tour={choice === 'demo' ? 'tutorial' : undefined}
                   className={`${pixel.item} ${i === cursor ? pixel.current : ''}`}
                   disabled={busy}
-                  onMouseEnter={() => setCursor(i)}
+                  onMouseEnter={() => moveTo(i)}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => choose(choice)}
                 >

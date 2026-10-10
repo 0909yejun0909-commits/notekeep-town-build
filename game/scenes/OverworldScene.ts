@@ -5,15 +5,17 @@ import { regionSize } from '@/lib/vault/parse';
 import { buildHouses, buildRoads, type Entry } from '@/game/tilemap';
 import { GridMovement, TILE, tileToWorld, worldToTile } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
+import { spawnPet } from '@/game/pet';
+import { trackMovement } from '@/game/achievementHooks';
+import { getEquipped } from '@/lib/achievementStore';
 import { spawnNpcs, type NpcSpawnArea } from '@/game/npc';
 import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from '@/lib/exteriorStore';
 import { bus } from '@/game/bus';
 import { attachRemotePlayers } from '@/game/remotePlayers';
-import { setSelfPresence } from '@/lib/multiplayer/session';
 import { hash } from '@/lib/types';
 import { HOUSE_FOOTPRINT } from '@/lib/houseCatalog';
 import { key, type WorldGrid } from '@/game/worldGrid';
-import { buildGround, GID_WATER, retileRoads, type Ground } from '@/game/ground';
+import { buildGround, GID_WATER, retileRoads, type Ground as GroundTiles } from '@/game/ground';
 import { placePonds, renderWater } from '@/game/water';
 import { placePlazas, renderPlazas, renderYards } from '@/game/townProps';
 import { buildForestBorder, buildGroundCover, buildGroves } from '@/game/nature';
@@ -23,6 +25,11 @@ import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
+import { setPlace } from '@/game/audio/music';
+import { setGround, type Ground } from '@/game/audio/sfx';
+import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
+import { MINIMAP_TILE, getMinimapSource, setMinimapSource, type MinimapSource } from '@/game/minimap';
+import { currentPresences, setSelfPresence } from '@/lib/multiplayer/session';
 import {
   BRUSH, GROUND_PRICE, TOWN_PROP_BY_ID, TREE_CUT_PRICE, emptyTownEdits, loadTownEdits, parseTownEdits, saveTownEdits,
   type TownEdits, type TownProp, type TownTool,
@@ -44,6 +51,7 @@ export default class OverworldScene extends Phaser.Scene {
   private lastDoorKey: string | null = null;
   private fingerprint: string | undefined;
   private editingExterior = false;
+  private houseLabels: { id: string; text: string; x: number; y: number; w: number }[] = [];
 
   // Village building: the town's grid and the player's edits to it, kept live while building.
   private grid: WorldGrid | null = null;
@@ -54,7 +62,7 @@ export default class OverworldScene extends Phaser.Scene {
   private building = false;
   private tool: TownTool | null = null;
   private hover: Phaser.GameObjects.Graphics | null = null;
-  private ground: Ground | null = null;
+  private ground: GroundTiles | null = null;
 
   private onCommitExterior = ({
     houseId,
@@ -115,10 +123,12 @@ export default class OverworldScene extends Phaser.Scene {
     if (!world || world.regions.length === 0) return;
 
     const biome = (this.game.registry.get('townBiome') as TownBiome | undefined) ?? DEFAULT_TOWN_BIOME;
+    setPlace(biome);
     if (biome === 'snow') ensureWinterTextures(this);
     if (biome === 'desert') ensureDesertTextures(this);
 
     this.doors = new Map();
+    this.houseLabels = [];
     this.lastDoorKey = null;
     this.editingExterior = false;
     this.building = false;
@@ -199,6 +209,11 @@ export default class OverworldScene extends Phaser.Scene {
         grid.keepClear.add(key(e.gx, e.gy + 1));
       }
 
+      for (const house of region.houses) {
+        const img = result.houseImages.get(house.id);
+        if (img) this.houseLabels.push({ id: `house:${house.id}`, text: house.name, x: img.x + img.displayWidth / 2, y: img.y, w: img.displayWidth });
+      }
+
       if (!isGuest) {
         for (const house of region.houses) {
           const img = result.houseImages.get(house.id);
@@ -210,6 +225,14 @@ export default class OverworldScene extends Phaser.Scene {
         }
       }
     });
+
+    // houseId -> door tile, so fast travel can send the player back out the right door.
+    const houseDoors = new Map<string, { gx: number; gy: number }>();
+    this.doors.forEach((houseId, key) => {
+      const [gx, gy] = key.split(',').map(Number);
+      houseDoors.set(houseId, { gx, gy });
+    });
+    this.game.registry.set('houseDoors', houseDoors);
 
     // Order matters: each step avoids what the earlier ones claimed. Roads come after the
     // plazas and ponds so they route around them, and everything decorative comes after roads.
@@ -224,6 +247,8 @@ export default class OverworldScene extends Phaser.Scene {
     paintRoads(grid, this.town);
     this.propObjects = placeProps(this, grid, this.town);
     this.paintObjects = renderTallGrass(this, grid, this.town);
+    const underfoot: Ground = biome === 'snow' ? 'snow' : biome === 'desert' ? 'sand' : 'grass';
+    setGround((gx, gy) => (grid.plaza.has(key(gx, gy)) ? 'stone' : grid.road.has(key(gx, gy)) ? 'road' : underfoot));
     const ground = buildGround(this, grid);
     this.ground = ground;
     renderWater(this, grid, ground.map, GID_WATER);
@@ -259,7 +284,9 @@ export default class OverworldScene extends Phaser.Scene {
     player.setOrigin(0.5, 0.64);
     player.setDepth(player.y);
     const appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    dressPlayer(this, player, appearance);
+    const equipped = getEquipped();
+    dressPlayer(this, player, appearance, equipped.skin);
+    spawnPet(this, player, equipped.pet, (y) => y);
     this.player = player;
 
     const isWalkable = (gx: number, gy: number) => {
@@ -269,6 +296,7 @@ export default class OverworldScene extends Phaser.Scene {
 
     this.movement = new GridMovement(this, player, isWalkable);
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: 'overworld', gx, gy, facing });
+    trackMovement(this, this.movement);
     setSelfPresence({ scene: 'overworld', gx: spawnGx, gy: spawnGy, facing: 'down' });
     attachRemotePlayers(this, 'overworld', player);
 
@@ -296,6 +324,10 @@ export default class OverworldScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.scale.off(Phaser.Scale.Events.RESIZE, fit));
     cam.startFollow(player, true);
 
+    setLabelSource(this.projectLabels);
+    const minimap = this.minimapSource(world, grid, player);
+    setMinimapSource(minimap);
+
     bus.on('commit-exterior-variant', this.onCommitExterior);
     bus.on('close-exterior-editor', this.onCloseExteriorEditor);
     bus.on('world-updated', this.onWorldUpdated);
@@ -305,6 +337,8 @@ export default class OverworldScene extends Phaser.Scene {
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onBuildPointer);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onBuildPointer);
     this.events.once('shutdown', () => {
+      if (getLabelSource() === this.projectLabels) setLabelSource(null);
+      if (getMinimapSource() === minimap) setMinimapSource(null);
       bus.off('commit-exterior-variant', this.onCommitExterior);
       bus.off('close-exterior-editor', this.onCloseExteriorEditor);
       bus.off('world-updated', this.onWorldUpdated);
@@ -312,6 +346,74 @@ export default class OverworldScene extends Phaser.Scene {
       bus.off('close-town-editor', this.onCloseTownEditor);
       bus.off('town-tool', this.onTownTool);
     });
+  }
+
+  // House names float over their roofs as page text (see game/sceneLabels.ts), only for the
+  // houses in view so a big vault doesn't put hundreds of labels on the page.
+  private projectLabels = (): SceneLabel[] => {
+    const cam = this.cameras.main;
+    const view = cam.worldView;
+    const rect = this.game.canvas.getBoundingClientRect();
+    const px = rect.width / this.scale.width;
+    const k = cam.zoom * px;
+    return this.houseLabels
+      .filter((l) => l.x + l.w / 2 > view.x && l.x - l.w / 2 < view.right && l.y > view.y && l.y - TILE < view.bottom)
+      .map((l) => ({
+        id: l.id,
+        text: l.text,
+        x: rect.left + (l.x - view.x) * k,
+        y: rect.top + (l.y - 2 - view.y) * k,
+        ox: 0.5,
+        oy: 1,
+        px,
+        maxWidth: (l.w + TILE) * k,
+      }));
+  };
+
+  private minimapSource(world: WorldModel, grid: WorldGrid, player: Phaser.GameObjects.Sprite): MinimapSource {
+    const tiles = new Uint8Array(grid.w * grid.h);
+    for (let y = 0; y < grid.h; y++) {
+      for (let x = 0; x < grid.w; x++) {
+        const k = key(x, y);
+        tiles[y * grid.w + x] = grid.water.has(k)
+          ? MINIMAP_TILE.water
+          : grid.road.has(k)
+            ? MINIMAP_TILE.road
+            : grid.plaza.has(k)
+              ? MINIMAP_TILE.plaza
+              : grid.blocked.has(k)
+                ? MINIMAP_TILE.blocked
+                : MINIMAP_TILE.grass;
+      }
+    }
+    const byId = new Map(world.regions.flatMap((r) => r.houses.map((h) => [h.id, h] as const)));
+    const cam = this.cameras.main;
+    return {
+      layout: {
+        w: grid.w,
+        h: grid.h,
+        biome: grid.biome,
+        tiles,
+        houses: grid.houses.map((r) => ({
+          id: r.houseId,
+          name: byId.get(r.houseId)?.name ?? '',
+          gx: r.gx,
+          gy: r.gy,
+          w: r.w,
+          h: r.h,
+          roof: byId.get(r.houseId)?.roofColor ?? 'red',
+        })),
+        areas: grid.areas.map((a) => ({ name: a.region.name, gx: a.originGx, gy: a.originGy, w: a.width, h: a.height })),
+        townName: world.name,
+      },
+      frame: () => ({
+        player: { x: player.x / TILE, y: player.y / TILE - 0.5 },
+        view: { x: cam.worldView.x / TILE, y: cam.worldView.y / TILE, w: cam.worldView.width / TILE, h: cam.worldView.height / TILE },
+        peers: currentPresences()
+          .filter(([, p]) => p.scene === 'overworld')
+          .map(([, p]) => ({ x: p.gx + 0.5, y: p.gy + 0.5 })),
+      }),
+    };
   }
 
   // ------------------------------------------------------------ village building

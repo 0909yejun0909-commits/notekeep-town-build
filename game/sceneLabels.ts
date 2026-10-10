@@ -11,6 +11,7 @@ export type SceneLabel = {
   ox: number; // which point of the label sits at x,y: 0 left/top .. 1 right/bottom
   oy: number;
   px: number; // CSS px per game pixel, so labels keep the game's proportions
+  font?: number; // game px, 14 unless set; keep to multiples of 7, ArcadeClassic's pixel grid
   maxWidth?: number; // CSS px
   color?: string;
   bare?: boolean; // no wooden box behind it

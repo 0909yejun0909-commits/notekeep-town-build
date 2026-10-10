@@ -1,0 +1,62 @@
+/* Same dark wood plank as the coin purse (components/CoinPurse.module.css). Top-right, below
+   the Invite button when multiplayer is on. */
+.corner {
+  position: absolute;
+  right: 16px;
+  z-index: 40;
+  font-family: var(--pixel-font);
+  word-spacing: 0.4em;
+  image-rendering: pixelated;
+}
+
+.plank {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 6px 6px;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 3px 0 #6d483b, 0 4px 0 rgba(24, 20, 37, 0.45);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  max-width: 260px;
+  min-width: 120px;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 24px;
+  color: #f4e4c1;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.header:hover .chevron {
+  color: #fff7e6;
+}
+
+.header:focus-visible {
+  outline: 2px solid #e69c69;
+}
+
+.place {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: #e4a672;
+}
+
+.map {
+  display: block;
+  border: 2px solid #1f1418;
+  image-rendering: pixelated;
+}

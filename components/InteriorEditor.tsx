@@ -1,19 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { bus } from '@/game/bus';
-import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl, missingExtra } from '@/lib/catalog';
+import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, NOTE_STORE_ITEMS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl, missingExtra } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, resizeLayout, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
-import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout, RoomSize } from '@/lib/types';
+import { canPlace, canPlaceShelf, canResize, resizeLayout, doorCells, doorSlots, placementSpot, restyleShelf, ridersOf, structuralOccupied, shelfSize, surfaceUnder, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import type { CatalogEntry, CatalogItemId, CatalogLayer, CatalogTier, FurniturePlacement, InteriorLayout, RoomSize } from '@/lib/types';
 import { MIN_WORDS, NOTE_REWARD, available, priceOf, unlockId } from '@/lib/wallet';
 import { buy, commitLayoutChange, unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
+import { sfx } from '@/game/audio/sfx';
 import { useSession } from '@/lib/multiplayer/session';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import Coin from './Coin';
 import styles from './InteriorEditor.module.css';
 
 const SHELF_SHEET_URL = furnitureSheetUrl(SHELF_SHEET);
+// One bookshelf segment, for the shelf's look picker.
+const BOOKSHELF_THUMB = { footprint: [2, 2] as [number, number], rect: SHELF_RECT, sheetUrl: SHELF_SHEET_URL };
 
 const TIER_COLOR: Record<CatalogTier, string> = {
   common: '#737373',
@@ -26,9 +29,13 @@ type Session = { houseId: string; roomId: string; doorsNeeded: number; roomNames
 
 const CROWDED = "You can't add rooms while friends are in your town.";
 // A selection/move target is either one furniture placement (its index) or
-// the shelf, which isn't part of `placements` — it's always present, always
-// the same style, only its position is editable.
+// the shelf, which isn't part of `placements` — it's always present; only its
+// position and look are editable.
 type Target = number | 'shelf';
+type Tab = CatalogGroupId | 'all';
+
+// Which piece a click on a cell means when several share it: what's on top.
+const RANK: Record<CatalogLayer, number> = { rug: 1, wall: 2, floor: 2, tabletop: 3 };
 
 // Pieces whose sheet isn't installed are left out (see EXTRA_SHEETS).
 const installed = (entry: CatalogEntry) =>
@@ -45,10 +52,8 @@ function useViewport() {
   return size;
 }
 
-// The shop column's width (four pieces a row) and the panel space above and around the room.
-const SIDE_W = 244;
-// How many tiles a piece may slide from the clicked tile to find room.
-const NUDGE = 2;
+// The catalogue column's width (four pieces a row) and the screen space around the room.
+const SIDE_W = 262;
 const CHROME_W = 110;
 const CHROME_H = 300;
 
@@ -57,20 +62,19 @@ function nameOf(item: CatalogItemId): string {
 }
 
 // A piece's sprite, scaled to fit a fixed box so every tile is the same size.
-function Thumb({ entry }: { entry: CatalogEntry }) {
-  const [fw, fh] = entry.footprint;
-  const [rx, ry] = entry.rect;
+function Thumb({ entry }: { entry: Pick<CatalogEntry, 'rect' | 'sheetUrl'> }) {
+  const [rx, ry, rw, rh] = entry.rect;
   return (
     <span className="flex h-10 w-10 items-center justify-center overflow-hidden">
       <span
         className="shrink-0"
         style={{
-          width: fw * 16,
-          height: fh * 16,
+          width: rw,
+          height: rh,
           backgroundImage: `url(${entry.sheetUrl})`,
           backgroundPosition: `-${rx}px -${ry}px`,
           imageRendering: 'pixelated',
-          transform: `scale(${40 / (16 * Math.max(fw, fh))})`,
+          transform: `scale(${Math.min(40 / Math.max(rw, rh), 2.5)})`,
         }}
       />
     </span>
@@ -78,18 +82,19 @@ function Thumb({ entry }: { entry: CatalogEntry }) {
 }
 
 // `owned` null = no wallet (free placement, no badge). The bottom border is the piece's tier.
-function ShopTile({ entry, owned, balance, disabled, onClick }: {
+function ShopTile({ entry, owned, balance, disabled, onClick, onHover }: {
   entry: CatalogEntry;
   owned: number | null;
   balance: number;
   disabled?: boolean;
   onClick: () => void;
+  onHover?: (entry: CatalogEntry | null) => void;
 }) {
   const price = priceOf(entry.id);
   const forSale = owned !== null && owned <= 0;
   const short = forSale && price !== null && price > balance;
   const title = disabled
-    ? `${entry.name} - no room for it near this spot`
+    ? `${entry.name} - doesn't fit here`
     : forSale
       ? `${entry.name} (${entry.tier}) - buy for ${price} coins`
       : owned !== null
@@ -102,6 +107,8 @@ function ShopTile({ entry, owned, balance, disabled, onClick }: {
       className={`${styles.tile} ${short ? styles.short : ''}`}
       style={{ borderBottomColor: TIER_COLOR[entry.tier] }}
       onClick={onClick}
+      onMouseEnter={() => onHover?.(entry)}
+      onMouseLeave={() => onHover?.(null)}
     >
       <Thumb entry={entry} />
       {owned !== null &&
@@ -130,7 +137,10 @@ export default function InteriorEditor() {
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
-  const [tab, setTab] = useState<CatalogGroupId>('living');
+  const [tab, setTab] = useState<Tab>('all');
+  const [query, setQuery] = useState('');
+  const [hovered, setHovered] = useState<CatalogEntry | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const { vault, setVault } = useVault();
   const study = useSession();
   // Rooms made during this edit: they exist on disk already, so their doorways join the draft.
@@ -213,14 +223,13 @@ export default function InteriorEditor() {
   if (!session || !draft) return null;
 
   const [w, h] = ROOM_SIZES[draft.roomSize];
+  // The room drawn as big as fits beside the catalogue, in whole steps so the pixels stay
+  // square; at least 2x (the panel scrolls on a short screen), at most 4x.
+  const zoom = Math.max(2, Math.min(4, Math.floor(Math.min(
+    (viewport.w - SIDE_W - CHROME_W) / (w * 16 + 6),
+    (viewport.h - CHROME_H) / (h * 16 + 6),
+  ))));
   const [doorGx, doorGy] = doorPositionFor(w, h);
-  // The room drawn as big as fits, in whole steps so the pixels stay square; at least 2x
-  // (the panel scrolls on a short screen), at most 4x.
-  const fit = Math.min(
-    (viewport.w * 0.96 - SIDE_W - CHROME_W) / (w * 16 + 6),
-    (viewport.h * 0.94 - CHROME_H) / (h * 16 + 6),
-  );
-  const zoom = Math.max(2, Math.min(4, Math.floor(fit)));
   // A fresh non-null binding: nested function declarations below close over `draft`
   // without narrowing (TS doesn't carry the early-return null check across function
   // boundaries), so they read this instead.
@@ -234,12 +243,14 @@ export default function InteriorEditor() {
   const fitsDoors = (next: InteriorLayout) => doorSlots(next, CATALOG_BY_ID, doorsNeeded).length >= doorsNeeded;
 
   // The perimeter and the doorways — cells nothing can ever occupy (disabled buttons). The
-  // shelf blocks furniture too, but it can move, so it's unioned in by `structuralWithShelf`
-  // only where furniture placement is validated.
+  // shelf blocks furniture too, but it can move, so canPlace checks it wherever it stands.
   const structural = structuralOccupied(w, h);
   for (const cell of roomDoors) structural.add(cell);
-  const structuralWithShelf = new Set(structural);
-  for (const cell of shelfOccupied(layout.shelf.gx, layout.shelf.gy)) structuralWithShelf.add(cell);
+  const spotFor = (item: CatalogItemId, gx: number, gy: number, skip?: ReadonlySet<number>) =>
+    placementSpot(layout, CATALOG_BY_ID, structural, w, h, item, gx, gy, skip);
+  const [shelfW, shelfH] = shelfSize(layout.shelf, CATALOG_BY_ID);
+  const shelfEntry = layout.shelf.item ? CATALOG_BY_ID[layout.shelf.item] : undefined;
+  const shelfName = shelfEntry?.name ?? 'Bookshelf';
 
   const crowded = study.status === 'live' && study.peers.length > 0;
   const addBlocked = crowded
@@ -281,111 +292,139 @@ export default function InteriorEditor() {
     const price = priceOf(item);
     if (price === null) return false;
     if (!buy(item)) {
+      sfx('error');
       setError(`${nameOf(item)} costs ${price} coins. Write notes to earn more!`);
       return false;
     }
+    sfx('buy');
     return true;
   }
 
+  // The topmost piece covering a cell: a candle over its table over the rug beneath.
   function cellPlacementIndex(gx: number, gy: number): number | null {
+    let best: number | null = null;
+    let bestRank = 0;
     for (let i = 0; i < layout.placements.length; i++) {
       const p = layout.placements[i];
       const entry = CATALOG_BY_ID[p.item];
       if (!entry) continue;
       const [fw, fh] = entry.footprint;
-      if (gx >= p.gx && gx < p.gx + fw && gy >= p.gy && gy < p.gy + fh) return i;
+      if (gx >= p.gx && gx < p.gx + fw && gy >= p.gy && gy < p.gy + fh && RANK[entry.layer] > bestRank) {
+        best = i;
+        bestRank = RANK[entry.layer];
+      }
     }
-    return null;
+    return best;
+  }
+
+  // Can something go on top of piece `idx` at this cell — furniture on a rug, a candle on a table?
+  function hosts(idx: number, gx: number, gy: number): boolean {
+    const entry = CATALOG_BY_ID[layout.placements[idx].item];
+    return entry?.layer === 'rug' || surfaceUnder(layout, CATALOG_BY_ID, gx, gy) === idx;
+  }
+
+  // The cell under the pointer: pieces drawn taller than their footprint, or under others, are
+  // clicked through to whatever is really at that spot.
+  function cellAt(e: React.MouseEvent): [number, number] | null {
+    const el = gridRef.current;
+    if (!el) return null;
+    // The grid is zoomed: map the pointer through its drawn size, less the 3px border.
+    const rect = el.getBoundingClientRect();
+    const gx = Math.floor(((e.clientX - rect.left) * ((w * 16 + 6) / rect.width) - 3) / 16);
+    const gy = Math.floor(((e.clientY - rect.top) * ((h * 16 + 6) / rect.height) - 3) / 16);
+    return gx >= 0 && gy >= 0 && gx < w && gy < h ? [gx, gy] : null;
+  }
+
+  function onPieceClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = cellAt(e);
+    if (cell) onCellClick(...cell);
   }
 
   function isShelfCell(gx: number, gy: number): boolean {
     const { gx: sx, gy: sy } = layout.shelf;
-    return gx >= sx && gx < sx + SHELF_W && gy >= sy && gy < sy + 2;
+    return gx >= sx && gx < sx + shelfW && gy >= sy && gy < sy + shelfH;
   }
 
-  function onCellClick(gx: number, gy: number) {
-    setError(null);
-    if (structural.has(`${gx},${gy}`)) return;
-    const idx = cellPlacementIndex(gx, gy);
-    const onShelf = isShelfCell(gx, gy);
-
-    if (moving !== null) {
-      if (idx !== null || onShelf) {
-        // Clicking any occupied cell (furniture, the shelf, or the moving
-        // piece's own current spot) cancels the pending move and selects
-        // whatever was clicked — more forgiving than silently ignoring it.
-        setMoving(null);
-        setSelected(onShelf ? 'shelf' : idx);
-        setPicking(null);
-        return;
-      }
-      if (!draft) return;
-      if (moving === 'shelf') {
-        const next = { ...draft, shelf: { gx, gy } };
-        if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy) || !fitsDoors(next)) {
-          setError("Doesn't fit there.");
-          return;
-        }
-        setDraft(next);
-        setSelected('shelf');
-        setMoving(null);
-        return;
-      }
-      const p = draft.placements[moving];
-      if (!canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, p.item, gx, gy, moving)) {
-        setError("Doesn't fit there.");
-        return;
-      }
-      const placements = draft.placements.slice();
-      placements[moving] = { ...p, gx, gy };
-      setDraft({ ...draft, placements });
-      setSelected(moving);
-      setMoving(null);
-      return;
-    }
-
+  function select(gx: number, gy: number, idx: number | null, onShelf: boolean) {
     if (onShelf) {
       setSelected('shelf');
       setPicking(null);
     } else if (idx !== null) {
       setSelected(idx);
-      setPicking(null);
+      setPicking(hosts(idx, gx, gy) ? { gx, gy } : null);
+      if (surfaceUnder(layout, CATALOG_BY_ID, gx, gy) === idx) setTab('tabletop');
     } else {
       setSelected(null);
       setPicking({ gx, gy });
     }
   }
 
-  // Where a piece goes for the tile you clicked: with its corner on that tile if it fits, or
-  // else the nearest spot that does, covering the tile if possible and never more than a
-  // couple of tiles off. A big piece by a wall would never fit otherwise.
-  function spotFor(item: CatalogItemId): { gx: number; gy: number } | null {
-    if (!picking || !draft) return null;
-    const [fw, fh] = CATALOG_BY_ID[item].footprint;
-    let best: { gx: number; gy: number; d: number } | null = null;
-    for (let gy = picking.gy - fh + 1 - NUDGE; gy <= picking.gy + NUDGE; gy++) {
-      for (let gx = picking.gx - fw + 1 - NUDGE; gx <= picking.gx + NUDGE; gx++) {
-        // How far the clicked tile is from the piece, then how far its corner moved.
-        const off = Math.max(gx - picking.gx, picking.gx - (gx + fw - 1), 0) + Math.max(gy - picking.gy, picking.gy - (gy + fh - 1), 0);
-        const d = off * 100 + Math.abs(gx - picking.gx) + Math.abs(gy - picking.gy);
-        if (best && d >= best.d) continue;
-        if (canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, item, gx, gy)) best = { gx, gy, d };
+  function onCellClick(gx: number, gy: number) {
+    setError(null);
+    const idx = cellPlacementIndex(gx, gy);
+    if (structural.has(`${gx},${gy}`) && idx === null) return;
+    const onShelf = isShelfCell(gx, gy);
+
+    if (moving !== null) {
+      if (!draft) return;
+      if (moving !== 'shelf') {
+        // Whatever stands on the piece moves with it.
+        const p = draft.placements[moving];
+        const riders = ridersOf(draft, CATALOG_BY_ID, moving);
+        const spot = spotFor(p.item, gx, gy, new Set([moving, ...riders]));
+        if (!spot) {
+          if ((idx !== null && idx !== moving) || onShelf) {
+            // Clicking something that's in the way cancels the move and selects it instead —
+            // more forgiving than silently ignoring it.
+            setMoving(null);
+            select(gx, gy, idx, onShelf);
+          } else {
+            setError("Doesn't fit there.");
+          }
+          return;
+        }
+        const [dx, dy] = [spot[0] - p.gx, spot[1] - p.gy];
+        const placements = draft.placements.map((q, i) =>
+          i === moving || riders.includes(i) ? { ...q, gx: q.gx + dx, gy: q.gy + dy } : q);
+        setDraft({ ...draft, placements });
+        setSelected(moving);
+        setMoving(null);
+        return;
       }
+      if (idx !== null && CATALOG_BY_ID[draft.placements[idx].item]?.layer !== 'rug') {
+        setMoving(null);
+        select(gx, gy, idx, onShelf);
+        return;
+      }
+      const next = { ...draft, shelf: { ...draft.shelf, gx, gy } };
+      if (!canPlaceShelf(draft, CATALOG_BY_ID, structural, w, h, gx, gy, draft.shelf.item) || !fitsDoors(next)) {
+        setError("Doesn't fit there.");
+        return;
+      }
+      setDraft(next);
+      setSelected('shelf');
+      setMoving(null);
+      return;
     }
-    return best;
+
+    select(gx, gy, idx, onShelf);
   }
 
   function placeItem(item: CatalogItemId) {
     if (!picking || !draft) return;
-    const spot = spotFor(item);
+    const spot = spotFor(item, picking.gx, picking.gy);
     if (!spot) {
-      setError('No room for that here. Pick a more open spot, or make the room bigger.');
+      setError("Doesn't fit there.");
       return;
     }
     if (!acquire(item)) return;
-    const placement: FurniturePlacement = { item, gx: spot.gx, gy: spot.gy, rotation: 0 };
+    const placement: FurniturePlacement = { item, gx: spot[0], gy: spot[1], rotation: 0 };
     setDraft({ ...draft, placements: [...draft.placements, placement] });
+    setSelected(null);
     setPicking(null);
+    setHovered(null);
   }
 
   function toggleMove() {
@@ -394,9 +433,24 @@ export default function InteriorEditor() {
     setMoving((prev) => (prev === selected ? null : selected));
   }
 
+  function restyle(item: CatalogItemId | undefined) {
+    if (!draft) return;
+    setError(null);
+    const shelf = restyleShelf(draft, CATALOG_BY_ID, structural, w, h, item);
+    const next = shelf && { ...draft, shelf };
+    if (!next || !fitsDoors(next)) {
+      setError("That doesn't fit here — move the shelf or clear some space first.");
+      return;
+    }
+    setDraft(next);
+    setMoving(null);
+  }
+
+  // Whatever stands on the piece is put away with it.
   function removeSelected() {
     if (selected === null || selected === 'shelf' || !draft) return;
-    setDraft({ ...draft, placements: draft.placements.filter((_, i) => i !== selected) });
+    const gone = new Set([selected, ...ridersOf(draft, CATALOG_BY_ID, selected)]);
+    setDraft({ ...draft, placements: draft.placements.filter((_, i) => !gone.has(i)) });
     setSelected(null);
     setMoving(null);
   }
@@ -421,6 +475,11 @@ export default function InteriorEditor() {
     placements[selected] = { ...placements[selected], item, rotation: 0 };
     setDraft({ ...draft, placements });
   }
+
+  const needle = query.trim().toLowerCase();
+  const shown = (tab === 'all' ? CATALOG : CATALOG_BY_GROUP[tab]).filter(
+    (e) => installed(e) && (!needle || e.name.toLowerCase().includes(needle)),
+  );
 
   const selectedPlacement = typeof selected === 'number' ? draft.placements[selected] : null;
   const selectedCategory = selectedPlacement ? CATALOG_BY_ID[selectedPlacement.item]?.category : null;
@@ -467,8 +526,6 @@ export default function InteriorEditor() {
           </div>
         </div>
 
-        <div className={styles.body}>
-        <div className={styles.main}>
         <div className={styles.row}>
           <span className={styles.label}>Floor</span>
           {FLOOR_FRAMES.map((frame, i) => (
@@ -587,8 +644,10 @@ export default function InteriorEditor() {
           </div>
         )}
 
+        <div className={styles.body}>
           <div className="flex flex-col gap-2">
             <div
+              ref={gridRef}
               className={styles.grid}
               data-tour="room-grid"
               style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)`, zoom }}
@@ -626,7 +685,7 @@ export default function InteriorEditor() {
                         e.preventDefault();
                         onCellClick(gx, gy);
                       }}
-                      title={isRoomDoor ? 'Doorway' : idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? 'Bookshelf' : ''}
+                      title={isRoomDoor ? 'Doorway' : idx !== null ? nameOf(draft.placements[idx].item) : onShelf ? shelfName : ''}
                     />
                   );
                 }),
@@ -636,7 +695,7 @@ export default function InteriorEditor() {
                 const entry = CATALOG_BY_ID[p.item];
                 if (!entry) return null;
                 const [fw, fh] = entry.footprint;
-                const [rx, ry] = entry.rect;
+                const [rx, ry, , rh] = entry.rect;
                 const isQuarterTurn = entry.rotations.length > 2;
                 return (
                   <div
@@ -656,20 +715,15 @@ export default function InteriorEditor() {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = 'move';
                     }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      onCellClick(p.gx, p.gy);
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCellClick(p.gx, p.gy);
-                    }}
+                    onDrop={onPieceClick}
+                    onClick={onPieceClick}
                     style={{
                       position: 'absolute',
+                      zIndex: RANK[entry.layer],
                       left: p.gx * 16,
-                      top: p.gy * 16,
+                      top: (p.gy + fh) * 16 - rh,
                       width: fw * 16,
-                      height: fh * 16,
+                      height: rh,
                       backgroundImage: `url(${entry.sheetUrl})`,
                       backgroundPosition: `-${rx}px -${ry}px`,
                       imageRendering: 'pixelated',
@@ -683,7 +737,7 @@ export default function InteriorEditor() {
                 );
               })}
 
-              {Array.from({ length: SHELF_SEGMENTS }).map((_, s) => (
+              {(shelfEntry ? [shelfEntry] : Array.from({ length: SHELF_SEGMENTS }, () => BOOKSHELF_THUMB)).map((sprite, s) => (
                 <div
                   key={`shelf-${s}`}
                   draggable
@@ -711,12 +765,13 @@ export default function InteriorEditor() {
                   }}
                   style={{
                     position: 'absolute',
+                    zIndex: 2,
                     left: (layout.shelf.gx + s * 2) * 16,
                     top: layout.shelf.gy * 16,
-                    width: 32,
-                    height: 32,
-                    backgroundImage: `url(${SHELF_SHEET_URL})`,
-                    backgroundPosition: `-${SHELF_RECT[0]}px -${SHELF_RECT[1]}px`,
+                    width: sprite.footprint[0] * 16,
+                    height: sprite.footprint[1] * 16,
+                    backgroundImage: `url(${sprite.sheetUrl})`,
+                    backgroundPosition: `-${sprite.rect[0]}px -${sprite.rect[1]}px`,
                     imageRendering: 'pixelated',
                     cursor: moving === 'shelf' ? 'grabbing' : 'grab',
                     outline: shelfSelected ? '2px solid #facc15' : undefined,
@@ -729,46 +784,8 @@ export default function InteriorEditor() {
             {error && <span className={`${styles.error} ${styles.under}`}>{error}</span>}
             {moving !== null && <span className={`${styles.note} ${styles.under}`}>Drag it, or click a cell to move it there.</span>}
           </div>
-        </div>
 
           <div className={styles.side} style={{ width: SIDE_W }}>
-            <div className={styles.sideInner}>
-            {picking && (
-              <>
-                <span className={`${styles.small} ${styles.sideNote}`}>
-                  {wallet.active ? 'Place from your inventory, or buy something new' : 'Place'}
-                </span>
-                <div className={styles.row}>
-                  {CATALOG_GROUPS.filter((g) => CATALOG_BY_GROUP[g.id].some(installed)).map((g) => (
-                    <button
-                      key={g.id}
-                      className={`${styles.btn} ${styles.tab} ${tab === g.id ? styles.on : ''}`}
-                      onClick={() => setTab(g.id)}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
-                </div>
-                <div className={styles.shelf} data-tour="furniture">
-                  {CATALOG_BY_GROUP[tab]
-                    .filter(installed)
-                    .map((entry) => ({ entry, fits: !!spotFor(entry.id) }))
-                    // Pieces that fit here first, so the shelf doesn't open on a row of greyed-out ones.
-                    .sort((a, b) => Number(b.fits) - Number(a.fits))
-                    .map(({ entry, fits }) => (
-                    <ShopTile
-                      key={entry.id}
-                      entry={entry}
-                      owned={wallet.active ? owned(entry.id) : null}
-                      balance={wallet.balance}
-                      disabled={!fits}
-                      onClick={() => placeItem(entry.id)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
             {selectedPlacement && (
               <>
                 <div className={styles.row}>
@@ -789,7 +806,7 @@ export default function InteriorEditor() {
                 {swaps.length > 0 && (
                   <>
                     <span className={styles.small}>Swap for</span>
-                    <div className={styles.row}>
+                    <div className={`${styles.shelf} ${styles.swaps}`}>
                       {swaps.map((entry) => (
                         <ShopTile
                           key={entry.id}
@@ -805,16 +822,96 @@ export default function InteriorEditor() {
               </>
             )}
 
-            {shelfSelected && (
-              <div className={styles.row}>
-                <span className={styles.small}>Selected: Bookshelf</span>
-                <button
-                  className={`${styles.btn} ${moving === 'shelf' ? styles.on : ''}`}
-                  onClick={toggleMove}
-                >
-                  {moving === 'shelf' ? 'Cancel move' : 'Move'}
-                </button>
+            {picking && (
+              <div className={styles.catalogue}>
+                <div className={styles.catalogueHead}>
+                  <span>Catalogue</span>
+                  <input
+                    className={styles.search}
+                    value={query}
+                    placeholder="Search"
+                    spellCheck={false}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setHovered(null);
+                    }}
+                    // Keep typed keys away from Phaser's window listeners.
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyUp={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div className={styles.tabs}>
+                  {[{ id: 'all' as const, label: 'All' }, ...CATALOG_GROUPS.filter((g) => CATALOG_BY_GROUP[g.id].some(installed))].map((g) => (
+                    <button
+                      key={g.id}
+                      className={`${styles.tab} ${tab === g.id ? styles.tabOn : ''}`}
+                      onClick={() => {
+                        setTab(g.id);
+                        setHovered(null);
+                      }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.shelf} data-tour="furniture">
+                  {shown
+                    .map((entry) => ({ entry, fits: !!spotFor(entry.id, picking.gx, picking.gy) }))
+                    // Pieces that fit here first, so the shelf doesn't open on a row of greyed-out ones.
+                    .sort((a, b) => Number(b.fits) - Number(a.fits))
+                    .map(({ entry, fits }) => (
+                    <ShopTile
+                      key={entry.id}
+                      entry={entry}
+                      owned={wallet.active ? owned(entry.id) : null}
+                      balance={wallet.balance}
+                      disabled={!fits}
+                      onClick={() => placeItem(entry.id)}
+                      onHover={setHovered}
+                    />
+                  ))}
+                  {shown.length === 0 && <span className={styles.small}>Nothing called that.</span>}
+                </div>
+                <div className={styles.info}>
+                  {hovered ? (
+                    <>
+                      <span>{hovered.name}</span>
+                      <span style={{ color: TIER_COLOR[hovered.tier] }}>{hovered.tier}</span>
+                    </>
+                  ) : (
+                    <span className={styles.small}>
+                      {shown.length} pieces{wallet.active ? ' - place one you own, or buy it' : ''}
+                    </span>
+                  )}
+                </div>
               </div>
+            )}
+
+            {shelfSelected && (
+              <>
+                <div className={styles.row}>
+                  <span className={styles.small}>Selected: {shelfName}</span>
+                  <button
+                    className={`${styles.btn} ${moving === 'shelf' ? styles.on : ''}`}
+                    onClick={toggleMove}
+                  >
+                    {moving === 'shelf' ? 'Cancel move' : 'Move'}
+                  </button>
+                </div>
+                <span className={styles.small}>Keep this room&apos;s notes in</span>
+                <div className={styles.row}>
+                  {[undefined, ...NOTE_STORE_ITEMS].map((item) => (
+                    <button
+                      key={item ?? 'bookshelf'}
+                      title={item ? nameOf(item) : 'Bookshelf'}
+                      className={`${styles.tile} ${layout.shelf.item === item ? styles.tileOn : ''}`}
+                      onClick={() => restyle(item)}
+                    >
+                      <Thumb entry={item ? CATALOG_BY_ID[item] : BOOKSHELF_THUMB} />
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {!picking && !selectedPlacement && !shelfSelected && (
@@ -828,7 +925,6 @@ export default function InteriorEditor() {
                 <Coin size={10} /> Every new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins.
               </p>
             )}
-          </div>
           </div>
         </div>
       </div>

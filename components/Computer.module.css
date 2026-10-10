@@ -1,0 +1,229 @@
+/* A beige CRT on the desk: NoteNet is the only thing it runs. */
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(24, 20, 37, 0.6);
+}
+
+.monitor {
+  width: min(760px, 100%);
+  padding: 22px 22px 34px;
+  background: #e8dcc0;
+  border: 3px solid #3f2832;
+  border-radius: 18px;
+  box-shadow: inset 0 -8px 0 #c7b996, inset 0 3px 0 #f6eedb, 0 6px 0 rgba(24, 20, 37, 0.35);
+}
+
+.glass {
+  position: relative;
+  min-height: 380px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 0;
+  background: #10202b;
+  border: 3px solid #3f2832;
+  border-radius: 10px;
+  box-shadow: inset 0 0 40px rgba(127, 212, 232, 0.12);
+  color: #d8f3dc;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+  border-radius: 8px;
+}
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -18px;
+  padding: 6px 12px 6px 18px;
+  background: #2b4a5e;
+  border-bottom: 2px solid #7fd4e8;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.icons {
+  display: flex;
+  gap: 8px;
+}
+
+.search,
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 17px;
+  color: #10202b;
+  background: #e8f6ee;
+  border: 2px solid #7fd4e8;
+  border-radius: 4px;
+  outline: none;
+}
+
+.search:focus,
+.input:focus {
+  box-shadow: 0 0 0 3px rgba(127, 212, 232, 0.35);
+}
+
+.bookmarks {
+  display: flex;
+  gap: 8px;
+}
+
+.bookmark,
+.small,
+.button {
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: #d8f3dc;
+  background: rgba(127, 212, 232, 0.12);
+  border: 2px solid rgba(127, 212, 232, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bookmark:hover,
+.small:hover,
+.button:hover {
+  background: rgba(127, 212, 232, 0.28);
+}
+
+.button {
+  padding: 6px 16px;
+  color: #10202b;
+  background: #7fd4e8;
+  border-color: #7fd4e8;
+  font-weight: 700;
+}
+
+.button:hover {
+  background: #a6e6f3;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.result.active {
+  color: #10202b;
+  background: #d8f3dc;
+}
+
+.resultTitle {
+  font-weight: 700;
+}
+
+.where {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.blocked,
+.settings {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.settings {
+  align-items: stretch;
+  text-align: left;
+}
+
+.big {
+  margin: 0;
+  color: #ffb347;
+  font-size: 30px;
+  font-weight: 700;
+  text-shadow: 3px 3px 0 #7e2a36;
+}
+
+.blocked .big {
+  font-size: 44px;
+}
+
+.blocked p,
+.settings p {
+  margin: 0;
+}
+
+.note {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.sites {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 210px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sites li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  border-bottom: 1px dashed rgba(127, 212, 232, 0.25);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.row .input {
+  flex: 1;
+}

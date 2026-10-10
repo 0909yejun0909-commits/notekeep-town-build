@@ -1,5 +1,9 @@
-import { FOOTPRINT, hash } from './types';
-import type { CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout, Room, RoomSize } from './types';
+import { hash } from './types';
+import type { CatalogEntry, CatalogItemId, FurnitureId, FurniturePlacement, House, InteriorLayout, Room, RoomSize } from './types';
+import { SURFACES } from './catalog';
+
+// What the layout rules need to know about each catalog piece.
+type Lookup = Record<CatalogItemId, Pick<CatalogEntry, 'footprint' | 'layer' | 'category'>>;
 
 export const SHELF_SEGMENTS = 3;
 export const SHELF_W = SHELF_SEGMENTS * 2;
@@ -23,7 +27,7 @@ export function doorPositionFor(w: number, h: number): [number, number] {
   return [Math.floor(w / 2), h - 1];
 }
 
-export const DECOR_TYPES: FurnitureId[] = ['rug', 'desk', 'bed', 'plant', 'lamp', 'chest', 'painting'];
+export const DECOR_TYPES: Exclude<FurnitureId, 'shelf'>[] = ['rug', 'desk', 'bed', 'plant', 'lamp', 'chest', 'painting'];
 
 export function footprintCells(gx: number, gy: number, fw: number, fh: number): string[] {
   const cells: string[] = [];
@@ -55,58 +59,58 @@ export function structuralOccupied(w: number, h: number): Set<string> {
   return occupied;
 }
 
-// The shelf's own footprint (SHELF_W x 2 tiles) plus its approach row
-// immediately below it — wherever it currently sits. Union this with
-// `structuralOccupied()` to get "everything furniture must avoid."
-export function shelfOccupied(shelfGx: number, shelfGy: number): Set<string> {
+type Shelf = InteriorLayout['shelf'];
+
+// The bookshelf is SHELF_W x 2 tiles; a fridge, cabinet or wardrobe standing in for it
+// takes its catalog footprint.
+export function shelfSize(
+  shelf: Shelf,
+  catalogById: Lookup,
+): [number, number] {
+  return (shelf.item && catalogById[shelf.item]?.footprint) || [SHELF_W, 2];
+}
+
+// The shelf's own footprint plus its approach row immediately below it — wherever it
+// currently sits. Union this with `structuralOccupied()` to get "everything furniture
+// must avoid."
+export function shelfOccupied(
+  shelf: Shelf,
+  catalogById: Lookup,
+): Set<string> {
+  const [sw, sh] = shelfSize(shelf, catalogById);
   const occupied = new Set<string>();
-  for (const cell of footprintCells(shelfGx, shelfGy, SHELF_W, 2)) occupied.add(cell);
-  for (let x = shelfGx; x < shelfGx + SHELF_W; x++) occupied.add(`${x},${shelfGy + 2}`);
+  for (const cell of footprintCells(shelf.gx, shelf.gy, sw, sh)) occupied.add(cell);
+  for (let x = shelf.gx; x < shelf.gx + sw; x++) occupied.add(`${x},${shelf.gy + sh}`);
   return occupied;
 }
 
-function pickSpot(
-  roomW: number,
-  fw: number,
-  fh: number,
-  occupied: Set<string>,
-  seed: number,
-  minY: number,
-  maxY: number,
-): [number, number] | null {
-  const positions: [number, number][] = [];
-  for (let y = minY; y <= maxY - fh; y++) {
-    for (let x = 1; x <= roomW - 1 - fw; x++) positions.push([x, y]);
-  }
-  if (positions.length === 0) return null;
-  const start = seed % positions.length;
-  for (let i = 0; i < positions.length; i++) {
-    const [x, y] = positions[(start + i) % positions.length];
-    let free = true;
-    for (let dx = 0; dx < fw && free; dx++) {
-      for (let dy = 0; dy < fh && free; dy++) {
-        if (occupied.has(`${x + dx},${y + dy}`)) free = false;
-      }
-    }
-    if (free) return [x, y];
-  }
-  return null;
-}
+type Arrangement = Record<(typeof DECOR_TYPES)[number], [number, number]>;
+
+// Hand-placed furnishings for an untouched room, so pieces sit against the walls in groups —
+// bed and desk in the back corners, a lamp beside the bed, the painting hung on the back
+// wall, the rug in the open middle — instead of scattered tiles. Pieces at gy 1 sit on the
+// back wall's second row the way the bookshelf does. Rooms start small (13x10, shelf at
+// x 3-8), whose doorways are all on the side and bottom walls, so every arrangement leaves
+// at least six of those free and keeps each note-holder's front tile free and reachable.
+const ARRANGEMENTS: Arrangement[] = [
+  { desk: [10, 1], bed: [1, 1], plant: [11, 5], lamp: [1, 3], chest: [1, 7], painting: [9, 1], rug: [5, 5] },
+  { desk: [1, 1], bed: [10, 1], plant: [11, 5], lamp: [1, 3], chest: [10, 3], painting: [9, 1], rug: [5, 5] },
+];
 
 export function shelfGxFor(w: number): number {
   return Math.floor((w - SHELF_W) / 2);
 }
 
 // The deterministic hash-derived layout for one room — the fallback when nothing is saved,
-// and the editor's first draft for an untouched room. The entrance seeds from the house, so
-// an untouched house looks exactly as it did with one room; other rooms seed from themselves.
-// Every room starts small: the bigger sizes are bought with coins in the editor.
+// and the editor's first draft for an untouched room. Every room starts small: the bigger
+// sizes are bought with coins in the editor. The entrance seeds from the house, so an
+// untouched house looks exactly as it did with one room; other rooms seed from themselves.
 export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
   const entrance = room.id === house.id;
   const roomSize: RoomSize = 'small';
   const seedId = entrance ? house.id : room.id;
   const seedName = entrance ? house.name : room.name;
-  const [w, h] = ROOM_SIZES[roomSize];
+  const [w] = ROOM_SIZES[roomSize];
   const shelfGx = shelfGxFor(w);
   const shelfGy = SHELF_GY;
   // Both stored as indices into FLOOR_FRAMES/WALL_TRIPLES, not raw sheet frame
@@ -115,80 +119,203 @@ export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
   const floorFrame = hash(seedId) % FLOOR_FRAMES.length;
   const wallTriple = hash(seedName) % WALL_TRIPLES.length;
 
-  const occupied = structuralOccupied(w, h);
-  for (const cell of shelfOccupied(shelfGx, shelfGy)) occupied.add(cell);
+  const arrangement = ARRANGEMENTS[hash(`${seedId}:arrangement`) % ARRANGEMENTS.length];
   const pending = [...room.notes];
-  const placements: FurniturePlacement[] = [];
-
-  for (const type of DECOR_TYPES) {
-    const [fw, fh] = FOOTPRINT[type];
-    const seed = hash(`${seedId}:${type}`);
-    const spot = pickSpot(w, fw, fh, occupied, seed, SHELF_GY + 2, h - 3);
-    if (!spot) continue;
-    const [dx, dy] = spot;
+  const placements: FurniturePlacement[] = DECOR_TYPES.map((type) => {
+    const [gx, gy] = arrangement[type];
     const note = type === 'rug' ? undefined : pending.shift();
-    for (const cell of footprintCells(dx, dy, fw, fh)) occupied.add(cell);
-    if (note) occupied.add(`${dx + Math.floor(fw / 2)},${dy + fh}`);
-    placements.push({ item: type, gx: dx, gy: dy, rotation: 0, noteId: note?.id });
-  }
+    return { item: type, gx, gy, rotation: 0, noteId: note?.id };
+  });
 
   return { floorFrame, wallTriple, roomSize, shelf: { gx: shelfGx, gy: shelfGy }, placements };
 }
 
-// Can `item` be placed at (gx, gy) in `layout`, given the room's structural tiles?
-// `skipIndex` excludes one existing placement from the overlap check (moving it).
+function cellsOf(p: { gx: number; gy: number }, entry: { footprint: [number, number] }): string[] {
+  return footprintCells(p.gx, p.gy, entry.footprint[0], entry.footprint[1]);
+}
+
+// A surface's back row is where tabletop pieces stand.
+function surfaceTop(p: FurniturePlacement, entry: Lookup[string]): string[] {
+  if (SURFACES[entry.category] === undefined) return [];
+  return footprintCells(p.gx, p.gy, entry.footprint[0], 1);
+}
+
+// The surface whose back row holds (gx, gy), if any — what a tabletop piece there stands on.
+export function surfaceUnder(
+  layout: InteriorLayout,
+  catalogById: Lookup,
+  gx: number,
+  gy: number,
+  skip: ReadonlySet<number> = new Set(),
+): number | null {
+  for (let i = 0; i < layout.placements.length; i++) {
+    if (skip.has(i)) continue;
+    const p = layout.placements[i];
+    const entry = catalogById[p.item];
+    if (entry && surfaceTop(p, entry).includes(`${gx},${gy}`)) return i;
+  }
+  return null;
+}
+
+// The tabletop pieces standing on placement `index`. They move and go away with it.
+export function ridersOf(layout: InteriorLayout, catalogById: Lookup, index: number): number[] {
+  const p = layout.placements[index];
+  const entry = p && catalogById[p.item];
+  if (!entry) return [];
+  const top = new Set(surfaceTop(p, entry));
+  if (top.size === 0) return [];
+  const out: number[] = [];
+  layout.placements.forEach((r, i) => {
+    const re = catalogById[r.item];
+    if (i !== index && re?.layer === 'tabletop' && cellsOf(r, re).every((c) => top.has(c))) out.push(i);
+  });
+  return out;
+}
+
+// Can `item` be placed at (gx, gy) in `layout`? `structural` is the perimeter and the doorways
+// (the shelf is checked here, wherever it stands). `skip` excludes placements being moved.
+// Like Stardew: rugs only avoid other rugs, so furniture stands on them; wall pieces hang on
+// the back wall's two rows; tabletop pieces stand on a surface's back row, or on the floor.
 export function canPlace(
   layout: InteriorLayout,
-  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  catalogById: Lookup,
   structural: Set<string>,
   w: number,
   h: number,
   item: CatalogItemId,
   gx: number,
   gy: number,
-  skipIndex?: number,
+  skip?: number | ReadonlySet<number>,
 ): boolean {
   const entry = catalogById[item];
   if (!entry) return false;
   const [fw, fh] = entry.footprint;
-  if (gx < 1 || gy < 1 || gx + fw > w - 1 || gy + fh > h - 1) return false;
+  const skipped = typeof skip === 'number' ? new Set([skip]) : (skip ?? new Set<number>());
   const cells = footprintCells(gx, gy, fw, fh);
-  if (cells.some((c) => structural.has(c))) return false;
-  for (let i = 0; i < layout.placements.length; i++) {
-    if (i === skipIndex) continue;
-    const p = layout.placements[i];
+  const others: Array<{ layer: string; cells: string[] }> = [];
+  layout.placements.forEach((p, i) => {
     const pe = catalogById[p.item];
-    if (!pe) continue;
-    const pCells = footprintCells(p.gx, p.gy, pe.footprint[0], pe.footprint[1]);
-    if (cells.some((c) => pCells.includes(c))) return false;
+    if (pe && !skipped.has(i)) others.push({ layer: pe.layer, cells: cellsOf(p, pe) });
+  });
+  const hits = (layers: (layer: string) => boolean) =>
+    others.some((o) => layers(o.layer) && o.cells.some((c) => cells.includes(c)));
+
+  if (entry.layer === 'wall') {
+    if (gx < 1 || gx + fw > w - 1 || gy < 0 || gy + fh > 2) return false;
+    // Row 0 is the wall itself, so only a doorway below it rules a cell out.
+    if (cells.some((c) => {
+      const [x, y] = c.split(',').map(Number);
+      return structural.has(y === 0 ? `${x},1` : c);
+    })) return false;
+    const [sw, sh] = shelfSize(layout.shelf, catalogById);
+    const shelf = footprintCells(layout.shelf.gx, layout.shelf.gy, sw, sh);
+    if (cells.some((c) => shelf.includes(c))) return false;
+    return !hits((l) => l !== 'rug');
   }
-  return true;
+
+  if (gx < 1 || gy < 1 || gx + fw > w - 1 || gy + fh > h - 1) return false;
+  if (cells.some((c) => structural.has(c))) return false;
+  if (entry.layer === 'rug') return !hits((l) => l === 'rug');
+
+  if (entry.layer === 'tabletop' && cells.every((c) => {
+    const [x, y] = c.split(',').map(Number);
+    return surfaceUnder(layout, catalogById, x, y, skipped) !== null;
+  })) {
+    return !hits((l) => l === 'tabletop');
+  }
+
+  const shelf = shelfOccupied(layout.shelf, catalogById);
+  if (cells.some((c) => shelf.has(c))) return false;
+  return !hits((l) => l !== 'rug');
 }
 
-// Can the shelf (always SHELF_W x 2 tiles) move to (gx, gy)? `structural` here
+// How many tiles a piece may slide from the clicked cell to find room.
+const NUDGE = 2;
+
+// Where a click at (gx, gy) puts `item`: that cell as its top-left corner, or — for a wall
+// piece too tall to start there — hung so its bottom row is the clicked one. Failing both, the
+// nearest spot within NUDGE tiles, covering the clicked cell if any does, so a big piece by a
+// wall or another piece still goes in instead of greying out. Null if nothing near fits.
+export function placementSpot(
+  layout: InteriorLayout,
+  catalogById: Lookup,
+  structural: Set<string>,
+  w: number,
+  h: number,
+  item: CatalogItemId,
+  gx: number,
+  gy: number,
+  skip?: number | ReadonlySet<number>,
+): [number, number] | null {
+  if (canPlace(layout, catalogById, structural, w, h, item, gx, gy, skip)) return [gx, gy];
+  const entry = catalogById[item];
+  if (!entry) return null;
+  const [fw, fh] = entry.footprint;
+  if (entry.layer === 'wall') {
+    const up = gy - fh + 1;
+    if (up !== gy && canPlace(layout, catalogById, structural, w, h, item, gx, up, skip)) return [gx, up];
+  }
+  let best: [number, number] | null = null;
+  let bestD = Infinity;
+  for (let y = gy - fh + 1 - NUDGE; y <= gy + NUDGE; y++) {
+    for (let x = gx - fw + 1 - NUDGE; x <= gx + NUDGE; x++) {
+      // How far the clicked cell is from the piece, then how far its corner moved.
+      const off = Math.max(x - gx, gx - (x + fw - 1), 0) + Math.max(y - gy, gy - (y + fh - 1), 0);
+      const d = off * 100 + Math.abs(x - gx) + Math.abs(y - gy);
+      if (d >= bestD || !canPlace(layout, catalogById, structural, w, h, item, x, y, skip)) continue;
+      best = [x, y];
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+// Can the shelf, looking like `item`, move to (gx, gy)? `structural` here
 // is `structuralOccupied()` only (the perimeter) — deliberately NOT unioned
 // with the shelf's own current position, since we're choosing where it
 // moves TO and it shouldn't collide with itself. Checked against every
 // furniture placement's real footprint via `catalogById`.
 export function canPlaceShelf(
   layout: InteriorLayout,
-  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  catalogById: Lookup,
   structural: Set<string>,
   w: number,
   h: number,
   gx: number,
   gy: number,
+  item: CatalogItemId | undefined,
 ): boolean {
-  if (gx < 1 || gy < 1 || gx + SHELF_W > w - 1 || gy + 2 > h - 1) return false;
-  const cells = footprintCells(gx, gy, SHELF_W, 2);
+  const [sw, sh] = shelfSize({ gx, gy, item }, catalogById);
+  if (gx < 1 || gy < 1 || gx + sw > w - 1 || gy + sh > h - 1) return false;
+  const cells = footprintCells(gx, gy, sw, sh);
   if (cells.some((c) => structural.has(c))) return false;
   for (const p of layout.placements) {
     const pe = catalogById[p.item];
-    if (!pe) continue;
+    if (!pe || pe.layer === 'rug') continue;
     const pCells = footprintCells(p.gx, p.gy, pe.footprint[0], pe.footprint[1]);
     if (cells.some((c) => pCells.includes(c))) return false;
   }
   return true;
+}
+
+// The shelf restyled as `item` (undefined = the bookshelf), centred on where it stood so a
+// fridge takes the middle of the old bookshelf and a bookshelf grows out from the fridge —
+// or, if that doesn't fit, kept at the same left edge. Null when neither fits.
+export function restyleShelf(
+  layout: InteriorLayout,
+  catalogById: Lookup,
+  structural: Set<string>,
+  w: number,
+  h: number,
+  item: CatalogItemId | undefined,
+): Shelf | null {
+  const [oldW] = shelfSize(layout.shelf, catalogById);
+  const [newW] = shelfSize({ ...layout.shelf, item }, catalogById);
+  const { gx, gy } = layout.shelf;
+  for (const x of [gx + Math.trunc((oldW - newW) / 2), gx]) {
+    if (canPlaceShelf(layout, catalogById, structural, w, h, x, gy, item)) return item ? { gx: x, gy, item } : { gx: x, gy };
+  }
+  return null;
 }
 
 // Would every existing placement and the shelf still fit inside the room at `size`, with
@@ -197,17 +324,18 @@ export function canPlaceShelf(
 // top-left corner, so pieces can't newly overlap each other.
 export function canResize(
   layout: InteriorLayout,
-  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  catalogById: Lookup,
   size: RoomSize,
   doorsNeeded = 0,
 ): boolean {
   const [newW, newH] = ROOM_SIZES[size];
   const structural = structuralOccupied(newW, newH);
 
-  const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, SHELF_W, 2);
+  const [sw, sh] = shelfSize(layout.shelf, catalogById);
+  const shelfCells = footprintCells(layout.shelf.gx, layout.shelf.gy, sw, sh);
   if (
     layout.shelf.gx < 1 || layout.shelf.gy < 1 ||
-    layout.shelf.gx + SHELF_W > newW - 1 || layout.shelf.gy + 2 > newH - 1 ||
+    layout.shelf.gx + sw > newW - 1 || layout.shelf.gy + sh > newH - 1 ||
     shelfCells.some((c) => structural.has(c))
   ) {
     return false;
@@ -217,6 +345,10 @@ export function canResize(
     const entry = catalogById[p.item];
     if (!entry) continue;
     const [fw, fh] = entry.footprint;
+    if (entry.layer === 'wall') {
+      if (p.gx + fw > newW - 1) return false;
+      continue;
+    }
     if (p.gx < 1 || p.gy < 1 || p.gx + fw > newW - 1 || p.gy + fh > newH - 1) return false;
     const cells = footprintCells(p.gx, p.gy, fw, fh);
     if (cells.some((c) => structural.has(c))) return false;
@@ -230,42 +362,62 @@ export function canResize(
 // keep `doorsNeeded` doorways at that size.
 export function resizeLayout(
   layout: InteriorLayout,
-  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  catalogById: Lookup,
   size: RoomSize,
   doorsNeeded = 0,
 ): { layout: InteriorLayout; putAway: number } | null {
   const [w, h] = ROOM_SIZES[size];
-  const blocked = structuralOccupied(w, h);
-  const fits = (gx: number, gy: number, fw: number, fh: number) =>
+  const structural = structuralOccupied(w, h);
+  const inside = (gx: number, gy: number, fw: number, fh: number) =>
     gx >= 1 && gy >= 1 && gx + fw <= w - 1 && gy + fh <= h - 1 &&
-    footprintCells(gx, gy, fw, fh).every((c) => !blocked.has(c));
+    footprintCells(gx, gy, fw, fh).every((c) => !structural.has(c));
 
   let shelf = layout.shelf;
-  if (!fits(shelf.gx, shelf.gy, SHELF_W, 2)) shelf = { gx: shelfGxFor(w), gy: SHELF_GY };
-  for (const c of footprintCells(shelf.gx, shelf.gy, SHELF_W, 2)) blocked.add(c);
+  if (!inside(shelf.gx, shelf.gy, SHELF_W, 2)) shelf = { gx: shelfGxFor(w), gy: SHELF_GY };
+  const shelfCells = new Set(footprintCells(shelf.gx, shelf.gy, SHELF_W, 2));
 
+  // Nothing moves relative to the room's top-left corner, so a piece still inside the new walls
+  // can't newly overlap another one. Wall pieces hang where they are or are put away.
   const placed: (FurniturePlacement | null)[] = layout.placements.map(() => null);
   const misfits: number[] = [];
+  let putAway = 0;
+  const strands = new Set<number>();
   layout.placements.forEach((p, i) => {
     const entry = catalogById[p.item];
     if (!entry) return;
     const [fw, fh] = entry.footprint;
-    if (!fits(p.gx, p.gy, fw, fh)) return misfits.push(i);
-    placed[i] = p;
-    for (const c of footprintCells(p.gx, p.gy, fw, fh)) blocked.add(c);
+    if (entry.layer === 'wall') {
+      if (p.gx + fw <= w - 1) placed[i] = p;
+      else putAway++;
+      return;
+    }
+    const clear = entry.layer === 'rug' || footprintCells(p.gx, p.gy, fw, fh).every((c) => !shelfCells.has(c));
+    if (inside(p.gx, p.gy, fw, fh) && clear) placed[i] = p;
+    else {
+      misfits.push(i);
+      for (const r of ridersOf(layout, catalogById, i)) strands.add(r);
+    }
   });
+  // A tabletop piece whose table is leaving goes with it.
+  for (const r of strands) {
+    if (placed[r]) {
+      placed[r] = null;
+      misfits.push(r);
+    }
+  }
 
-  let putAway = 0;
-  for (const i of misfits) {
+  const resized = (): InteriorLayout => ({ ...layout, roomSize: size, shelf, placements: placed.filter((p): p is FurniturePlacement => p !== null) });
+  for (const i of misfits.sort((a, b) => a - b)) {
     const p = layout.placements[i];
     const [fw, fh] = catalogById[p.item].footprint;
     const tx = Math.min(p.gx, w - 1 - fw), ty = Math.min(p.gy, h - 1 - fh);
+    const now = resized();
     let best: [number, number] | null = null;
     let bestD = Infinity;
     for (let y = 1; y + fh <= h - 1; y++) {
       for (let x = 1; x + fw <= w - 1; x++) {
         const d = Math.abs(x - tx) + Math.abs(y - ty);
-        if (d < bestD && fits(x, y, fw, fh)) [best, bestD] = [[x, y], d];
+        if (d < bestD && canPlace(now, catalogById, structural, w, h, p.item, x, y)) [best, bestD] = [[x, y], d];
       }
     }
     if (!best) {
@@ -273,15 +425,9 @@ export function resizeLayout(
       continue;
     }
     placed[i] = { ...p, gx: best[0], gy: best[1] };
-    for (const c of footprintCells(best[0], best[1], fw, fh)) blocked.add(c);
   }
 
-  const next: InteriorLayout = {
-    ...layout,
-    roomSize: size,
-    shelf,
-    placements: placed.filter((p): p is FurniturePlacement => p !== null),
-  };
+  const next = resized();
   if (doorSlots(next, catalogById, doorsNeeded).length < doorsNeeded) return null;
   return { layout: next, putAway };
 }
@@ -319,11 +465,11 @@ function doorCandidates(w: number, h: number): DoorSlot[] {
 // the scene and the editor both derive doors from the layout, so they always agree.
 export function doorSlots(
   layout: InteriorLayout,
-  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  catalogById: Lookup,
   max: number,
 ): DoorSlot[] {
   const [w, h] = ROOM_SIZES[layout.roomSize];
-  const occupied = shelfOccupied(layout.shelf.gx, layout.shelf.gy);
+  const occupied = shelfOccupied(layout.shelf, catalogById);
   for (const p of layout.placements) {
     const entry = catalogById[p.item];
     if (!entry) continue;
@@ -332,7 +478,8 @@ export function doorSlots(
   const out: DoorSlot[] = [];
   for (const slot of doorCandidates(w, h)) {
     if (out.length >= max) break;
-    if (slot.inside.some(([x, y]) => occupied.has(`${x},${y}`))) continue;
+    // The doorway's own tile counts too: a wall piece can hang where a top-wall door would go.
+    if ([...slot.inside, [slot.gx, slot.gy]].some(([x, y]) => occupied.has(`${x},${y}`))) continue;
     out.push(slot);
   }
   return out;

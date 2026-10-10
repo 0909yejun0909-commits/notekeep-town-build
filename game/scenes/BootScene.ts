@@ -1,5 +1,6 @@
+import { HAIR_LAYER, PETS, SKINS, outfitAssetPath, outfitTextureKey, petAssetPath, petTextureKey } from '@/lib/rewards';
 import Phaser from 'phaser';
-import { CATALOG, EXTRA_SHEETS, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
+import { CATALOG, EXTRA_SHEETS, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl, furnitureTextureKey } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
 import {
   CLOTH_COLORS,
@@ -26,14 +27,18 @@ export default class BootScene extends Phaser.Scene {
   preload() {
     // Phaser text keeps whatever font was ready when it was drawn; start the pixel font now.
     void document.fonts?.load("28px 'Tiny5'");
+    document.fonts?.load("9px 'CuteFantasy'").catch(() => {});
 
     // Phaser draws any texture that failed to load as a black box, which looks like broken
     // code; collect the failures so components/MissingArtBanner.tsx can say what's missing.
     const missing: string[] = [];
-    // The later furniture sheets are optional: their pieces just stay out of the shop.
-    const optional = new Set(EXTRA_SHEETS.map((sheet) => `assets/furniture/${sheet}.png`));
+    // Optional art leaves no gap worth a warning: reward art (installed by `npm run
+    // install-rewards`) just means no rewards show, and a later furniture sheet's pieces just
+    // stay out of the shop.
+    const optional = new Set(EXTRA_SHEETS.map((sheet) => furnitureSheetUrl(sheet).slice(1)));
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
-      if (!optional.has(file.url as string)) missing.push(file.url as string);
+      const url = file.url as string;
+      if (!/assets\/(outfits|pets)\//.test(url) && !optional.has(url)) missing.push(url);
     });
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       if (missing.length === 0) return;
@@ -67,7 +72,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('interior-doors', 'assets/interior/doors.png', { frameWidth: 16, frameHeight: 16 });
 
     for (const sheet of FURNITURE_SHEETS) {
-      this.load.image(furnitureTextureKey(sheet), `assets/furniture/${sheet}.png`);
+      this.load.image(furnitureTextureKey(sheet), furnitureSheetUrl(sheet).slice(1));
     }
 
     this.load.spritesheet('tree-oak', 'assets/terrain/tree_oak.png', { frameWidth: 32, frameHeight: 48 });
@@ -94,6 +99,15 @@ export default class BootScene extends Phaser.Scene {
       this.load.spritesheet(shoesTextureKey(color), shoesAssetPath(color), { frameWidth: 64, frameHeight: 64 });
     }
 
+    SKINS.forEach((outfit) =>
+      outfit.layers.forEach((layer, i) => {
+        if (layer !== HAIR_LAYER) {
+          this.load.spritesheet(outfitTextureKey(outfit.id, i), outfitAssetPath(outfit.id, i), { frameWidth: 64, frameHeight: 64 });
+        }
+      }),
+    );
+    for (const p of PETS) this.load.spritesheet(petTextureKey(p.id), petAssetPath(p.id), { frameWidth: 16, frameHeight: 16 });
+
     preloadScenery(this);
 
     this.load.image('ui-book', 'assets/ui/book.png');
@@ -107,6 +121,9 @@ export default class BootScene extends Phaser.Scene {
       if (!this.textures.exists(entry.textureKey)) continue;
       const [x, y, w, h] = entry.rect;
       this.textures.get(entry.textureKey).add(entry.frameKey, 0, x, y, w, h);
+      for (const [view, dy] of Object.entries(entry.views ?? {})) {
+        this.textures.get(entry.textureKey).add(`${entry.frameKey}@${view}`, 0, x, y + dy, w, h);
+      }
     }
 
     const facings: Array<['down' | 'right' | 'up', number]> = [

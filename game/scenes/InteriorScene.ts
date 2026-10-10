@@ -3,22 +3,31 @@ import { bus } from '@/game/bus';
 import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLabels';
 import { GridMovement, TILE, tileToWorld, worldToTile, type Walkable } from '@/game/gridMovement';
 import { dressPlayer } from '@/game/playerSprite';
+import { spawnPet } from '@/game/pet';
+import { trackMovement } from '@/game/achievementHooks';
+import { getEquipped } from '@/lib/achievementStore';
+import type { SkinId } from '@/lib/rewards';
 import { lie, sit } from '@/game/furniturePoses';
+import { tabFor } from '@/lib/chill';
+import { setPlace } from '@/game/audio/music';
+import { setGround, sfx } from '@/game/audio/sfx';
 import type { Appearance, CatalogEntry, House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
 import { DEFAULT_APPEARANCE } from '@/lib/characterCatalog';
 import { loadAppearance } from '@/lib/appearance';
 import {
   SHELF_SEGMENTS,
   SHELF_GY,
-  SHELF_W,
+  shelfSize,
   FLOOR_FRAMES,
   WALL_TRIPLES,
   ROOM_SIZES,
   doorPositionFor,
   doorSlots,
+  footprintCells,
   computeDefaultLayout,
   HEADER_TILES,
   TOP_FIRST_GX,
+  surfaceUnder,
   type DoorSlot,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
@@ -27,8 +36,11 @@ import {
   missingExtra,
   FURNITURE_ACTIONS,
   SHELF_SHEET,
+  SURFACES,
   WALKABLE,
   furnitureTextureKey,
+  windowView,
+  shelfLook,
   type FurnitureAction,
 } from '@/lib/catalog';
 import { attachRemotePlayers } from '@/game/remotePlayers';
@@ -47,7 +59,6 @@ type PieceAction = {
   action: FurnitureAction;
   entry: CatalogEntry;
   placement: FurniturePlacement;
-  note?: NoteRef;
 };
 
 // A doorway in the entrance's wall to one of the house's other rooms.
@@ -56,6 +67,13 @@ type Door = { slot: DoorSlot; roomId: string; name: string };
 function shorten(name: string, max: number): string {
   return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
 }
+
+// Rugs under everything, wall pieces over the wall, tabletop pieces over what they stand on;
+// the player (10) is drawn over all of them.
+const LAYER_DEPTH = { rug: 2, wall: 3, floor: 5, tabletop: 6 } as const;
+
+// Half the overworld's, so room names fit along a small room's top wall.
+const ROOM_LABEL_FONT = 7;
 
 // In-room labels are drawn by the page over the game (components/SceneLabels.tsx), sharp at
 // any scale. Here they're kept in room coordinates; x,y is where their origin point sits.
@@ -76,16 +94,19 @@ export default class InteriorScene extends Phaser.Scene {
   private doors = new Map<string, Door>();
   private doorAhead = new Map<string, Door>();
   private doorHint!: RoomLabel;
+  private arriveNoteId: string | undefined;
 
   private doorGx = 0;
   private doorGy = 0;
   private blocked = new Set<string>();
   private shelfApproach = new Set<string>();
   private approach = new Map<string, NoteRef>();
-  private actions = new Map<string, PieceAction>();
+  private actions = new Map<string, PieceAction[]>();
 
   private player!: Phaser.GameObjects.Sprite;
   private appearance!: Appearance;
+  private skin: SkinId | null = null;
+  private stopPet: (() => void) | null = null;
   private undress: (() => void) | null = null;
   private movement!: GridMovement;
   private indicator!: RoomLabel;
@@ -96,12 +117,18 @@ export default class InteriorScene extends Phaser.Scene {
   // Sitting or lying: how to take the pose apart, the tile to stand back up on, and which
   // keys were already held when it began (they don't count until pressed again).
   private pose: { undo: () => void; gx: number; gy: number; held: Set<Phaser.Input.Keyboard.Key> } | null = null;
-  private bedTarget: PieceAction | null = null;
+  // What each option of the open choice menu does; null while none is open.
+  private menu: Array<() => void> | null = null;
+  // A wardrobe standing in for the shelf still changes your outfit.
+  private shelfWardrobe: string | null = null;
 
   private shelfOpen = false;
   private noteOpen = false;
   private wardrobeOpen = false;
-  private bedMenuOpen = false;
+  // The study desk, computer or games console.
+  private appOpen = false;
+  // The sound player or the meditation screen.
+  private chillOpen = false;
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
@@ -130,23 +157,34 @@ export default class InteriorScene extends Phaser.Scene {
 
   // The picker already saved each change; pick it up and redress on the spot. Keys are
   // reset because the Enter that closed the picker would otherwise reopen it next frame.
+  private onCloseChill = () => {
+    this.chillOpen = false;
+    this.input.keyboard?.resetKeys();
+  };
+
   private onCloseWardrobe = () => {
     this.wardrobeOpen = false;
     this.input.keyboard?.resetKeys();
     this.appearance = loadAppearance();
     this.game.registry.set('appearance', this.appearance);
     this.undress?.();
-    this.undress = dressPlayer(this, this.player, this.appearance);
+    const equipped = getEquipped();
+    this.skin = equipped.skin;
+    this.undress = dressPlayer(this, this.player, this.appearance, this.skin);
+    this.stopPet?.();
+    this.stopPet = spawnPet(this, this.player, equipped.pet, () => 9.9);
   };
 
-  private onBedMenuChoice = ({ choice }: { choice: 'read' | 'lie' | 'cancel' }) => {
-    this.bedMenuOpen = false;
+  private onCloseApp = () => {
+    this.appOpen = false;
     this.input.keyboard?.resetKeys();
-    const target = this.bedTarget;
-    this.bedTarget = null;
-    if (!target) return;
-    if (choice === 'read' && target.note) this.openNote(target.note);
-    else if (choice === 'lie') this.act(target);
+  };
+
+  private onMenuChoice = ({ index }: { index: number | null }) => {
+    const menu = this.menu;
+    this.menu = null;
+    this.input.keyboard?.resetKeys();
+    if (menu && index !== null) menu[index]?.();
   };
 
   private onCommitLayout = ({ roomId, layout }: { roomId: string; layout: InteriorLayout }) => {
@@ -167,14 +205,16 @@ export default class InteriorScene extends Phaser.Scene {
     super('InteriorScene');
   }
 
-  init(data: { houseId: string; roomId?: string; fromRoomId?: string }) {
+  init(data: { houseId: string; roomId?: string; fromRoomId?: string; noteId?: string }) {
     this.houseId = data.houseId;
     this.roomId = data.roomId ?? data.houseId;
     this.fromRoomId = data.fromRoomId;
+    this.arriveNoteId = data.noteId;
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
-    this.bedMenuOpen = false;
+    this.appOpen = false;
+    this.chillOpen = false;
     this.exiting = false;
     this.editingLayout = false;
     this.blocked = new Set();
@@ -182,7 +222,8 @@ export default class InteriorScene extends Phaser.Scene {
     this.approach = new Map();
     this.actions = new Map();
     this.pose = null;
-    this.bedTarget = null;
+    this.menu = null;
+    this.shelfWardrobe = null;
     this.undress = null;
     this.doors = new Map();
     this.labels = [];
@@ -190,6 +231,8 @@ export default class InteriorScene extends Phaser.Scene {
   }
 
   create() {
+    setPlace('indoors');
+    setGround(() => 'wood');
     const world = this.game.registry.get('world') as WorldModel | undefined;
     const house = findHouse(world, this.houseId);
 
@@ -256,9 +299,13 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     // Back wall gets a second row so the shelf has something to lean on — only
-    // when the shelf is actually against the top wall; moved elsewhere, it's
-    // just a free-standing piece like any other furniture.
-    if (shelfGy === SHELF_GY) {
+    // when the shelf is actually against the top wall, or something hangs on that row;
+    // moved elsewhere, the shelf is just a free-standing piece like any other furniture.
+    const hangsLow = this.layout.placements.some((p) => {
+      const entry = CATALOG_BY_ID[p.item];
+      return entry?.layer === 'wall' && p.gy + entry.footprint[1] > SHELF_GY;
+    });
+    if (shelfGy === SHELF_GY || hangsLow) {
       for (let x = 1; x < w - 1; x++) {
         if (this.doors.has(`${x},0`)) continue;
         this.add.image(x * TILE, SHELF_GY * TILE, 'interior-walls', wallBase).setOrigin(0, 0).setDepth(1);
@@ -266,21 +313,22 @@ export default class InteriorScene extends Phaser.Scene {
       }
     }
 
-    // Bookshelf: three verified 32x32 shelf frames side by side, rows shelfGy..shelfGy+1.
-    for (let s = 0; s < SHELF_SEGMENTS; s++) {
-      const gx = shelfGx + s * 2;
-      const img = this.add
-        .image(gx * TILE, shelfGy * TILE, furnitureTextureKey(SHELF_SHEET), 'shelf')
-        .setOrigin(0, 0)
-        .setDepth(5)
-        .setInteractive({ useHandCursor: true });
-      img.on('pointerdown', () => this.openShelf());
-      for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 2; dy++) this.blocked.add(`${gx + dx},${shelfGy + dy}`);
-      }
+    // The bookshelf is three verified 32x32 shelf frames side by side; a fridge, cabinet or
+    // wardrobe standing in for it is its catalog sprite.
+    const [shelfW, shelfH] = shelfSize(this.layout.shelf, CATALOG_BY_ID);
+    const shelfEntry = this.layout.shelf.item ? CATALOG_BY_ID[this.layout.shelf.item] : undefined;
+    const shelfImages = shelfEntry
+      ? [this.add.image(shelfGx * TILE, shelfGy * TILE, shelfEntry.textureKey, shelfEntry.frameKey)]
+      : Array.from({ length: SHELF_SEGMENTS }, (_, s) =>
+          this.add.image((shelfGx + s * 2) * TILE, shelfGy * TILE, furnitureTextureKey(SHELF_SHEET), 'shelf'));
+    for (const img of shelfImages) {
+      img.setOrigin(0, 0).setDepth(5).setInteractive({ useHandCursor: true });
+      img.on('pointerdown', () => this.useShelf());
     }
-    for (let x = shelfGx; x < shelfGx + SHELF_W; x++) {
-      this.shelfApproach.add(`${x},${shelfGy + 2}`);
+    if (shelfEntry && FURNITURE_ACTIONS[shelfEntry.category] === 'wardrobe') this.shelfWardrobe = shelfEntry.name;
+    for (const cell of footprintCells(shelfGx, shelfGy, shelfW, shelfH)) this.blocked.add(cell);
+    for (let x = shelfGx; x < shelfGx + shelfW; x++) {
+      this.shelfApproach.add(`${x},${shelfGy + shelfH}`);
     }
 
     // Name and CUSTOMIZE share the top wall's row in the top-right corner, so they never cover
@@ -302,16 +350,6 @@ export default class InteriorScene extends Phaser.Scene {
 
     this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1, { tour: 'exit' });
 
-    // Back from a room: stand just inside its doorway, not at the house's front door.
-    const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;
-    const [spawnGx, spawnGy] = back ? back.slot.inside[0] : [this.doorGx, this.doorGy];
-    const spawn = tileToWorld(spawnGx, spawnGy);
-    this.player = this.add.sprite(spawn.x, spawn.y, 'player');
-    this.player.setOrigin(0.5, 0.64);
-    this.player.setDepth(10);
-    this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
-    this.undress = dressPlayer(this, this.player, this.appearance);
-
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
       if (this.doors.has(`${gx},${gy}`)) return true;
@@ -319,13 +357,38 @@ export default class InteriorScene extends Phaser.Scene {
       return !this.blocked.has(`${gx},${gy}`);
     };
 
+    // Back from a room: stand just inside its doorway, not at the house's front door. Fast travel
+    // lands the player at the note's furniture; a note that only lives on the bookshelf lands
+    // them at the shelf instead. Anything unwalkable falls back to the door.
+    const back = this.fromRoomId ? [...this.doors.values()].find((d) => d.roomId === this.fromRoomId) : undefined;
+    const arriveNote = this.arriveNoteId ? allNotes.find((n) => n.id === this.arriveNoteId) : undefined;
+    let [spawnGx, spawnGy] = back ? back.slot.inside[0] : [this.doorGx, this.doorGy];
+    if (arriveNote) {
+      const candidates = [
+        ...[...this.approach].filter(([, n]) => n.id === arriveNote.id).map(([k]) => k),
+        ...this.shelfApproach,
+      ];
+      const hit = candidates.map((k) => k.split(',').map(Number)).find(([gx, gy]) => isWalkable(gx, gy));
+      if (hit) [spawnGx, spawnGy] = hit;
+    }
+
+    const spawn = tileToWorld(spawnGx, spawnGy);
+    this.player = this.add.sprite(spawn.x, spawn.y, 'player');
+    this.player.setOrigin(0.5, 0.64);
+    this.player.setDepth(10);
+    this.appearance = (this.game.registry.get('appearance') as Appearance | undefined) ?? DEFAULT_APPEARANCE;
+    this.skin = getEquipped().skin;
+    this.undress = dressPlayer(this, this.player, this.appearance, this.skin);
+    this.stopPet = spawnPet(this, this.player, getEquipped().pet, () => 9.9);
+
     this.movement = new GridMovement(this, this.player, isWalkable);
     // Back from a room you're often still holding the key that walked you out, and a bottom-wall
     // doorway is right behind you.
     if (back) this.movement.ignoreHeldKeys();
     const sceneId = `house:${this.roomId}` as const;
     this.movement.onStep = (gx, gy, facing) => setSelfPresence({ scene: sceneId, gx, gy, facing });
-    setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: 'down' });
+    trackMovement(this, this.movement);
+    setSelfPresence({ scene: sceneId, gx: spawnGx, gy: spawnGy, facing: arriveNote ? 'up' : 'down' });
     attachRemotePlayers(this, sceneId, this.player);
 
     this.indicator = this.label(0, 0, '!', 0.5, 1, { color: '#ffe066', bare: true, visible: false });
@@ -346,11 +409,22 @@ export default class InteriorScene extends Phaser.Scene {
     this.prevGx = spawnGx;
     this.prevGy = spawnGy;
 
+    if (arriveNote) {
+      this.player.play('idle-up');
+      this.cameras.main.fadeIn(250, 20, 16, 24);
+      this.time.delayedCall(300, () => this.openNote(arriveNote));
+    }
+
     bus.on('close-shelf', this.onCloseShelf);
     bus.on('close-note', this.onCloseNote);
     bus.on('close-interior-editor', this.onCloseEditor);
     bus.on('close-wardrobe', this.onCloseWardrobe);
-    bus.on('bed-menu-choice', this.onBedMenuChoice);
+    bus.on('close-sound-player', this.onCloseChill);
+    bus.on('close-meditate', this.onCloseChill);
+    bus.on('choice-menu-choice', this.onMenuChoice);
+    bus.on('close-study', this.onCloseApp);
+    bus.on('close-computer', this.onCloseApp);
+    bus.on('close-arcade', this.onCloseApp);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
@@ -360,7 +434,13 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
       bus.off('close-wardrobe', this.onCloseWardrobe);
-      bus.off('bed-menu-choice', this.onBedMenuChoice);
+      bus.off('close-sound-player', this.onCloseChill);
+      bus.off('close-meditate', this.onCloseChill);
+      if (this.pose) bus.emit('rest-end', undefined);
+      bus.off('choice-menu-choice', this.onMenuChoice);
+      bus.off('close-study', this.onCloseApp);
+      bus.off('close-computer', this.onCloseApp);
+      bus.off('close-arcade', this.onCloseApp);
       bus.off('commit-interior-layout', this.onCommitLayout);
       bus.off('world-updated', this.onWorldUpdated);
     });
@@ -396,6 +476,7 @@ export default class InteriorScene extends Phaser.Scene {
         x: rect.left + (l.x - cam.worldView.x) * k,
         y: rect.top + (l.y - cam.worldView.y) * k,
         px,
+        font: ROOM_LABEL_FONT,
         maxWidth: l.maxWidth === undefined ? undefined : l.maxWidth * k,
       }));
   };
@@ -413,7 +494,7 @@ export default class InteriorScene extends Phaser.Scene {
   };
 
   private overlayOpen() {
-    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.bedMenuOpen || this.editingLayout;
+    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.appOpen || this.chillOpen || this.menu !== null || this.editingLayout;
   }
 
   private openNote(note: NoteRef) {
@@ -425,7 +506,42 @@ export default class InteriorScene extends Phaser.Scene {
   private openShelf() {
     if (this.overlayOpen() || this.exiting) return;
     this.shelfOpen = true;
-    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId });
+    bus.emit('open-shelf', { houseId: this.houseId, roomId: this.roomId, look: shelfLook(this.layout.shelf.item) });
+  }
+
+  private useShelf() {
+    if (this.shelfWardrobe) this.openMenu(this.shelfWardrobe, [['Browse notes', () => this.openShelf()], ['Change outfit', () => this.openWardrobe()]]);
+    else this.openShelf();
+  }
+
+  private openWardrobe() {
+    if (this.overlayOpen() || this.exiting) return;
+    this.wardrobeOpen = true;
+    bus.emit('open-wardrobe', undefined);
+  }
+
+  private openApp(event: 'open-computer' | 'open-arcade') {
+    if (this.overlayOpen() || this.exiting) return;
+    this.appOpen = true;
+    bus.emit(event, { houseId: this.houseId });
+  }
+
+  private openStudy(mode: 'flashcards' | 'quiz') {
+    if (this.overlayOpen() || this.exiting) return;
+    this.appOpen = true;
+    bus.emit('open-study', { houseId: this.houseId, mode });
+  }
+
+  private openSoundPlayer(entry: CatalogEntry) {
+    if (this.overlayOpen() || this.exiting) return;
+    this.chillOpen = true;
+    bus.emit('open-sound-player', { device: entry.name, tab: tabFor(entry.category) });
+  }
+
+  private openMenu(title: string, options: Array<[string, () => void]>) {
+    if (this.overlayOpen() || this.exiting) return;
+    this.menu = options.map(([, run]) => run);
+    bus.emit('open-choice-menu', { title, options: options.map(([label]) => label) });
   }
 
   private openEditor() {
@@ -459,28 +575,49 @@ export default class InteriorScene extends Phaser.Scene {
 
   private enterRoom(roomId: string) {
     this.exiting = true;
+    sfx('doorOpen');
     this.scene.restart({ houseId: this.houseId, roomId });
   }
 
-  private openBedMenu(piece: PieceAction) {
-    this.bedMenuOpen = true;
-    this.bedTarget = piece;
-    bus.emit('open-bed-menu', { note: piece.note! });
+  private optionsFor(piece: PieceAction): Array<[string, () => void]> {
+    switch (piece.action) {
+      case 'sit': return [['Sit down', () => this.takePose(piece, 'sit')]];
+      case 'lie': return [['Lie down', () => this.takePose(piece, 'lie')]];
+      case 'wardrobe': return [['Change outfit', () => this.openWardrobe()]];
+      case 'study': return [['Flashcards', () => this.openStudy('flashcards')], ['Quiz', () => this.openStudy('quiz')]];
+      case 'computer': return [['Use computer', () => this.openApp('open-computer')]];
+      case 'arcade': return [['Play games', () => this.openApp('open-arcade')]];
+      case 'listen': return [[piece.entry.category === 'noise_machine' ? 'Play sounds' : 'Play music', () => this.openSoundPlayer(piece.entry)]];
+      case 'meditate': return [['Meditate', () => this.takePose(piece, 'sit')]];
+    }
   }
 
-  private act(piece: PieceAction) {
-    if (piece.action === 'wardrobe') {
-      this.wardrobeOpen = true;
-      bus.emit('open-wardrobe', undefined);
-      return;
-    }
+  // One thing to do runs at once; more (a note on a desk, a computer on it) asks which.
+  // A piece standing on the table comes before the table.
+  private use(note: NoteRef | undefined, pieces: PieceAction[]) {
+    const sorted = [...pieces].sort((a, b) => Number(b.entry.layer === 'tabletop') - Number(a.entry.layer === 'tabletop'));
+    const options: Array<[string, () => void]> = [];
+    if (note) options.push(['Read note', () => this.openNote(note)]);
+    for (const p of sorted) options.push(...this.optionsFor(p));
+    if (options.length === 1) options[0][1]();
+    else if (options.length > 1) this.openMenu(note?.title ?? sorted[0].entry.name, options);
+  }
+
+  private takePose(piece: PieceAction, kind: 'sit' | 'lie') {
     const { gx, gy } = this.movement.getTile();
     this.indicator.visible = false;
+    sfx(kind);
     const undo =
-      piece.action === 'sit'
+      kind === 'sit'
         ? sit(this, this.player, piece.entry, piece.placement)
-        : lie(this, this.player, piece.entry, piece.placement, this.appearance);
+        : lie(this, this.player, piece.entry, piece.placement, this.appearance, this.skin);
     this.pose = { undo, gx, gy, held: new Set(this.standKeys.filter((k) => k.isDown)) };
+    if (piece.action === 'meditate') {
+      this.chillOpen = true;
+      bus.emit('open-meditate', undefined);
+    } else {
+      bus.emit('rest-start', { kind });
+    }
   }
 
   // Reading JustDown clears it: a Space/Enter that stood you up must not also count as a
@@ -490,6 +627,7 @@ export default class InteriorScene extends Phaser.Scene {
     Phaser.Input.Keyboard.JustDown(this.spaceKey);
     Phaser.Input.Keyboard.JustDown(this.enterKey);
     this.pose.undo();
+    bus.emit('rest-end', undefined);
     this.movement.snapTo(this.pose.gx, this.pose.gy);
     this.player.setFlipX(false).play('idle-down', true);
     this.pose = null;
@@ -513,10 +651,17 @@ export default class InteriorScene extends Phaser.Scene {
     const { gx, gy, rotation } = placement;
     const walkable = WALKABLE.has(entry.category);
 
+    // A tabletop piece on a surface stands on its top, not in front of it.
+    const under = entry.layer === 'tabletop' ? surfaceUnder(this.layout, CATALOG_BY_ID, gx, gy) : null;
+    const lift = under === null ? 0 : (SURFACES[CATALOG_BY_ID[this.layout.placements[under].item].category] ?? 0);
+    // A sprite taller than its footprint stands on it and overhangs the tiles behind, so pieces
+    // further down the room draw over the ones behind them.
+    const view = entry.views ? windowView(new Date().getHours()) : 'day';
+    const frame = view !== 'day' && entry.views?.[view] !== undefined ? `${entry.frameKey}@${view}` : entry.frameKey;
     const img = this.add
-      .image(gx * TILE, gy * TILE, entry.textureKey, entry.frameKey)
+      .image(gx * TILE, (gy + fh) * TILE - entry.rect[3] - lift, entry.textureKey, frame)
       .setOrigin(0, 0)
-      .setDepth(walkable ? 2 : 5);
+      .setDepth(LAYER_DEPTH[entry.layer] + (gy + fh) / 1000);
 
     if (entry.rotations.length > 2) {
       img.setOrigin(0.5, 0.5).setPosition((gx + fw / 2) * TILE, (gy + fh / 2) * TILE).setAngle(rotation);
@@ -540,7 +685,18 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     const action = FURNITURE_ACTIONS[entry.category];
-    if (action && !this.actions.has(apKey)) this.actions.set(apKey, { action, entry, placement, note });
+    if (!action) return;
+    // A computer on a desk is used from in front of the desk, along its whole front edge.
+    const surface = under === null ? null : this.layout.placements[under];
+    const surfaceEntry = surface ? CATALOG_BY_ID[surface.item] : undefined;
+    const keys = surface && surfaceEntry
+      ? Array.from({ length: surfaceEntry.footprint[0] }, (_, i) => `${surface.gx + i},${surface.gy + surfaceEntry.footprint[1]}`)
+      : [apKey];
+    for (const key of keys) {
+      const list = this.actions.get(key) ?? [];
+      if (!list.some((p) => p.action === action)) list.push({ action, entry, placement });
+      this.actions.set(key, list);
+    }
   }
 
   update() {
@@ -562,7 +718,10 @@ export default class InteriorScene extends Phaser.Scene {
       if (gx === this.doorGx && gy === this.doorGy) {
         this.exiting = true;
         if (this.isEntrance) bus.emit('exit-house', undefined);
-        else this.scene.restart({ houseId: this.houseId, fromRoomId: this.roomId });
+        else {
+          sfx('doorClose');
+          this.scene.restart({ houseId: this.houseId, fromRoomId: this.roomId });
+        }
         return;
       }
       const door = this.doors.get(`${gx},${gy}`);
@@ -576,14 +735,12 @@ export default class InteriorScene extends Phaser.Scene {
     const here = `${gx},${gy}`;
     const atShelf = settled && this.shelfApproach.has(here);
     const note = settled ? this.approach.get(here) : undefined;
-    const piece = settled ? this.actions.get(here) : undefined;
-    if (atShelf || note || piece) {
+    const pieces = settled ? (this.actions.get(here) ?? []) : [];
+    if (atShelf || note || pieces.length > 0) {
       Object.assign(this.indicator, { x: this.player.x, y: this.player.y - 34, visible: true });
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-        if (note && piece?.note === note && piece.action === 'lie') this.openBedMenu(piece);
-        else if (note) this.openNote(note);
-        else if (atShelf) this.openShelf();
-        else if (piece) this.act(piece);
+        if (atShelf && !note) this.useShelf();
+        else this.use(note, pieces);
       }
     } else {
       this.indicator.visible = false;

@@ -8,19 +8,32 @@ import Bookshelf from '@/components/Bookshelf';
 import TitleMenu from '@/components/TitleMenu';
 import InteriorEditor from '@/components/InteriorEditor';
 import ExteriorEditor from '@/components/ExteriorEditor';
+import FastTravel from '@/components/FastTravel';
 import RoomPanel from '@/components/RoomPanel';
 import JoinScreen from '@/components/JoinScreen';
 import ChatPanel from '@/components/ChatPanel';
 import PlayerTags from '@/components/PlayerTags';
 import SceneLabels from '@/components/SceneLabels';
+import Minimap from '@/components/Minimap';
 import Tutorial from '@/components/Tutorial';
 import TownEditor from '@/components/TownEditor';
 import NpcDialogue from '@/components/NpcDialogue';
 import CoinPurse from '@/components/CoinPurse';
+import AchievementTracker from '@/components/AchievementTracker';
+import AchievementToast from '@/components/AchievementToast';
+import AchievementsPanel from '@/components/AchievementsPanel';
 import Wardrobe from '@/components/Wardrobe';
-import BedMenu from '@/components/BedMenu';
+import StudyDesk from '@/components/StudyDesk';
+import Computer from '@/components/Computer';
+import Arcade from '@/components/Arcade';
+import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
+import SoundToggle from '@/components/SoundToggle';
+import SoundPlayer from '@/components/SoundPlayer';
+import Meditate from '@/components/Meditate';
+import RestHud from '@/components/RestHud';
+import NowPlaying from '@/components/NowPlaying';
 import { bus } from '@/game/bus';
 import { readInvite, type Invite } from '@/lib/multiplayer/guest';
 import { RELAY_URL } from '@/lib/multiplayer/session';
@@ -62,13 +75,26 @@ function Game() {
       <InteriorEditor />
       <ExteriorEditor />
       <SceneLabels />
+      <FastTravel />
+      <Minimap />
       <PlayerTags />
       <ChatPanel />
       <RoomPanel />
+      <AchievementTracker />
       <CoinPurse />
+      <AchievementToast />
+      <AchievementsPanel />
       <Wardrobe />
-      <BedMenu />
+      <StudyDesk />
+      <Computer />
+      <Arcade />
+      <ChoiceMenu />
       <BiomePicker />
+      <SoundToggle />
+      <NowPlaying />
+      <SoundPlayer />
+      <Meditate />
+      <RestHud />
       <TownEditor />
       <MissingArtBanner />
       <Tutorial />

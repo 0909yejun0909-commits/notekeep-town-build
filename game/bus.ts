@@ -1,3 +1,4 @@
+import type { ShelfLook } from '@/lib/catalog';
 import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
 import type { TownPropId, TownTool } from '@/lib/townEdits';
 
@@ -5,17 +6,35 @@ type BusEvents = {
   'assets-missing': { files: string[] };
   'enter-house': { houseId: string };
   'exit-house': undefined;
+  // Jump straight into a house's room from anywhere. With noteId, the player lands at that note's
+  // furniture (or the bookshelf, if the note has no furniture) and the note opens.
+  'fast-travel': { houseId: string; roomId?: string; noteId?: string };
   'open-note': { note: NoteRef };
   'close-note': undefined;
-  'open-shelf': { houseId: string; roomId: string };
+  'open-shelf': { houseId: string; roomId: string; look: ShelfLook };
   'close-shelf': undefined;
   'talk-npc': { npcId: string; line: string };
   'world-updated': { exteriorChanged: boolean };
   'appearance-changed': undefined;
   'open-wardrobe': undefined;
+  // A sound device: the music player and ambient mixer. `device` is the piece's name.
+  'open-sound-player': { device: string; tab: 'music' | 'ambience' };
+  'close-sound-player': undefined;
+  'open-meditate': undefined;
+  'close-meditate': undefined;
+  // Sitting or lying on a piece starts a rest; standing up ends it.
+  'rest-start': { kind: 'sit' | 'lie' };
+  'rest-end': undefined;
   'close-wardrobe': undefined;
-  'open-bed-menu': { note: NoteRef };
-  'bed-menu-choice': { choice: 'read' | 'lie' | 'cancel' };
+  'open-study': { houseId: string; mode: 'flashcards' | 'quiz' };
+  'close-study': undefined;
+  'open-computer': { houseId: string };
+  'close-computer': undefined;
+  'open-arcade': { houseId: string };
+  'close-arcade': undefined;
+  // index is the option picked, null if the menu was dismissed.
+  'open-choice-menu': { title: string; options: string[] };
+  'choice-menu-choice': { index: number | null };
   'open-interior-editor': {
     houseId: string;
     roomId: string;

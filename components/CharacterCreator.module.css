@@ -114,6 +114,18 @@
   }
 }
 
+.rewardOptions { flex-wrap: wrap; max-width: 360px; }
+.portrait {
+  width: 16px;
+  height: 16px;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  transform-origin: 0 0;
+  image-rendering: pixelated;
+}
+.none { width: 38px; height: 38px; font: inherit; font-size: 21px; color: inherit; }
+.locked { filter: brightness(0) opacity(0.35); }
+.lockHint { margin: 4px 0 0; max-width: 420px; font-size: 16px; line-height: 20px; }
 /* A coin on a piece marks one still to buy; .price is what the shown look costs. */
 .lock {
   position: absolute;

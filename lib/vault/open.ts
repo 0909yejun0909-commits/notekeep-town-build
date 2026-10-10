@@ -8,6 +8,7 @@ import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
 import { startWallet, stopWallet } from '@/lib/walletStore';
+import { startAchievements, stopAchievements } from '@/lib/achievementStore';
 import type { TownEdits } from '@/lib/townEdits';
 
 const HEAD_BYTES = 2048;
@@ -22,6 +23,7 @@ export function publishWorld(
     if (!game?.registry) return false;
     if (guest) {
       stopWallet();
+      stopAchievements();
       // No fingerprint: a guest's own saved customizations must never repaint the host's town.
       game.registry.set('role', 'guest');
       game.registry.set('sessionLayouts', guest.layouts);
@@ -150,6 +152,7 @@ export async function openVault(): Promise<VaultHandle | null> {
     return head;
   }, folders);
   const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
+  startAchievements(dir.name, true);
   startWallet(dir.name, true, heads);
   publishWorld(world, vaultFingerprint(dir.name, houseIds));
 
@@ -208,6 +211,7 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
   const head = async (p: string) => getText(p).slice(0, HEAD_BYTES);
   const world = await parseVault(DEMO_VAULT_NAME, paths, head, folders);
   const houseIds = world.regions.flatMap((r) => r.houses.map((h) => h.id));
+  startAchievements(DEMO_VAULT_NAME, false);
   startWallet(DEMO_VAULT_NAME, false, new Map(paths.filter(isNotePath).map((p) => [p, files[p]])));
   publishWorld(world, vaultFingerprint(DEMO_VAULT_NAME, houseIds));
 
