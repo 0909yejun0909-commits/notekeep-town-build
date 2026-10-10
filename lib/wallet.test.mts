@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, TIER_PRICE, applyLayoutChange, available, priceOf, qualifies, settle, wordCount,
+  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, TIER_PRICE, applyLayoutChange, available, priceOf, qualifies, settle, unlockId, unlockPrice, wordCount,
 } from './wallet.ts';
 import { CATALOG } from './catalog.ts';
 
@@ -73,4 +73,22 @@ test('applyLayoutChange returns removed pieces and takes placed ones', () => {
   const saved = [{ item: 'lamp' }, { item: 'bed' }];
   const draft = [{ item: 'bed_blue' }, { item: 'lamp' }, { item: 'lamp' }, { item: 'plant' }];
   assert.deepEqual(applyLayoutChange(inv, saved, draft), { plant: 1, bed: 1 });
+});
+
+test('unlock prices: biomes, house upgrades and outfit pieces cost coins; starters are free', () => {
+  assert.equal(unlockPrice(unlockId('biome', 'forest')), 0);
+  assert.ok(unlockPrice(unlockId('biome', 'snow')) > 0);
+  assert.ok(unlockPrice(unlockId('biome', 'desert')) > 0);
+  assert.equal(unlockPrice(unlockId('material', 'wood')), 0);
+  assert.equal(unlockPrice(unlockId('wall', 'base')), 0);
+  assert.ok(unlockPrice(unlockId('material', 'limestone')) > unlockPrice(unlockId('material', 'stone')));
+  assert.ok(unlockPrice(unlockId('shape', 4)) > unlockPrice(unlockId('shape', 0)));
+  assert.equal(unlockPrice(unlockId('roomSize', 'small')), 0);
+  assert.ok(unlockPrice(unlockId('roomSize', 'large')) > unlockPrice(unlockId('roomSize', 'medium')));
+  assert.ok(unlockPrice(unlockId('roomSize', 'medium')) > 0);
+  const start = { hairStyle: 1, shirtColor: 'red' };
+  assert.equal(unlockPrice(unlockId('hairStyle', 1), start), 0);
+  assert.ok(unlockPrice(unlockId('hairStyle', 2), start) > 0);
+  assert.equal(unlockPrice(unlockId('shirtColor', 'red'), start), 0);
+  assert.ok(unlockPrice(unlockId('shirtColor', 'blue'), start) > 0);
 });

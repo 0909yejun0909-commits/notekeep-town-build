@@ -1,3 +1,4 @@
+import type Phaser from 'phaser';
 import type { Region, TownBiome } from '@/lib/types';
 
 export const TILE = 16;
@@ -7,6 +8,9 @@ export const key = (x: number, y: number) => `${x},${y}`;
 export type RegionArea = { region: Region; originGx: number; originGy: number; width: number; height: number };
 
 export type HouseRect = { houseId: string; gx: number; gy: number; w: number; h: number; entryGx: number; entryGy: number };
+
+// A tree, so village building can cut it down: what to remove, and the tiles that open up.
+export type TreeRecord = { id: string; cells: string[]; objects: Phaser.GameObjects.GameObject[]; border: boolean; cut?: boolean };
 
 // Everything the overworld generators share while laying out the town. Each generator
 // reads what earlier ones claimed and marks what it claims, so nothing overlaps.
@@ -28,6 +32,9 @@ export type WorldGrid = {
   houses: HouseRect[];
   // World-pixel points that glow at night (lamp heads, doors).
   lights: { x: number; y: number; scale: number }[];
+  trees: TreeRecord[];
+  // Bushes along the forest ring's inner edge, by tile: they go when a tree there is cut.
+  edgeBushes: Map<string, Phaser.GameObjects.GameObject>;
   // The player's town look. Biomes only reskin: they never change what is placed where.
   biome: TownBiome;
   // A texture or animation key's version for `biome` (game/biomeArt.ts); identity in forest.

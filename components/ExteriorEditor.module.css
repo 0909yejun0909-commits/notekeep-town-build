@@ -1,0 +1,171 @@
+/* Laid out like the wardrobe's "Your hero" panel (CharacterCreator.module.css): parchment,
+   a stage on the left, cursor rows on the right. */
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(24, 20, 37, 0.6);
+  --s: 2;
+}
+
+/* Houses are drawn at 2x, or 1x where 2x wouldn't leave room for the rows. */
+@media (max-width: 1000px), (max-height: 620px) {
+  .screen {
+    --s: 1;
+  }
+}
+
+.panel {
+  position: relative;
+  padding: 0 12px;
+}
+
+.heading {
+  margin: 0 0 12px;
+  font-size: 28px;
+  line-height: 36px;
+  text-align: center;
+}
+
+.body {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+/* Big enough for the widest house (12x8 tiles), so switching shapes never resizes the panel. */
+.stage {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: calc(var(--s) * 192px + 36px);
+  height: calc(var(--s) * 128px + 18px);
+  padding: 12px 18px 6px;
+  box-sizing: border-box;
+  background: #e69c69;
+  box-shadow: inset 0 0 0 3px #bf6f4a;
+}
+
+.house {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+}
+
+.label {
+  width: 120px;
+  font-size: 21px;
+}
+
+.options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.value {
+  min-width: 126px;
+  font-size: 21px;
+  text-align: center;
+}
+
+.arrow {
+  width: 14px;
+  height: 24px;
+  padding: 0;
+  background: url('/assets/ui/cursor.png') 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  border: 0;
+  cursor: pointer;
+}
+
+.left {
+  transform: scaleX(-1);
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 3px solid #3f2832;
+  cursor: pointer;
+}
+
+.selected {
+  box-shadow: 0 0 0 3px #fff7e6, 0 0 0 6px #3f2832;
+}
+
+.action {
+  font: inherit;
+  font-size: 28px;
+  line-height: 36px;
+  color: #9a6149;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.current {
+  color: #3f2832;
+}
+
+.note {
+  max-width: 300px;
+  margin: 6px 0 0;
+  color: #a4402a;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.hint {
+  margin: 0;
+  color: #f6ca9f;
+  font-family: var(--pixel-font);
+  font-size: 21px;
+  line-height: 27px;
+  text-align: center;
+}
+
+/* What the selected option costs; a coin inside a swatch marks one not bought yet. */
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  color: #9a6149;
+  font-size: 21px;
+}
+
+.balance {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 21px;
+  line-height: 36px;
+}

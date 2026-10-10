@@ -98,9 +98,9 @@ export function shelfGxFor(w: number): number {
 }
 
 // The deterministic hash-derived layout for one room — the fallback when nothing is saved,
-// and the editor's first draft for an untouched room. Every room starts small. The entrance
-// seeds from the house, so an untouched house looks exactly as it did with one room; other
-// rooms seed from themselves.
+// and the editor's first draft for an untouched room. Every room starts small: the bigger
+// sizes are bought with coins in the editor. The entrance seeds from the house, so an
+// untouched house looks exactly as it did with one room; other rooms seed from themselves.
 export function computeDefaultLayout(house: House, room: Room): InteriorLayout {
   const entrance = room.id === house.id;
   const roomSize: RoomSize = 'small';
@@ -236,6 +236,68 @@ export function canResize(
     if (cells.some((c) => structural.has(c))) return false;
   }
   return doorSlots({ ...layout, roomSize: size }, catalogById, doorsNeeded).length >= doorsNeeded;
+}
+
+// The layout at `size`, for the editor's size buttons. The shelf goes back to its usual spot
+// if it no longer fits, and each piece left outside the new walls moves to the nearest free
+// spot, or is put away (back to the inventory) when there is none. Null when the room can't
+// keep `doorsNeeded` doorways at that size.
+export function resizeLayout(
+  layout: InteriorLayout,
+  catalogById: Record<CatalogItemId, { footprint: [number, number] }>,
+  size: RoomSize,
+  doorsNeeded = 0,
+): { layout: InteriorLayout; putAway: number } | null {
+  const [w, h] = ROOM_SIZES[size];
+  const blocked = structuralOccupied(w, h);
+  const fits = (gx: number, gy: number, fw: number, fh: number) =>
+    gx >= 1 && gy >= 1 && gx + fw <= w - 1 && gy + fh <= h - 1 &&
+    footprintCells(gx, gy, fw, fh).every((c) => !blocked.has(c));
+
+  let shelf = layout.shelf;
+  if (!fits(shelf.gx, shelf.gy, SHELF_W, 2)) shelf = { gx: shelfGxFor(w), gy: SHELF_GY };
+  for (const c of footprintCells(shelf.gx, shelf.gy, SHELF_W, 2)) blocked.add(c);
+
+  const placed: (FurniturePlacement | null)[] = layout.placements.map(() => null);
+  const misfits: number[] = [];
+  layout.placements.forEach((p, i) => {
+    const entry = catalogById[p.item];
+    if (!entry) return;
+    const [fw, fh] = entry.footprint;
+    if (!fits(p.gx, p.gy, fw, fh)) return misfits.push(i);
+    placed[i] = p;
+    for (const c of footprintCells(p.gx, p.gy, fw, fh)) blocked.add(c);
+  });
+
+  let putAway = 0;
+  for (const i of misfits) {
+    const p = layout.placements[i];
+    const [fw, fh] = catalogById[p.item].footprint;
+    const tx = Math.min(p.gx, w - 1 - fw), ty = Math.min(p.gy, h - 1 - fh);
+    let best: [number, number] | null = null;
+    let bestD = Infinity;
+    for (let y = 1; y + fh <= h - 1; y++) {
+      for (let x = 1; x + fw <= w - 1; x++) {
+        const d = Math.abs(x - tx) + Math.abs(y - ty);
+        if (d < bestD && fits(x, y, fw, fh)) [best, bestD] = [[x, y], d];
+      }
+    }
+    if (!best) {
+      putAway++;
+      continue;
+    }
+    placed[i] = { ...p, gx: best[0], gy: best[1] };
+    for (const c of footprintCells(best[0], best[1], fw, fh)) blocked.add(c);
+  }
+
+  const next: InteriorLayout = {
+    ...layout,
+    roomSize: size,
+    shelf,
+    placements: placed.filter((p): p is FurniturePlacement => p !== null),
+  };
+  if (doorSlots(next, catalogById, doorsNeeded).length < doorsNeeded) return null;
+  return { layout: next, putAway };
 }
 
 export type DoorSide = 'top' | 'left' | 'right' | 'bottom';

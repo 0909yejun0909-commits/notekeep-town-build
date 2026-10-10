@@ -1,5 +1,5 @@
 import { CATALOG_BY_ID } from './catalog';
-import type { CatalogItemId, CatalogTier } from './types';
+import type { CatalogItemId, CatalogTier, TownBiome } from './types';
 
 export const NOTE_REWARD = 10;
 export const MIN_WORDS = 30;
@@ -14,7 +14,42 @@ export type Inventory = Record<CatalogItemId, number>;
 
 // `record` is the most qualifying notes ever paid for. Counting instead of remembering paths
 // means a note renamed or moved in Obsidian never pays twice.
-export type WalletData = { balance: number; record: number; inventory: Inventory };
+// `unlocks` are bought once and kept: house upgrades, outfit pieces and town biomes, by
+// unlockId(). Wallets saved before unlocks existed have none.
+export type WalletData = { balance: number; record: number; inventory: Inventory; unlocks?: string[] };
+
+// Prices of what can be unlocked. Anything not listed is free: wood houses with base walls, the
+// starting outfit, the forest town. A house's or outfit's current look never needs unlocking.
+const UNLOCK_PRICES: Record<string, number> = {
+  'biome:snow': 120,
+  'biome:desert': 120,
+  // House shapes, the cheapest first: every house starts as shape 0, the plain cottage.
+  'shape:3': 30, 'shape:1': 50, 'shape:2': 50, 'shape:4': 100,
+  'material:stone': 60, 'material:limestone': 90,
+  // Rooms start small.
+  'roomSize:medium': 40, 'roomSize:large': 80,
+  'wall:green': 20, 'wall:red': 20,
+  'roof:black': 15, 'roof:blue': 15, 'roof:red': 15,
+};
+const OUTFIT_PRICES: Record<string, number> = {
+  hairStyle: 25, hairColor: 15, shirtColor: 15, pantsColor: 15, shoesColor: 10,
+};
+
+export function unlockId(kind: string, value: string | number): string {
+  return `${kind}:${value}`;
+}
+
+// 0 = free. Outfit pieces are priced by their row; the starting outfit's own pieces are free.
+export function unlockPrice(id: string, freeOutfit: Record<string, string | number> = {}): number {
+  if (id in UNLOCK_PRICES) return UNLOCK_PRICES[id];
+  const [kind, value] = id.split(':');
+  if (kind in OUTFIT_PRICES) return String(freeOutfit[kind]) === value ? 0 : OUTFIT_PRICES[kind];
+  return 0;
+}
+
+export function biomeUnlockId(biome: TownBiome): string {
+  return unlockId('biome', biome);
+}
 
 const WORD = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu;
 

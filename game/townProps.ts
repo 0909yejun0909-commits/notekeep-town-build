@@ -4,6 +4,7 @@ import type { Entry } from '@/game/tilemap';
 import { isFree, key, nearHouse, TILE, type WorldGrid } from '@/game/worldGrid';
 import { CANDY_CANE, FIRE_GLOW, FIRE_PIT, FIRE_PIT_ANIM, PRESENTS, XMAS_TREE, XMAS_TREE_ORIGIN } from '@/game/winterArt';
 import { AMPHORA, POTTED_CACTUS } from '@/game/desertArt';
+import { paintsTile } from '@/game/artCoverage';
 
 const PW = 8;
 const PH = 6;
@@ -150,11 +151,19 @@ export function renderYards(scene: Phaser.Scene, g: WorldGrid) {
       // Nudged up against the wall: the sprite's bottom row is mostly empty porch.
       const [texture, lift] =
         g.biome === 'snow' ? [CANDY_CANE, 0] : g.biome === 'desert' ? [POTTED_CACTUS, 4] : ['flowers', 6];
-      scene.add
+      const img = scene.add
         .image(x * TILE + TILE / 2, (front + 1) * TILE - lift, texture, g.biome === 'forest' ? frame : undefined)
         .setOrigin(0.5, 1)
         .setDepth((front + 1) * TILE - 1);
-      claim(x, front);
+      // Mostly up on the wall, the tile below reads as open ground: leave it walkable.
+      const b = img.getBounds();
+      if (paintsTile(scene, img.texture.key, img.frame.name, b.x, b.y, x, front)) {
+        claim(x, front);
+      } else {
+        // Behind whoever walks past it.
+        img.setDepth(front * TILE);
+        g.used.add(key(x, front));
+      }
     }
 
     const sides = r % 2 === 0 ? [h.gx - 1, h.gx + h.w] : [h.gx + h.w, h.gx - 1];

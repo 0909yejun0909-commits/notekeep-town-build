@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, NOTE_STORE_ITEMS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
-import { canPlace, canPlaceShelf, canResize, doorCells, doorSlots, restyleShelf, structuralOccupied, shelfOccupied, shelfSize, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
-import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
-import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
-import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
+import { canPlace, canPlaceShelf, resizeLayout, doorCells, doorSlots, restyleShelf, structuralOccupied, shelfOccupied, shelfSize, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
+import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout, RoomSize } from '@/lib/types';
+import { MIN_WORDS, NOTE_REWARD, available, priceOf, unlockId } from '@/lib/wallet';
+import { buy, commitLayoutChange, unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
 import { sfx } from '@/game/audio/sfx';
 import { useSession } from '@/lib/multiplayer/session';
 import { replaceWorld, useVault } from '@/lib/vault/open';
@@ -104,6 +104,8 @@ export default function InteriorEditor() {
   // The committed placements this session started from; the draft's difference from these is
   // what Save takes out of (or puts back into) the inventory.
   const [saved, setSaved] = useState<FurniturePlacement[]>([]);
+  // The size the room had when the editor opened: always free to keep.
+  const [savedSize, setSavedSize] = useState<RoomSize>('small');
   const wallet = useWallet();
   const [selected, setSelected] = useState<Target | null>(null);
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
@@ -125,6 +127,7 @@ export default function InteriorEditor() {
       setSession(s);
       setDraft(layout);
       setSaved(layout.placements);
+      setSavedSize(layout.roomSize);
       setSelected(null);
       setPicking(null);
       setError(null);
@@ -164,8 +167,22 @@ export default function InteriorEditor() {
     bus.emit('close-interior-editor', undefined);
   }
 
+  // Rooms start small; Medium and Large are bought once and then free in every room.
+  function sizeCost(size: RoomSize): number {
+    return size === savedSize ? 0 : unlockCost(wallet, unlockId('roomSize', size));
+  }
+
   function save() {
     if (!session || !draft) return;
+    const cost = sizeCost(draft.roomSize);
+    if (cost > 0 && !unlockAll([unlockId('roomSize', draft.roomSize)])) {
+      setError(
+        wallet.active
+          ? `A ${draft.roomSize} room costs ${cost} coins and you have ${wallet.balance}. Write notes to earn more!`
+          : "Bigger rooms are bought with your own town's coins.",
+      );
+      return;
+    }
     commitLayoutChange(saved, draft.placements);
     bus.emit('commit-interior-layout', { roomId: session.roomId, layout: draft });
     setSession(null);
@@ -390,6 +407,7 @@ export default function InteriorEditor() {
     >
       <div
         className={styles.panel}
+        data-panel="room-editor"
         onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.header}>
@@ -406,8 +424,16 @@ export default function InteriorEditor() {
             <button className={styles.btn} onClick={close}>
               Cancel
             </button>
-            <button className={`${styles.btn} ${styles.primary}`} onClick={save}>
-              Save
+            <button className={`${styles.btn} ${styles.primary}`} data-tour="room-save" onClick={save}>
+              {sizeCost(draft.roomSize) > 0 ? (
+                <span className="flex items-center gap-2">
+                  Buy and save
+                  <Coin size={14} />
+                  {sizeCost(draft.roomSize)}
+                </span>
+              ) : (
+                'Save'
+              )}
             </button>
           </div>
         </div>
@@ -451,20 +477,31 @@ export default function InteriorEditor() {
               key={size}
               className={`${styles.btn} ${draft.roomSize === size ? styles.on : ''}`}
               onClick={() => {
-                if (!canResize(draft, CATALOG_BY_ID, size)) {
-                  setError("Something's in the way at that size — move furniture or the shelf, then try again.");
-                  return;
-                }
-                if (!canResize(draft, CATALOG_BY_ID, size, doorsNeeded)) {
+                if (size === draft.roomSize) return;
+                const resized = resizeLayout(draft, CATALOG_BY_ID, size, doorsNeeded);
+                if (!resized) {
                   setError("These doors won't fit at that size.");
                   return;
                 }
-                setError(null);
+                setError(
+                  resized.putAway > 0
+                    ? `${resized.putAway} ${resized.putAway === 1 ? 'piece' : 'pieces'} didn't fit and went back to your inventory.`
+                    : null,
+                );
                 setPicking(null);
-                setDraft({ ...draft, roomSize: size });
+                setDraft(resized.layout);
               }}
+              title={sizeCost(size) > 0 ? `${sizeCost(size)} coins, paid when you save` : undefined}
             >
-              {size[0].toUpperCase() + size.slice(1)}
+              <span className="flex items-center gap-2">
+                {size[0].toUpperCase() + size.slice(1)}
+                {sizeCost(size) > 0 && (
+                  <>
+                    <Coin size={12} />
+                    {sizeCost(size)}
+                  </>
+                )}
+              </span>
             </button>
           ))}
         </div>
@@ -523,6 +560,7 @@ export default function InteriorEditor() {
           <div className="flex flex-col gap-2">
             <div
               className={styles.grid}
+              data-tour="room-grid"
               style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
             >
               {Array.from({ length: h }).map((_, gy) =>
@@ -657,8 +695,8 @@ export default function InteriorEditor() {
               ))}
             </div>
 
-            {error && <span className={styles.error}>{error}</span>}
-            {moving !== null && <span className={styles.note}>Drag it, or click a cell to move it there.</span>}
+            {error && <span className={`${styles.error} ${styles.under}`}>{error}</span>}
+            {moving !== null && <span className={`${styles.note} ${styles.under}`}>Drag it, or click a cell to move it there.</span>}
           </div>
 
           <div className={styles.side}>
@@ -678,7 +716,7 @@ export default function InteriorEditor() {
                     </button>
                   ))}
                 </div>
-                <div className={styles.shelf}>
+                <div className={styles.shelf} data-tour="furniture">
                   {CATALOG_BY_GROUP[tab].map((entry) => (
                     <ShopTile
                       key={entry.id}

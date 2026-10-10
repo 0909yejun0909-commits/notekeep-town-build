@@ -41,6 +41,10 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
     fps: { forceSetTimeOut: true },
     // Sound is our own Web Audio (game/audio/); Phaser's would only open a second, idle context.
     audio: { noAudio: true },
+    // By default Phaser also takes clicks from the whole page, so clicking a React panel over
+    // the game (the biome picker, the coin purse, a menu) also clicked whatever house or shelf
+    // was under it. Only clicks that reach the canvas count.
+    input: { windowEvents: false },
     scene: [BootScene, TitleScene, OverworldScene, InteriorScene],
     physics: {
       default: 'arcade',

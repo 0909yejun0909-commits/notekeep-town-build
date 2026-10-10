@@ -275,7 +275,7 @@ export default function Bookshelf() {
 
   return (
     <div className={styles.backdrop} onClick={close}>
-      <div className={`${styles.panel} ${look === 'books' ? '' : styles[look]}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`${styles.panel} ${look === 'books' ? '' : styles[look]}`} data-panel="shelf" onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <button className={styles.btn} disabled={path.length === 0} onClick={() => setPath((p) => p.slice(0, -1))}>
             &lt; Back
@@ -297,7 +297,7 @@ export default function Bookshelf() {
               </span>
             ))}
           </div>
-          <button className={styles.btn} onClick={close}>X</button>
+          <button className={styles.btn} data-tour="shelf-close" title="Close (Esc)" onClick={close}>X</button>
         </div>
 
         <div className={styles.shelves}>
@@ -314,6 +314,7 @@ export default function Bookshelf() {
                         : `${styles.book} ${item.kind === 'folder' ? styles.folder : ''} ${item.kind === 'new' ? styles.newBook : ''}`
                     }
                     style={good ? goodStyle(good) : bookStyle(item)}
+                    data-tour={item.kind === 'new' ? 'new-note' : undefined}
                     title={
                       item.kind === 'note'
                         ? item.note.preview || item.name
@@ -359,6 +360,7 @@ export default function Bookshelf() {
           <div className={styles.namerBackdrop} onClick={() => setNaming(false)}>
             <form
               className={styles.namer}
+              data-tour="note-namer"
               onClick={(e) => e.stopPropagation()}
               onSubmit={(e) => {
                 e.preventDefault();

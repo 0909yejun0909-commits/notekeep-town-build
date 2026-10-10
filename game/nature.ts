@@ -4,6 +4,7 @@ import { fbm, mix, pick, rand01 } from '@/game/noise';
 import { areaAt, isFree, key, nearHouse, ringDistance, TILE, type WorldGrid } from '@/game/worldGrid';
 import { desertTree, BARREL_CACTUS, DESERT_DECOR, desertDecorFrame } from '@/game/desertArt';
 import { SNOWMAN, WINTER_DECOR, winterDecorFrame } from '@/game/winterArt';
+import { paintsTile } from '@/game/artCoverage';
 
 // (ox, oy) is the pixel in the frame where the trunk meets the ground. Wide trees have a
 // two-tile trunk and are anchored on the line between their two trunk tiles.
@@ -55,7 +56,7 @@ function addTree(scene: Phaser.Scene, g: WorldGrid, spec: TreeSpec, gx: number, 
   const y = (gy + 1) * TILE - 2;
   // Desert plants are drawn at the tree's frame size and anchor, so they stand on the same tiles.
   const desert = g.biome === 'desert' ? desertTree(scene, spec.key, rand01(g.seed ^ 0xde, gx, gy), border) : null;
-  (desert ? scene.add.image(x, y, desert) : scene.add.image(x, y, g.skin(spec.key), 1))
+  return (desert ? scene.add.image(x, y, desert) : scene.add.image(x, y, g.skin(spec.key), 1))
     .setOrigin(spec.ox / spec.fw, spec.oy / spec.fh)
     .setDepth((gy + 1) * TILE - 1);
 }
@@ -79,7 +80,12 @@ export function buildForestBorder(scene: Phaser.Scene, g: WorldGrid) {
       const x = i * 3 + (j % 2 === 0 ? 0 : 1) + (mix(seed, i, j) % 2);
       const y = j * 2 + (mix(seed ^ 1, i, j) % 2);
       if (x < 0 || y < 0 || x >= g.w - 1 || y >= g.h || !inRing(g, x, y) || !inRing(g, x + 1, y)) continue;
-      addTree(scene, g, choose(BORDER_MIX, rand01(seed ^ 2, i, j)), x, y, true);
+      const tree = addTree(scene, g, choose(BORDER_MIX, rand01(seed ^ 2, i, j)), x, y, true);
+      // The ring is solid everywhere; cutting one of its trees opens the 2x2 tiles at its trunk.
+      const cells = [[x, y - 1], [x + 1, y - 1], [x, y], [x + 1, y]]
+        .filter(([cx, cy]) => cy >= 0 && inRing(g, cx, cy))
+        .map(([cx, cy]) => key(cx, cy));
+      g.trees.push({ id: key(x, y), cells, objects: [tree], border: true });
     }
   }
 
@@ -88,10 +94,11 @@ export function buildForestBorder(scene: Phaser.Scene, g: WorldGrid) {
       if (!inRing(g, x, y)) continue;
       const edge = x === g.border - 1 || y === g.border - 1 || x === g.w - g.border || y === g.h - g.border;
       if (!edge || rand01(seed ^ 3, x, y) > 0.45) continue;
-      scene.add
+      const bush = scene.add
         .image(x * TILE + TILE / 2, (y + 1) * TILE, g.skin('decor'), pick(DECOR.bushes, seed ^ 4, x, y))
         .setOrigin(0.5, 1)
         .setDepth((y + 1) * TILE - 1);
+      g.edgeBushes.set(key(x, y), bush);
     }
   }
 }
@@ -128,7 +135,8 @@ export function buildGroves(scene: Phaser.Scene, g: WorldGrid) {
       if (!clearAround(x, y, 2, (k) => g.plaza.has(k))) continue;
       if (!clearAround(x, y, 0, (k) => g.road.has(k))) continue;
 
-      addTree(scene, g, spec, x, y);
+      const tree = addTree(scene, g, spec, x, y);
+      g.trees.push({ id: key(x, y), cells: cells.map(([cx, cy]) => key(cx, cy)), objects: [tree], border: false });
       for (const [cx, cy] of cells) {
         g.blocked.add(key(cx, cy));
         g.used.add(key(cx, cy));
@@ -146,11 +154,12 @@ export function buildGroves(scene: Phaser.Scene, g: WorldGrid) {
 export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
   const seed = g.seed ^ 0xd2;
   const decor = g.skin('decor');
+  // A pebble too small to read as an obstacle lies flat on the grass and you walk over it.
   const solid = (x: number, y: number, frame: number, wide = false) => {
-    scene.add.image(x * TILE, (y + 1) * TILE, decor, frame).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
-    if (wide) scene.add.image((x + 1) * TILE, (y + 1) * TILE, decor, frame + 1).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
-    for (const cx of wide ? [x, x + 1] : [x]) {
-      g.blocked.add(key(cx, y));
+    for (const [cx, f] of wide ? [[x, frame], [x + 1, frame + 1]] : [[x, frame]]) {
+      const blocks = paintsTile(scene, decor, f, cx * TILE, y * TILE, cx, y);
+      scene.add.image(cx * TILE, (y + 1) * TILE, decor, f).setOrigin(0, 1).setDepth(blocks ? (y + 1) * TILE - 1 : -600);
+      if (blocks) g.blocked.add(key(cx, y));
       g.used.add(key(cx, y));
     }
   };

@@ -28,8 +28,9 @@ export function readInvite(): Invite | null {
   return { roomId, key: new URLSearchParams(location.hash.slice(1)).get('key') ?? '' };
 }
 
+// What the town outside looks like: house exteriors and the host's village edits.
 function exteriorKey(p: WorldPayload): string {
-  return JSON.stringify(p.world.regions.map((r) => r.houses.map((h) => [h.id, h.variant, h.material, h.wallColor, h.roofColor])));
+  return JSON.stringify([p.world.regions.map((r) => r.houses.map((h) => [h.id, h.variant, h.material, h.wallColor, h.roofColor])), p.town ?? null]);
 }
 
 export async function joinRoom(
@@ -105,7 +106,7 @@ export async function joinRoom(
     const layoutsChanged = layouts !== lastLayouts;
     lastExterior = exterior;
     lastLayouts = layouts;
-    publishWorld(p.world, null, { layouts: p.layouts });
+    publishWorld(p.world, null, { layouts: p.layouts, town: p.town });
     onVault(makeHandle(p));
     setSessionShare(p.share);
     if (!initial && (exteriorChanged || layoutsChanged)) bus.emit('world-updated', { exteriorChanged });

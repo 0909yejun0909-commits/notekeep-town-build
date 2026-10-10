@@ -9,13 +9,14 @@ import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
 import { startWallet, stopWallet } from '@/lib/walletStore';
 import { startAchievements, stopAchievements } from '@/lib/achievementStore';
+import type { TownEdits } from '@/lib/townEdits';
 
 const HEAD_BYTES = 2048;
 
 export function publishWorld(
   world: WorldModel,
   fingerprint: string | null,
-  guest?: { layouts: Record<string, InteriorLayout> },
+  guest?: { layouts: Record<string, InteriorLayout>; town?: TownEdits },
 ) {
   const attempt = () => {
     const game = (window as any).__game;
@@ -26,14 +27,16 @@ export function publishWorld(
       // No fingerprint: a guest's own saved customizations must never repaint the host's town.
       game.registry.set('role', 'guest');
       game.registry.set('sessionLayouts', guest.layouts);
+      game.registry.set('sessionTown', guest.town ?? null);
       game.registry.remove('vaultFingerprint');
     } else {
       game.registry.remove('role');
       game.registry.remove('sessionLayouts');
+      game.registry.remove('sessionTown');
       game.registry.set('vaultFingerprint', fingerprint);
     }
     // Read fresh (not cached at module load) so a change made in the picker seconds before
-    // clicking "Open your vault" / "Try the demo town" is never missed.
+    // clicking "Open your vault" / "Tutorial" is never missed.
     game.registry.set('appearance', loadAppearance());
     // Last: TitleScene starts the overworld the moment this lands.
     game.registry.set('world', world);
@@ -109,7 +112,7 @@ export async function openVault(): Promise<VaultHandle | null> {
     | ((opts?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle>)
     | undefined;
   if (!picker) {
-    alert('Opening a vault needs the File System Access API. Use Chrome or Edge, or try the demo town.');
+    alert('Opening a vault needs the File System Access API. Use Chrome or Edge, or try the tutorial.');
     return null;
   }
 

@@ -57,7 +57,7 @@ const INK_SOFT = 'rgba(59, 42, 32, 0.6)';
 const INK_LINE = 'rgba(59, 42, 32, 0.3)';
 const INK_WASH = 'rgba(59, 42, 32, 0.08)';
 const BODY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Times New Roman', serif";
-const PIXEL_FONT = "'ArcadeClassic', 'CuteFantasy', monospace";
+const PIXEL_FONT = 'var(--pixel-font)';
 
 function extOf(path: string): string {
   const clean = path.split('#')[0].split('?')[0];
@@ -207,14 +207,6 @@ function MarkTools({
 }
 
 const READER_CSS = `
-  @font-face {
-    font-family: 'ArcadeClassic';
-    src: url('/assets/ui/arcade-classic.ttf') format('truetype');
-  }
-  @font-face {
-    font-family: 'CuteFantasy';
-    src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
-  }
   @keyframes note-open {
     from { opacity: 0; transform: translateY(10px) scale(0.985); }
     to   { opacity: 1; transform: none; }
@@ -279,7 +271,7 @@ const READER_CSS = `
   ${HIGHLIGHTS.map((h) => `.note-prose mark.hl-${h.id} { --hl: ${h.hex}; }`).join('\n  ')}
   .note-prose u { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
   .note-title {
-    font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 28px; line-height: 36px; color: ${INK};
+    font-family: ${PIXEL_FONT}; font-size: 28px; line-height: 36px; color: ${INK};
     margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid ${INK_LINE}; word-break: break-word;
   }
 
@@ -294,7 +286,7 @@ const READER_CSS = `
   .note-scroll::-webkit-scrollbar-thumb, .note-editor::-webkit-scrollbar-thumb { background: ${INK_LINE}; border-radius: 3px; }
 
   .note-btn {
-    font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;
+    font-family: ${PIXEL_FONT}; font-size: 16px;
     color: ${INK}; background: rgba(255, 252, 245, 0.75); border: 2px solid ${INK_LINE}; border-radius: 4px;
     padding: 5px 9px; cursor: pointer; line-height: 1; white-space: nowrap; flex: none;
   }
@@ -302,7 +294,7 @@ const READER_CSS = `
   .note-btn:disabled { opacity: 0.4; cursor: default; }
   .note-btn.primary { background: ${INK}; color: #fcf8ef; border-color: ${INK}; }
   .note-btn.primary:hover { background: #2a1a12; }
-  .note-hint { font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; color: ${INK_SOFT}; text-transform: uppercase; }
+  .note-hint { font-family: ${PIXEL_FONT}; font-size: 16px; color: ${INK_SOFT}; }
 
   .note-tools {
     display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px;
@@ -695,6 +687,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
       >
         <div
           className="note-book relative"
+          data-panel="note"
           onClick={(e) => e.stopPropagation()}
           style={{
             width: PANEL_W,
@@ -735,6 +728,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               >
                 <textarea
                   ref={textareaRef}
+                  data-tour="note-text"
                   className="note-editor"
                   value={draft}
                   spellCheck={false}
@@ -791,31 +785,64 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             </div>
           )}
 
-          {/* Controls in the page margins */}
+          {/* Controls: one group under each page, clear of the spine between them */}
           <div
+            data-tour="note-controls"
             style={{
               position: 'absolute',
               left: PAGES_LEFT,
-              right: PANEL_W - PAGES_LEFT - PAGES_W,
               top: PAGES_TOP + PAGES_H + 14,
-              display: 'flex',
+              width: PAGES_W,
+              display: 'grid',
+              gridTemplateColumns: `minmax(0, 1fr) ${SPINE_GAP}px minmax(0, 1fr)`,
               alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
             }}
           >
-            {!editing ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <button className="note-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-                    ‹ Prev
-                  </button>
-                  <span className="note-hint" title={saveError ?? undefined}>
-                    Page {page + 1} / {pageCount}
-                    {saveState === 'saving' ? ' · Saving…' : saveState === 'saved' ? ' · Saved' : saveState === 'error' ? ' · Could not save' : ''}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              {!editing ? (
+                <button className="note-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                  ‹ Prev
+                </button>
+              ) : (
+                <button className="note-btn" disabled={editPage === 0} onClick={() => turnEditPage(-1)}>
+                  ‹ Prev
+                </button>
+              )}
+              <span className="note-hint" style={{ flex: 'none' }}>
+                {editing ? `${editPage + 1}/${editPageCount}` : `${page + 1}/${pageCount}`}
+              </span>
+              <span
+                className="note-hint"
+                title={saveError ?? undefined}
+                style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {!editing ? (
+                  saveState === 'saved' ? 'Saved' : null
+                ) : saveState === 'saving' ? (
+                  'Saving…'
+                ) : saveState === 'error' ? (
+                  `Could not save: ${saveError ?? ''}`
+                ) : !canWrite ? (
+                  'Read-only vault'
+                ) : progress ? (
+                  <span data-tour="note-progress" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
+                    <Coin size={10} />
+                    {progress.words >= progress.needed
+                      ? `Save to earn +${progress.reward}`
+                      : `${progress.words}/${progress.needed} words`}
                   </span>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                ) : null}
+              </span>
+            </div>
+
+            <div />
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              {!editing ? (
+                <>
+                  <button className="note-btn" data-tour="note-close" onClick={() => bus.emit('close-note', undefined)} title="Close (Esc)">
+                    Close
+                  </button>
                   <button
                     className="note-btn"
                     disabled={raw === null}
@@ -831,56 +858,27 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   >
                     Next ›
                   </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <button className="note-btn" disabled={editPage === 0} onClick={() => turnEditPage(-1)}>
-                  ‹ Prev
-                </button>
-                <span
-                  className="note-hint"
-                  title={saveError ?? undefined}
-                  style={{ flex: 1, minWidth: 0, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  Page {editPage + 1} / {editPageCount} ·{' '}
-                  {saveState === 'saving'
-                    ? 'Saving…'
-                    : saveState === 'error'
-                      ? `Could not save: ${saveError ?? ''}`
-                      : canWrite
-                        ? '⌘S / Ctrl+S save · Esc cancel'
-                        : 'Read-only vault'}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {progress && (
-                    <span className="note-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
-                      <Coin size={10} />
-                      {progress.words >= progress.needed
-                        ? `Save to earn +${progress.reward}`
-                        : `${progress.words}/${progress.needed} words for +${progress.reward}`}
-                    </span>
-                  )}
-                  <button className="note-btn" onClick={cancelEdit}>
+                </>
+              ) : (
+                <>
+                  <button className="note-btn" data-tour="note-cancel" onClick={cancelEdit} title="Stop editing (Esc)">
                     Cancel
                   </button>
                   <button
                     className="note-btn primary"
+                    data-tour="note-save"
                     disabled={!canWrite || saveState === 'saving'}
                     onClick={() => void save()}
+                    title="Save (Ctrl+S / ⌘S)"
                   >
                     Save
                   </button>
-                  <button
-                    className="note-btn"
-                    disabled={editPage >= editPageCount - 1}
-                    onClick={() => turnEditPage(1)}
-                  >
+                  <button className="note-btn" disabled={editPage >= editPageCount - 1} onClick={() => turnEditPage(1)}>
                     Next ›
                   </button>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 

@@ -7,8 +7,7 @@
   align-items: center;
   justify-content: center;
   background: #91533b;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
   image-rendering: pixelated;
 }
 
@@ -138,6 +137,11 @@
 }
 .note {
   color: #ffe066;
+}
+/* Messages under the room wrap to its width instead of stretching the panel. */
+.under {
+  width: 0;
+  min-width: 100%;
 }
 .hint {
   color: #f4e4c1;

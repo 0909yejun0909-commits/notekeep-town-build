@@ -1,12 +1,12 @@
 /* Same pieces as the coin purse (components/CoinPurse.module.css): a dark wood plank with a
-   3px outline and inset highlight, cream chips with a sand underline, CuteFantasy at
-   multiples of 9px. Bottom-right, the one corner nothing else uses. */
+   3px outline and inset highlight, cream chips with a sand underline. Bottom-right, the one
+   corner nothing else uses. */
 .corner {
   position: absolute;
   right: 16px;
   bottom: 16px;
   z-index: 40;
-  font-family: 'CuteFantasy', monospace;
+  font-family: var(--pixel-font);
   image-rendering: pixelated;
 }
 
@@ -69,4 +69,34 @@
   .name {
     display: none;
   }
+}
+
+/* What a biome still to buy costs, and the one-line answer to a click on it. */
+.price {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #f7c948;
+}
+
+.selected .price {
+  color: #9a6149;
+}
+
+.note {
+  max-width: 320px;
+  margin: 0 0 8px auto;
+  padding: 4px 9px;
+  color: #fff7e6;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  font-size: 18px;
+  line-height: 27px;
+}
+
+/* The Build button, set apart from the biome choices by a groove. */
+.build {
+  margin-left: 6px;
+  border-left: 3px solid #1f1418;
+  color: #ffe066;
 }

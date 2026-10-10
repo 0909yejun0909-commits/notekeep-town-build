@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FLOOR_FRAMES, ROOM_SIZES, SHELF_GY, SHELF_W, canResize, computeDefaultLayout, doorCells, doorPositionFor, doorSlots,
-  restyleShelf, shelfGxFor, shelfOccupied, structuralOccupied,
+  resizeLayout, restyleShelf, shelfGxFor, shelfOccupied, structuralOccupied,
 } from './interiorLayout.ts';
 import { CATALOG_BY_ID } from './catalog.ts';
 import { hash } from './types.ts';
@@ -192,6 +192,46 @@ test('default furniture never blocks a note, the shelf, a doorway or the way out
         ];
         for (const key of mustReach) assert.ok(reached.has(key), `${room.id} ${size}: can't reach ${key}`);
       }
+    }
+  }
+});
+
+test('shrinking a furnished room moves pieces inside the new walls instead of refusing', () => {
+  const house: House = {
+    id: 'R/H', name: 'Hall', gx: 0, gy: 0, variant: 0, material: 'wood', wallColor: 'base', roofColor: 'black',
+    rooms: [{ id: 'R/H', name: 'Main', notes: ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => note(`R/H/${n}.md`)) }],
+  };
+  // The default furniture, moved down and right into the parts only a large room has.
+  const base = computeDefaultLayout(house, house.rooms[0]);
+  const large: InteriorLayout = {
+    ...base,
+    roomSize: 'large',
+    placements: base.placements.map((p) => ({ ...p, gx: p.gx + 6, gy: p.gy + 4 })),
+  };
+  assert.ok(large.placements.length > 0);
+  assert.equal(canResize(large, CATALOG_BY_ID, 'large'), true);
+  assert.equal(canResize(large, CATALOG_BY_ID, 'small'), false);
+  for (const size of ['medium', 'small'] as const) {
+    const result = resizeLayout(large, CATALOG_BY_ID, size);
+    assert.ok(result);
+    const { layout, putAway } = result;
+    assert.equal(layout.roomSize, size);
+    assert.equal(layout.placements.length + putAway, large.placements.length);
+    // Everything that stayed is inside the walls, clear of the shelf and of each other.
+    assert.equal(canResize(layout, CATALOG_BY_ID, size), true);
+    const cells = new Set<string>();
+    for (let x = 0; x < SHELF_W; x++) for (let y = 0; y < 2; y++) cells.add(`${layout.shelf.gx + x},${layout.shelf.gy + y}`);
+    for (const p of layout.placements) {
+      const [fw, fh] = CATALOG_BY_ID[p.item].footprint;
+      for (let x = 0; x < fw; x++) for (let y = 0; y < fh; y++) {
+        const c = `${p.gx + x},${p.gy + y}`;
+        assert.ok(!cells.has(c), `${p.item} overlaps at ${c}`);
+        cells.add(c);
+      }
+    }
+    // Notes stay on the pieces that carried them.
+    for (const p of layout.placements.filter((q) => q.noteId)) {
+      assert.ok(large.placements.some((q) => q.noteId === p.noteId && q.item === p.item));
     }
   }
 });

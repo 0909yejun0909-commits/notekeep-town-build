@@ -69,6 +69,11 @@ const ROOM_LABEL_FONT = 7;
 
 // In-room labels are drawn by the page over the game (components/SceneLabels.tsx), sharp at
 // any scale. Here they're kept in room coordinates; x,y is where their origin point sits.
+const LARGEST_ROOM_PX = Object.values(ROOM_SIZES).reduce<[number, number]>(
+  ([w, h], [rw, rh]) => [Math.max(w, rw * TILE), Math.max(h, rh * TILE)],
+  [0, 0],
+);
+
 type RoomLabel = Omit<SceneLabel, 'x' | 'y' | 'px'> & { x: number; y: number; visible: boolean };
 
 export default class InteriorScene extends Phaser.Scene {
@@ -227,9 +232,12 @@ export default class InteriorScene extends Phaser.Scene {
     [this.doorGx, this.doorGy] = doorPositionFor(w, h);
     this.roomPxW = w * TILE;
     this.roomPxH = h * TILE;
-    // A room too big for the view at the usual pixel size gets a step smaller (game/config.ts).
+    // Every room size is drawn at the scale the largest one needs, so a small room looks
+    // small. A view too small for that at the usual pixel size gets a step smaller
+    // (game/config.ts).
+    const [lw, lh] = LARGEST_ROOM_PX;
     const minView = this.game.registry.get('minView') as [number, number] | null | undefined;
-    if (minView?.[0] !== this.roomPxW || minView?.[1] !== this.roomPxH) this.game.registry.set('minView', [this.roomPxW, this.roomPxH]);
+    if (minView?.[0] !== lw || minView?.[1] !== lh) this.game.registry.set('minView', [lw, lh]);
 
     // The entrance has a doorway per other room. Rooms beyond the wall's capacity get no door;
     // their notes are still on the entrance bookshelf. Rooms are added from CUSTOMIZE, only by
@@ -302,7 +310,7 @@ export default class InteriorScene extends Phaser.Scene {
       suffix: ` (${this.isEntrance ? noteCount : room.notes.length})`,
       maxWidth: labelRightX - Math.max(w - 1 - HEADER_TILES, TOP_FIRST_GX) * TILE,
       action: this.game.registry.get('role') === 'guest' ? undefined
-        : { text: 'CUSTOMIZE', color: '#ffe066', onClick: () => this.openEditor() },
+        : { text: 'CUSTOMIZE', color: '#ffe066', onClick: () => this.openEditor(), tour: 'customize' },
     });
 
     for (const door of this.doors.values()) this.drawDoorLabel(door);
@@ -312,7 +320,7 @@ export default class InteriorScene extends Phaser.Scene {
       this.renderPlacement(placement, allNotes);
     }
 
-    this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1);
+    this.label(this.doorGx * TILE + TILE / 2, h * TILE - 2, this.isEntrance ? 'EXIT' : 'BACK', 0.5, 1, { tour: 'exit' });
 
     const isWalkable: Walkable = (gx, gy) => {
       if (gx === this.doorGx && gy === this.doorGy) return true;
@@ -399,12 +407,14 @@ export default class InteriorScene extends Phaser.Scene {
     });
   }
 
-  // A room is only a few hundred pixels across. Show it as big as fits whole, scaled by a
-  // whole number (pixel art stays crisp only at whole multiples), centred in the view. In a
-  // window too small for the room even at 1x, follow the player across it instead.
+  // A room is only a few hundred pixels across. Show it scaled up by the whole number (pixel
+  // art stays crisp only at whole multiples) at which the largest room size fits, centred in
+  // the view, so Small, Medium and Large keep their sizes relative to each other. In a window
+  // too small for the room even at 1x, follow the player across it instead.
   private roomZoom() {
     const cam = this.cameras.main;
-    return Math.max(1, Math.floor(Math.min(cam.width / this.roomPxW, cam.height / this.roomPxH)));
+    const [lw, lh] = LARGEST_ROOM_PX;
+    return Math.max(1, Math.floor(Math.min(cam.width / lw, cam.height / lh)));
   }
 
   private label(x: number, y: number, text: string, ox: number, oy: number, extra: Partial<RoomLabel> = {}) {

@@ -1,0 +1,58 @@
+/* Low and centred like an RPG text box, above the bottom-right plank so nothing hides it. */
+.dock {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  z-index: 46;
+  width: min(620px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.box {
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* The speaker's name on a dark tab over the top edge. */
+.name {
+  position: absolute;
+  top: -42px;
+  left: -6px;
+  padding: 3px 12px;
+  color: #ffe066;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 3px 0 #6d483b;
+  font-size: 21px;
+  line-height: 27px;
+}
+
+.line {
+  min-height: 54px;
+  margin: 6px 0 0;
+  font-size: 21px;
+  line-height: 27px;
+}
+
+.unshown {
+  visibility: hidden;
+}
+
+/* "Space" and a bobbing arrow once the whole line is out. */
+.more {
+  position: absolute;
+  right: -8px;
+  bottom: -12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9a6149;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.next {
+  transform: rotate(90deg);
+}

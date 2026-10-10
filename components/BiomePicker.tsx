@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
 import { trackDistinct } from '@/lib/achievementStore';
-import { TOWN_BIOMES, TOWN_BIOME_LABEL, loadTownBiome, saveTownBiome } from '@/lib/biome';
+import { DEFAULT_TOWN_BIOME, TOWN_BIOMES, TOWN_BIOME_LABEL, loadTownBiome, saveTownBiome } from '@/lib/biome';
+import { biomeUnlockId } from '@/lib/wallet';
+import { unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
+import Coin from './Coin';
 import type { TownBiome } from '@/lib/types';
 import styles from './BiomePicker.module.css';
 
-// 9x9 pixel icons, one letter per pixel, drawn 3x (27px, the CuteFantasy grid).
+// 9x9 pixel icons, one letter per pixel, drawn 3x (27px).
 const ICONS: Record<TownBiome, { rows: string[]; palette: Record<string, string> }> = {
   forest: {
     rows: ['....g....', '...Ggd...', '..Gggdd..', '...Ggd...', '..Gggdd..', '.Ggggddd.', 'GGgggdddd', '....t....', '....t....'],
@@ -39,25 +42,73 @@ function PixelIcon({ biome }: { biome: TownBiome }) {
 export default function BiomePicker() {
   const [biome, setBiome] = useState<TownBiome | null>(null);
   const [indoors, setIndoors] = useState(false);
+  const [building, setBuilding] = useState(false);
+  // A biome still to buy takes two clicks: the first asks, the second pays.
+  const [asking, setAsking] = useState<TownBiome | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const wallet = useWallet();
+  const cost = (b: TownBiome) => unlockCost(wallet, biomeUnlockId(b));
 
   useEffect(() => {
     setBiome(loadTownBiome());
     const onEnter = () => setIndoors(true);
     const onExit = () => setIndoors(false);
+    const onBuild = () => setBuilding(true);
+    const onBuilt = () => setBuilding(false);
     bus.on('enter-house', onEnter);
     bus.on('fast-travel', onEnter);
     bus.on('exit-house', onExit);
+    bus.on('open-town-editor', onBuild);
+    bus.on('close-town-editor', onBuilt);
     return () => {
       bus.off('enter-house', onEnter);
       bus.off('fast-travel', onEnter);
       bus.off('exit-house', onExit);
+      bus.off('open-town-editor', onBuild);
+      bus.off('close-town-editor', onBuilt);
     };
   }, []);
 
-  if (!biome || indoors) return null;
+  // A town that hasn't bought the biome last picked (on this browser, maybe for another vault)
+  // opens in the forest.
+  const lockedNow = biome !== null && wallet.active && cost(biome) > 0;
+  useEffect(() => {
+    if (lockedNow) apply(DEFAULT_TOWN_BIOME);
+  }, [lockedNow]);
+
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(null), 4000);
+    return () => clearTimeout(t);
+  }, [note]);
+
+  if (!biome || indoors || building) return null;
 
   function pick(next: TownBiome) {
     if (next === biome) return;
+    const price = cost(next);
+    if (price > 0) {
+      if (!wallet.active) {
+        setNote('Open your town to unlock biomes with coins.');
+        return;
+      }
+      if (asking !== next) {
+        setAsking(next);
+        setNote(`${TOWN_BIOME_LABEL[next]} costs ${price} coins. Click again to buy it.`);
+        return;
+      }
+      if (!unlockAll([biomeUnlockId(next)])) {
+        setAsking(null);
+        setNote(`${TOWN_BIOME_LABEL[next]} costs ${price} coins and you have ${wallet.balance}. Write notes to earn more!`);
+        return;
+      }
+    }
+    setAsking(null);
+    setNote(null);
+    apply(next);
+  }
+
+  function apply(next: TownBiome) {
     if (biome) trackDistinct('biomesTried', biome);
     trackDistinct('biomesTried', next);
     setBiome(next);
@@ -66,14 +117,15 @@ export default function BiomePicker() {
   }
 
   return (
-    <div className={styles.corner}>
+    <div className={styles.corner} data-hud>
+      {note && <p className={styles.note}>{note}</p>}
       <div className={styles.plank} role="group" aria-label="Town biome">
         <span className={styles.label}>Town</span>
         {TOWN_BIOMES.map((b) => (
           <button
             key={b}
             className={`${styles.option} ${b === biome ? styles.selected : ''}`}
-            title={TOWN_BIOME_LABEL[b]}
+            title={cost(b) ? `${TOWN_BIOME_LABEL[b]}: ${cost(b)} coins` : TOWN_BIOME_LABEL[b]}
             aria-pressed={b === biome}
             // Blur so Space, the game's talk/interact key, can't re-press a focused button.
             onClick={(e) => {
@@ -82,9 +134,29 @@ export default function BiomePicker() {
             }}
           >
             <PixelIcon biome={b} />
-            <span className={styles.name}>{TOWN_BIOME_LABEL[b]}</span>
+            <span className={styles.name}>{asking === b ? 'Buy?' : TOWN_BIOME_LABEL[b]}</span>
+            {cost(b) > 0 && (
+              <span className={styles.price}>
+                <Coin size={14} />
+                {cost(b)}
+              </span>
+            )}
           </button>
         ))}
+        {/* Village building: only for the town's owner, who has the coins to spend. */}
+        {wallet.active && (
+          <button
+            className={`${styles.option} ${styles.build}`}
+            data-tour="build"
+            title="Decorate the town, paint paths and cut down trees"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              bus.emit('open-town-editor', undefined);
+            }}
+          >
+            <span className={styles.name}>Build</span>
+          </button>
+        )}
       </div>
     </div>
   );

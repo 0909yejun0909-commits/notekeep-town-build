@@ -6,7 +6,8 @@ import {
   HOUSE_GAP,
   DEFAULT_MATERIAL,
   DEFAULT_WALL_COLOR,
-  DEFAULT_ROOF_COLOR,
+  ROOF_COLORS,
+  STARTER_HOUSE_VARIANT,
 } from '@/lib/houseCatalog';
 import { foldersOf } from '@/lib/vault/paths';
 
@@ -278,12 +279,14 @@ export async function parseVault(
         const { pos } = layoutRoom(room.notes);
         room.notes.forEach((n, i) => { n.gx = pos[i][0]; n.gy = pos[i][1]; });
       }
-      const variant = hash(h.name) % 5;
+      // Every house starts as the plain wood cottage; the other shapes and materials are
+      // upgrades bought with coins. Only the roof colour varies, so houses tell apart.
+      const variant = STARTER_HOUSE_VARIANT;
       houses.push({
         id: h.id, name: h.name, gx: 0, gy: 0, variant,
         material: DEFAULT_MATERIAL[variant],
         wallColor: DEFAULT_WALL_COLOR[variant],
-        roofColor: DEFAULT_ROOF_COLOR[variant],
+        roofColor: ROOF_COLORS[hash(h.name) % ROOF_COLORS.length],
         rooms,
       });
     }

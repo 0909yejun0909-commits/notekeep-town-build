@@ -1,7 +1,5 @@
-/* Kenmi UI pieces cut out by scripts/crop-ui.py, drawn at 2x-5x. Text is ArcadeClassic, whose
-   pixel grid is 1/14 of its size: sizes stay on multiples of 7px (crisp on 2x screens, and 14/28
-   on 1x). It has only letters, digits and "!", so CuteFantasy fills in punctuation, and its space
-   is so narrow that word-spacing is added wherever it's set. */
+/* Kenmi UI pieces cut out by scripts/crop-ui.py, drawn at 2x-5x. Text is the game's pixel font
+   (--pixel-font, app/globals.css). */
 
 /* Sliced pieces sit at fractional positions (the font's advances aren't whole pixels), so
    Chrome leaves hairline gaps between border-image slices. The parchment gets a solid
@@ -15,8 +13,7 @@
   image-rendering: pixelated;
   box-shadow: 0 6px 0 rgba(24, 20, 37, 0.35);
   color: #3f2832;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
 }
 
 /* 3-sliced at 5x: the ribbon's columns 24-39 are identical, so only they stretch. The
@@ -30,8 +27,7 @@
   image-rendering: pixelated;
   padding-bottom: 20px;
   color: #3f2832;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
   font-size: 56px;
   line-height: 80px;
   white-space: nowrap;
@@ -79,8 +75,7 @@
 
 .field {
   width: 100%;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
   font-size: 28px;
   line-height: 36px;
   color: #3f2832;
@@ -97,8 +92,7 @@
 
 /* Cream text with a one-font-pixel outline (2px at 18px), for words on the meadow. */
 .outlined {
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
   color: #fff7e6;
   text-shadow:
     2px 0 0 #3f2832, -2px 0 0 #3f2832, 0 2px 0 #3f2832, 0 -2px 0 #3f2832,

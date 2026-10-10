@@ -4,7 +4,7 @@
   position: absolute;
   right: 16px;
   z-index: 40;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  font-family: var(--pixel-font);
   word-spacing: 0.4em;
   image-rendering: pixelated;
 }

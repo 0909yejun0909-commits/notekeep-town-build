@@ -12,7 +12,7 @@
   border: 3px solid #1f1418;
   box-shadow: inset 0 3px 0 #6d483b, 0 4px 0 rgba(24, 20, 37, 0.45);
   color: #f7c948;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  font-family: var(--pixel-font);
   word-spacing: 0.4em;
   image-rendering: pixelated;
   cursor: pointer;
@@ -43,7 +43,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(24, 20, 37, 0.6);
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
+  font-family: var(--pixel-font);
   word-spacing: 0.4em;
 }
 .panel { width: min(720px, 92vw); max-height: 86vh; display: flex; flex-direction: column; padding: 14px 18px; }
