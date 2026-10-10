@@ -4,8 +4,7 @@
   inset: 0;
   z-index: 90;
   pointer-events: none;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
 }
 
 /* The shade is one SVG path with a hole per highlight; only the painted part takes clicks. */

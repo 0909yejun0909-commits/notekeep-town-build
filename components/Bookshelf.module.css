@@ -6,8 +6,7 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.7);
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
   image-rendering: pixelated;
 }
 

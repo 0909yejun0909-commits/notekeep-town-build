@@ -1,12 +1,12 @@
 /* Same pieces as the coin purse (components/CoinPurse.module.css): a dark wood plank with a
-   3px outline and inset highlight, cream chips with a sand underline, CuteFantasy at
-   multiples of 9px. Bottom-right, the one corner nothing else uses. */
+   3px outline and inset highlight, cream chips with a sand underline. Bottom-right, the one
+   corner nothing else uses. */
 .corner {
   position: absolute;
   right: 16px;
   bottom: 16px;
   z-index: 40;
-  font-family: 'CuteFantasy', monospace;
+  font-family: var(--pixel-font);
   image-rendering: pixelated;
 }
 

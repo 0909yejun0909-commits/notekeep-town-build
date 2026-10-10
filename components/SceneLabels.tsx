@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sceneLabels, type SceneLabel } from '@/game/sceneLabels';
 
 // Sizes in game pixels; the scene says how many CSS px one game pixel is.
-const FONT = 14;
+const FONT = 10; // the pixel font is scaled up 133% (app/globals.css), so this draws about 13 game pixels tall
 const PAD_X = 2;
 const PAD_Y = 1;
 
@@ -73,10 +73,9 @@ export default function SceneLabels() {
           data-hud
           className="absolute left-0 top-0 flex items-center whitespace-nowrap"
           style={{
-            fontFamily: "'ArcadeClassic', 'CuteFantasy', monospace",
+            fontFamily: 'var(--pixel-font)',
             fontSize: FONT * l.px,
             lineHeight: 1,
-            wordSpacing: '0.4em',
             color: l.color ?? '#f4e4c1',
             gap: 2 * l.px,
             transform: `translate(${Math.round(l.x)}px, ${Math.round(l.y)}px) translate(${-l.ox * 100}%, ${-l.oy * 100}%)`,

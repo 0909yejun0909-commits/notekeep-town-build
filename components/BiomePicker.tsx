@@ -9,7 +9,7 @@ import Coin from './Coin';
 import type { TownBiome } from '@/lib/types';
 import styles from './BiomePicker.module.css';
 
-// 9x9 pixel icons, one letter per pixel, drawn 3x (27px, the CuteFantasy grid).
+// 9x9 pixel icons, one letter per pixel, drawn 3x (27px).
 const ICONS: Record<TownBiome, { rows: string[]; palette: Record<string, string> }> = {
   forest: {
     rows: ['....g....', '...Ggd...', '..Gggdd..', '...Ggd...', '..Gggdd..', '.Ggggddd.', 'GGgggdddd', '....t....', '....t....'],

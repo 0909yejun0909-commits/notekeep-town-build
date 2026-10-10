@@ -143,8 +143,7 @@
 .hint {
   margin: 0;
   color: #f6ca9f;
-  font-family: 'ArcadeClassic', 'CuteFantasy', monospace;
-  word-spacing: 0.4em;
+  font-family: var(--pixel-font);
   font-size: 21px;
   line-height: 27px;
   text-align: center;

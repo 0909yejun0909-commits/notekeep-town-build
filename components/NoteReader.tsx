@@ -29,7 +29,7 @@ const INK_SOFT = 'rgba(59, 42, 32, 0.6)';
 const INK_LINE = 'rgba(59, 42, 32, 0.3)';
 const INK_WASH = 'rgba(59, 42, 32, 0.08)';
 const BODY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Times New Roman', serif";
-const PIXEL_FONT = "'ArcadeClassic', 'CuteFantasy', monospace";
+const PIXEL_FONT = 'var(--pixel-font)';
 
 function extOf(path: string): string {
   const clean = path.split('#')[0].split('?')[0];
@@ -104,14 +104,6 @@ async function resolveEmbeds(
 }
 
 const READER_CSS = `
-  @font-face {
-    font-family: 'ArcadeClassic';
-    src: url('/assets/ui/arcade-classic.ttf') format('truetype');
-  }
-  @font-face {
-    font-family: 'CuteFantasy';
-    src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
-  }
   @keyframes note-open {
     from { opacity: 0; transform: translateY(10px) scale(0.985); }
     to   { opacity: 1; transform: none; }
@@ -170,7 +162,7 @@ const READER_CSS = `
     border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); image-rendering: pixelated;
   }
   .note-title {
-    font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 28px; line-height: 36px; color: ${INK};
+    font-family: ${PIXEL_FONT}; font-size: 28px; line-height: 36px; color: ${INK};
     margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid ${INK_LINE}; word-break: break-word;
   }
 
@@ -185,7 +177,7 @@ const READER_CSS = `
   .note-scroll::-webkit-scrollbar-thumb, .note-editor::-webkit-scrollbar-thumb { background: ${INK_LINE}; border-radius: 3px; }
 
   .note-btn {
-    font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;
+    font-family: ${PIXEL_FONT}; font-size: 16px;
     color: ${INK}; background: rgba(255, 248, 232, 0.65); border: 2px solid ${INK_LINE}; border-radius: 4px;
     padding: 5px 9px; cursor: pointer; line-height: 1; white-space: nowrap; flex: none;
   }
@@ -193,7 +185,7 @@ const READER_CSS = `
   .note-btn:disabled { opacity: 0.4; cursor: default; }
   .note-btn.primary { background: ${INK}; color: #f6e7c8; border-color: ${INK}; }
   .note-btn.primary:hover { background: #2a1a12; }
-  .note-hint { font-family: ${PIXEL_FONT}; word-spacing: 0.4em; font-size: 14px; letter-spacing: 1px; color: ${INK_SOFT}; text-transform: uppercase; }
+  .note-hint { font-family: ${PIXEL_FONT}; font-size: 16px; color: ${INK_SOFT}; }
 `;
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
