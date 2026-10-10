@@ -14,6 +14,10 @@ type Lane = { play: ReturnType<typeof voice>; gain: number; slide: boolean; leng
 type Playing = { place: Place; out: GainNode; lanes: Lane[]; step: number; next: number; sec: number; timer: number };
 
 const lanes: Partial<Record<Place, Lane[]>> = {};
+// `scene` is the place the player is in; `override` is a track picked at a sound device, which
+// plays instead until it's stopped.
+let scene: Place | null = null;
+let override: Place | null = null;
 let wanted: Place | null = null;
 let playing: Playing | null = null;
 
@@ -79,11 +83,23 @@ function start(e: Engine, place: Place) {
   playing = p;
 }
 
+function retarget() {
+  const place = override ?? scene;
+  if (!place || wanted === place) return;
+  wanted = place;
+  void Promise.all(samplesFor(place).map(loadSample)).then(() => onUnlock((e) => start(e, place)));
+}
+
 // Called from each scene's create(). The same place again (a restart on resize, the next room
 // of a house) keeps the music going; a new one crossfades in once its recordings have loaded,
 // the old one playing on meanwhile.
 export function setPlace(place: Place) {
-  if (wanted === place) return;
-  wanted = place;
-  void Promise.all(samplesFor(place).map(loadSample)).then(() => onUnlock((e) => start(e, place)));
+  scene = place;
+  retarget();
+}
+
+// A device's track (null: back to the place's own music).
+export function playTrack(place: Place | null) {
+  override = place;
+  retarget();
 }

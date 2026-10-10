@@ -27,6 +27,10 @@ import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
 import SoundToggle from '@/components/SoundToggle';
+import SoundPlayer from '@/components/SoundPlayer';
+import Meditate from '@/components/Meditate';
+import RestHud from '@/components/RestHud';
+import NowPlaying from '@/components/NowPlaying';
 import { bus } from '@/game/bus';
 import { readInvite, type Invite } from '@/lib/multiplayer/guest';
 import { RELAY_URL } from '@/lib/multiplayer/session';
@@ -81,6 +85,10 @@ function Game() {
       <ChoiceMenu />
       <BiomePicker />
       <SoundToggle />
+      <NowPlaying />
+      <SoundPlayer />
+      <Meditate />
+      <RestHud />
       <TownEditor />
       <MissingArtBanner />
       <Tutorial />

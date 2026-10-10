@@ -1,6 +1,6 @@
 import { HAIR_LAYER, PETS, SKINS, outfitAssetPath, outfitTextureKey, petAssetPath, petTextureKey } from '@/lib/rewards';
 import Phaser from 'phaser';
-import { CATALOG, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
+import { CATALOG, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl, furnitureTextureKey } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
 import {
   CLOTH_COLORS,
@@ -69,7 +69,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('interior-doors', 'assets/interior/doors.png', { frameWidth: 16, frameHeight: 16 });
 
     for (const sheet of FURNITURE_SHEETS) {
-      this.load.image(furnitureTextureKey(sheet), `assets/furniture/${sheet}.png`);
+      this.load.image(furnitureTextureKey(sheet), furnitureSheetUrl(sheet).slice(1));
     }
 
     this.load.spritesheet('tree-oak', 'assets/terrain/tree_oak.png', { frameWidth: 32, frameHeight: 48 });

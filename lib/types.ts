@@ -87,7 +87,9 @@ export type DecorKind =
   | 'single_bed' | 'wardrobe' | 'cabinet' | 'sideboard' | 'nightstand' | 'mirror'
   | 'table' | 'stove' | 'sink' | 'fridge' | 'barrel'
   | 'bathtub' | 'toilet' | 'basin' | 'vanity'
-  | 'bookcase' | 'piano' | 'guitar' | 'planter' | 'mat';
+  | 'bookcase' | 'piano' | 'guitar' | 'planter' | 'mat'
+  | 'speaker' | 'headphones' | 'earphones' | 'radio' | 'record_player' | 'noise_machine'
+  | 'beanbag' | 'cushion';
 
 export type CatalogCategory = FurnitureId | DecorKind;
 

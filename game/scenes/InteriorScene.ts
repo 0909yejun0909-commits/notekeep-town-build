@@ -8,6 +8,7 @@ import { trackMovement } from '@/game/achievementHooks';
 import { getEquipped } from '@/lib/achievementStore';
 import type { SkinId } from '@/lib/rewards';
 import { lie, sit } from '@/game/furniturePoses';
+import { tabFor } from '@/lib/chill';
 import { setPlace } from '@/game/audio/music';
 import { setGround, sfx } from '@/game/audio/sfx';
 import type { Appearance, CatalogEntry, House, NoteRef, WorldModel, InteriorLayout, FurniturePlacement } from '@/lib/types';
@@ -117,6 +118,8 @@ export default class InteriorScene extends Phaser.Scene {
   private shelfOpen = false;
   private noteOpen = false;
   private wardrobeOpen = false;
+  // The sound player or the meditation screen.
+  private chillOpen = false;
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
@@ -145,6 +148,11 @@ export default class InteriorScene extends Phaser.Scene {
 
   // The picker already saved each change; pick it up and redress on the spot. Keys are
   // reset because the Enter that closed the picker would otherwise reopen it next frame.
+  private onCloseChill = () => {
+    this.chillOpen = false;
+    this.input.keyboard?.resetKeys();
+  };
+
   private onCloseWardrobe = () => {
     this.wardrobeOpen = false;
     this.input.keyboard?.resetKeys();
@@ -191,6 +199,7 @@ export default class InteriorScene extends Phaser.Scene {
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
+    this.chillOpen = false;
     this.exiting = false;
     this.editingLayout = false;
     this.blocked = new Set();
@@ -391,6 +400,8 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('close-note', this.onCloseNote);
     bus.on('close-interior-editor', this.onCloseEditor);
     bus.on('close-wardrobe', this.onCloseWardrobe);
+    bus.on('close-sound-player', this.onCloseChill);
+    bus.on('close-meditate', this.onCloseChill);
     bus.on('choice-menu-choice', this.onMenuChoice);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
@@ -401,6 +412,9 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('close-note', this.onCloseNote);
       bus.off('close-interior-editor', this.onCloseEditor);
       bus.off('close-wardrobe', this.onCloseWardrobe);
+      bus.off('close-sound-player', this.onCloseChill);
+      bus.off('close-meditate', this.onCloseChill);
+      if (this.pose) bus.emit('rest-end', undefined);
       bus.off('choice-menu-choice', this.onMenuChoice);
       bus.off('commit-interior-layout', this.onCommitLayout);
       bus.off('world-updated', this.onWorldUpdated);
@@ -455,7 +469,7 @@ export default class InteriorScene extends Phaser.Scene {
   };
 
   private overlayOpen() {
-    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.menu !== null || this.editingLayout;
+    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.chillOpen || this.menu !== null || this.editingLayout;
   }
 
   private openNote(note: NoteRef) {
@@ -479,6 +493,12 @@ export default class InteriorScene extends Phaser.Scene {
     if (this.overlayOpen() || this.exiting) return;
     this.wardrobeOpen = true;
     bus.emit('open-wardrobe', undefined);
+  }
+
+  private openSoundPlayer(entry: CatalogEntry) {
+    if (this.overlayOpen() || this.exiting) return;
+    this.chillOpen = true;
+    bus.emit('open-sound-player', { device: entry.name, tab: tabFor(entry.category) });
   }
 
   private openMenu(title: string, options: Array<[string, () => void]>) {
@@ -531,14 +551,24 @@ export default class InteriorScene extends Phaser.Scene {
       this.openWardrobe();
       return;
     }
+    if (piece.action === 'listen') {
+      this.openSoundPlayer(piece.entry);
+      return;
+    }
     const { gx, gy } = this.movement.getTile();
     this.indicator.visible = false;
-    sfx(piece.action);
+    sfx(piece.action === 'lie' ? 'lie' : 'sit');
     const undo =
-      piece.action === 'sit'
-        ? sit(this, this.player, piece.entry, piece.placement)
-        : lie(this, this.player, piece.entry, piece.placement, this.appearance, this.skin);
+      piece.action === 'lie'
+        ? lie(this, this.player, piece.entry, piece.placement, this.appearance, this.skin)
+        : sit(this, this.player, piece.entry, piece.placement);
     this.pose = { undo, gx, gy, held: new Set(this.standKeys.filter((k) => k.isDown)) };
+    if (piece.action === 'meditate') {
+      this.chillOpen = true;
+      bus.emit('open-meditate', undefined);
+    } else {
+      bus.emit('rest-start', { kind: piece.action === 'lie' ? 'lie' : 'sit' });
+    }
   }
 
   // Reading JustDown clears it: a Space/Enter that stood you up must not also count as a
@@ -548,6 +578,7 @@ export default class InteriorScene extends Phaser.Scene {
     Phaser.Input.Keyboard.JustDown(this.spaceKey);
     Phaser.Input.Keyboard.JustDown(this.enterKey);
     this.pose.undo();
+    bus.emit('rest-end', undefined);
     this.movement.snapTo(this.pose.gx, this.pose.gy);
     this.player.setFlipX(false).play('idle-down', true);
     this.pose = null;
