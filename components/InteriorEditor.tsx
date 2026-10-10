@@ -5,9 +5,9 @@ import { bus } from '@/game/bus';
 import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
 import { canPlace, canPlaceShelf, resizeLayout, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
-import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout } from '@/lib/types';
-import { MIN_WORDS, NOTE_REWARD, available, priceOf } from '@/lib/wallet';
-import { buy, commitLayoutChange, useWallet } from '@/lib/walletStore';
+import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout, RoomSize } from '@/lib/types';
+import { MIN_WORDS, NOTE_REWARD, available, priceOf, unlockId } from '@/lib/wallet';
+import { buy, commitLayoutChange, unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
 import { useSession } from '@/lib/multiplayer/session';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import Coin from './Coin';
@@ -101,6 +101,8 @@ export default function InteriorEditor() {
   // The committed placements this session started from; the draft's difference from these is
   // what Save takes out of (or puts back into) the inventory.
   const [saved, setSaved] = useState<FurniturePlacement[]>([]);
+  // The size the room had when the editor opened: always free to keep.
+  const [savedSize, setSavedSize] = useState<RoomSize>('small');
   const wallet = useWallet();
   const [selected, setSelected] = useState<Target | null>(null);
   const [picking, setPicking] = useState<{ gx: number; gy: number } | null>(null);
@@ -122,6 +124,7 @@ export default function InteriorEditor() {
       setSession(s);
       setDraft(layout);
       setSaved(layout.placements);
+      setSavedSize(layout.roomSize);
       setSelected(null);
       setPicking(null);
       setError(null);
@@ -161,8 +164,22 @@ export default function InteriorEditor() {
     bus.emit('close-interior-editor', undefined);
   }
 
+  // Rooms start small; Medium and Large are bought once and then free in every room.
+  function sizeCost(size: RoomSize): number {
+    return size === savedSize ? 0 : unlockCost(wallet, unlockId('roomSize', size));
+  }
+
   function save() {
     if (!session || !draft) return;
+    const cost = sizeCost(draft.roomSize);
+    if (cost > 0 && !unlockAll([unlockId('roomSize', draft.roomSize)])) {
+      setError(
+        wallet.active
+          ? `A ${draft.roomSize} room costs ${cost} coins and you have ${wallet.balance}. Write notes to earn more!`
+          : "Bigger rooms are bought with your own town's coins.",
+      );
+      return;
+    }
     commitLayoutChange(saved, draft.placements);
     bus.emit('commit-interior-layout', { roomId: session.roomId, layout: draft });
     setSession(null);
@@ -387,7 +404,15 @@ export default function InteriorEditor() {
               Cancel
             </button>
             <button className={`${styles.btn} ${styles.primary}`} data-tour="room-save" onClick={save}>
-              Save
+              {sizeCost(draft.roomSize) > 0 ? (
+                <span className="flex items-center gap-2">
+                  Buy and save
+                  <Coin size={14} />
+                  {sizeCost(draft.roomSize)}
+                </span>
+              ) : (
+                'Save'
+              )}
             </button>
           </div>
         </div>
@@ -445,8 +470,17 @@ export default function InteriorEditor() {
                 setPicking(null);
                 setDraft(resized.layout);
               }}
+              title={sizeCost(size) > 0 ? `${sizeCost(size)} coins, paid when you save` : undefined}
             >
-              {size[0].toUpperCase() + size.slice(1)}
+              <span className="flex items-center gap-2">
+                {size[0].toUpperCase() + size.slice(1)}
+                {sizeCost(size) > 0 && (
+                  <>
+                    <Coin size={12} />
+                    {sizeCost(size)}
+                  </>
+                )}
+              </span>
             </button>
           ))}
         </div>

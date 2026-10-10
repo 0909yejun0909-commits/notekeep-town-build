@@ -270,7 +270,8 @@ const STEPS: Step[] = [
     target: () => rectOf('[data-tour="room-grid"]'),
     done: () => !!el('[data-tour="furniture"]'),
     auto: () => void pickEmptyTile(),
-    onEnter: () => topUpTutorial(150),
+    // Enough for the dearest piece and a bigger room on top.
+    onEnter: () => topUpTutorial(230),
     lost: () => (roomEditorOpen() ? null : 'customize'),
   },
   {
@@ -283,7 +284,7 @@ const STEPS: Step[] = [
   },
   {
     id: 'room-save',
-    text: <p>Click Save to keep your new room. Pieces you take out later go back to your inventory for free.</p>,
+    text: <p>Click Save to keep your new room. Rooms start small: Medium and Large sizes can be bought up here too.</p>,
     target: () => rectOf('[data-tour="room-save"]'),
     done: () => !roomEditorOpen(),
     auto: () => click('[data-tour="room-save"]'),

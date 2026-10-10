@@ -26,6 +26,8 @@ const UNLOCK_PRICES: Record<string, number> = {
   // House shapes, the cheapest first: every house starts as shape 0, the plain cottage.
   'shape:3': 30, 'shape:1': 50, 'shape:2': 50, 'shape:4': 100,
   'material:stone': 60, 'material:limestone': 90,
+  // Rooms start small.
+  'roomSize:medium': 40, 'roomSize:large': 80,
   'wall:green': 20, 'wall:red': 20,
   'roof:black': 15, 'roof:blue': 15, 'roof:red': 15,
 };

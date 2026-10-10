@@ -83,6 +83,9 @@ test('unlock prices: biomes, house upgrades and outfit pieces cost coins; starte
   assert.equal(unlockPrice(unlockId('wall', 'base')), 0);
   assert.ok(unlockPrice(unlockId('material', 'limestone')) > unlockPrice(unlockId('material', 'stone')));
   assert.ok(unlockPrice(unlockId('shape', 4)) > unlockPrice(unlockId('shape', 0)));
+  assert.equal(unlockPrice(unlockId('roomSize', 'small')), 0);
+  assert.ok(unlockPrice(unlockId('roomSize', 'large')) > unlockPrice(unlockId('roomSize', 'medium')));
+  assert.ok(unlockPrice(unlockId('roomSize', 'medium')) > 0);
   const start = { hairStyle: 1, shirtColor: 'red' };
   assert.equal(unlockPrice(unlockId('hairStyle', 1), start), 0);
   assert.ok(unlockPrice(unlockId('hairStyle', 2), start) > 0);
