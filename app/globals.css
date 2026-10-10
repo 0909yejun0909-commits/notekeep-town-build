@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
-/* The game's text font: pixel-drawn like the art, with letters and digits that can't be
-   mistaken for each other (5 vs S, C vs O) so it reads at a glance. VT323, SIL Open Font
-   License (public/fonts). It draws small for its size, so it's scaled up once here and every
-   font-size in the UI stays as it was. */
+/* The game's text font: square, chunky pixel letters like the art, but with letters and digits
+   that can't be mistaken for each other (5 vs S, C vs O), so it reads at a glance. Tiny5, SIL
+   Open Font License (public/fonts). It draws a little small for its size, so it's scaled up
+   once here and every font-size in the UI stays as it was. */
 @font-face {
-  font-family: 'VT323';
-  src: url('/fonts/VT323.ttf') format('truetype');
-  size-adjust: 133%;
+  font-family: 'Tiny5';
+  src: url('/fonts/Tiny5.ttf') format('truetype');
+  size-adjust: 115%;
   font-display: block;
 }
 
@@ -17,7 +17,7 @@
 }
 
 :root {
-  --pixel-font: 'VT323', 'CuteFantasy', monospace;
+  --pixel-font: 'Tiny5', 'CuteFantasy', monospace;
   --background: #ffffff;
   --foreground: #171717;
 }

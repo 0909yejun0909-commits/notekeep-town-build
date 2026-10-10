@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { sceneLabels, type SceneLabel } from '@/game/sceneLabels';
 
 // Sizes in game pixels; the scene says how many CSS px one game pixel is.
-const FONT = 10; // the pixel font is scaled up 133% (app/globals.css), so this draws about 13 game pixels tall
+const FONT = 10; // the pixel font is scaled up 115% (app/globals.css), so this draws about 12 game pixels tall
 const PAD_X = 2;
 const PAD_Y = 1;
 

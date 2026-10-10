@@ -25,7 +25,7 @@ export default class BootScene extends Phaser.Scene {
 
   preload() {
     // Phaser text keeps whatever font was ready when it was drawn; start the pixel font now.
-    void document.fonts?.load("28px 'VT323'");
+    void document.fonts?.load("28px 'Tiny5'");
 
     // Phaser draws any texture that failed to load as a black box, which looks like broken
     // code; collect the failures so components/MissingArtBanner.tsx can say what's missing.
