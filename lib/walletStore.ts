@@ -149,6 +149,16 @@ export function topUpTutorial(min: number) {
   publish(notice(gift, 'Tutorial bonus, so you can try everything.'));
 }
 
+// Pays for something with no inventory of its own (village building). False, and nothing
+// spent, when the balance is short or there's no wallet.
+export function spend(amount: number): boolean {
+  if (amount <= 0) return true;
+  if (!session || session.data.balance < amount) return false;
+  session.data = { ...session.data, balance: session.data.balance - amount };
+  publish();
+  return true;
+}
+
 export function commitLayoutChange(saved: { item: CatalogItemId }[], draft: { item: CatalogItemId }[]) {
   if (!session) return;
   session.data = { ...session.data, inventory: applyLayoutChange(session.data.inventory, saved, draft) };

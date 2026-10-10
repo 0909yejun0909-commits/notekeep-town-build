@@ -1,4 +1,5 @@
 import type { InteriorLayout, MaterialId, NoteRef, RoofColor, WallColor } from '@/lib/types';
+import type { TownPropId, TownTool } from '@/lib/townEdits';
 
 type BusEvents = {
   'assets-missing': { files: string[] };
@@ -37,6 +38,12 @@ type BusEvents = {
     gy: number;
   };
   'close-exterior-editor': undefined;
+  // Village building (components/TownEditor.tsx <-> OverworldScene).
+  'open-town-editor': undefined;
+  'close-town-editor': undefined;
+  'town-tool': { tool: TownTool | null };
+  'town-message': { text: string };
+  'town-edited': { bag: Partial<Record<TownPropId, number>> };
   'commit-exterior-variant': {
     houseId: string;
     variant: number;

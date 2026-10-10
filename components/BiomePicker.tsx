@@ -41,6 +41,7 @@ function PixelIcon({ biome }: { biome: TownBiome }) {
 export default function BiomePicker() {
   const [biome, setBiome] = useState<TownBiome | null>(null);
   const [indoors, setIndoors] = useState(false);
+  const [building, setBuilding] = useState(false);
   // A biome still to buy takes two clicks: the first asks, the second pays.
   const [asking, setAsking] = useState<TownBiome | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -51,11 +52,17 @@ export default function BiomePicker() {
     setBiome(loadTownBiome());
     const onEnter = () => setIndoors(true);
     const onExit = () => setIndoors(false);
+    const onBuild = () => setBuilding(true);
+    const onBuilt = () => setBuilding(false);
     bus.on('enter-house', onEnter);
     bus.on('exit-house', onExit);
+    bus.on('open-town-editor', onBuild);
+    bus.on('close-town-editor', onBuilt);
     return () => {
       bus.off('enter-house', onEnter);
       bus.off('exit-house', onExit);
+      bus.off('open-town-editor', onBuild);
+      bus.off('close-town-editor', onBuilt);
     };
   }, []);
 
@@ -72,7 +79,7 @@ export default function BiomePicker() {
     return () => clearTimeout(t);
   }, [note]);
 
-  if (!biome || indoors) return null;
+  if (!biome || indoors || building) return null;
 
   function pick(next: TownBiome) {
     if (next === biome) return;
@@ -131,6 +138,20 @@ export default function BiomePicker() {
             )}
           </button>
         ))}
+        {/* Village building: only for the town's owner, who has the coins to spend. */}
+        {wallet.active && (
+          <button
+            className={`${styles.option} ${styles.build}`}
+            data-tour="build"
+            title="Decorate the town, paint paths and cut down trees"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              bus.emit('open-town-editor', undefined);
+            }}
+          >
+            <span className={styles.name}>Build</span>
+          </button>
+        )}
       </div>
     </div>
   );

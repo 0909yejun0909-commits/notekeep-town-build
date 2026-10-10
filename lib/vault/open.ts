@@ -8,13 +8,14 @@ import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
 import { startWallet, stopWallet } from '@/lib/walletStore';
+import type { TownEdits } from '@/lib/townEdits';
 
 const HEAD_BYTES = 2048;
 
 export function publishWorld(
   world: WorldModel,
   fingerprint: string | null,
-  guest?: { layouts: Record<string, InteriorLayout> },
+  guest?: { layouts: Record<string, InteriorLayout>; town?: TownEdits },
 ) {
   const attempt = () => {
     const game = (window as any).__game;
@@ -24,10 +25,12 @@ export function publishWorld(
       // No fingerprint: a guest's own saved customizations must never repaint the host's town.
       game.registry.set('role', 'guest');
       game.registry.set('sessionLayouts', guest.layouts);
+      game.registry.set('sessionTown', guest.town ?? null);
       game.registry.remove('vaultFingerprint');
     } else {
       game.registry.remove('role');
       game.registry.remove('sessionLayouts');
+      game.registry.remove('sessionTown');
       game.registry.set('vaultFingerprint', fingerprint);
     }
     // Read fresh (not cached at module load) so a change made in the picker seconds before

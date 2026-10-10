@@ -14,6 +14,7 @@ import ChatPanel from '@/components/ChatPanel';
 import PlayerTags from '@/components/PlayerTags';
 import SceneLabels from '@/components/SceneLabels';
 import Tutorial from '@/components/Tutorial';
+import TownEditor from '@/components/TownEditor';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
 import BedMenu from '@/components/BedMenu';
@@ -71,6 +72,7 @@ function Game() {
       <Wardrobe />
       <BedMenu />
       <BiomePicker />
+      <TownEditor />
       <MissingArtBanner />
       <Tutorial />
 

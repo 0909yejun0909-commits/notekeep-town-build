@@ -1,5 +1,6 @@
 import type { Direction } from '@/game/gridMovement';
 import type { InteriorLayout, WorldModel } from '@/lib/types';
+import { parseTownEdits, type TownEdits } from '@/lib/townEdits';
 
 // Everything peers say to each other, inside the encryption. Every inbound message goes
 // through parseAppMessage, because other players' clients are not ours.
@@ -19,6 +20,8 @@ export type WorldPayload = {
   world: WorldModel;
   layouts: Record<string, InteriorLayout>;
   share: ShareMode;
+  // The host's village edits (lib/townEdits.ts), so guests walk the same town.
+  town?: TownEdits;
 };
 
 export type NoteRequest = { reqId: string; path: string; kind: 'text' | 'binary' };
@@ -59,7 +62,13 @@ export function parseAppMessage(raw: string): AppMessage | null {
       return { t: 'hello' };
     case 'world':
       if (!m.world || !Array.isArray(m.world.regions) || !m.layouts || typeof m.layouts !== 'object') return null;
-      return { t: 'world', world: m.world, layouts: m.layouts, share: m.share === 'town' ? 'town' : 'notes' };
+      return {
+        t: 'world',
+        world: m.world,
+        layouts: m.layouts,
+        share: m.share === 'town' ? 'town' : 'notes',
+        ...(m.town !== undefined ? { town: parseTownEdits(m.town) } : {}),
+      };
     case 'presence': {
       const sceneOk = m.scene === null || m.scene === 'overworld' || (typeof m.scene === 'string' && m.scene.startsWith('house:'));
       if (typeof m.name !== 'string' || !sceneOk || !Number.isInteger(m.gx) || !Number.isInteger(m.gy) || !FACINGS.includes(m.facing)) {

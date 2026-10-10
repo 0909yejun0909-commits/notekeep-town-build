@@ -23,6 +23,15 @@ import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { BIOME_BACKDROP, skin, skinAnim } from '@/game/biomeArt';
 import { ensureWinterTextures } from '@/game/winterArt';
 import { ensureDesertTextures } from '@/game/desertArt';
+import {
+  BRUSH, GROUND_PRICE, TOWN_PROP_BY_ID, TREE_CUT_PRICE, emptyTownEdits, loadTownEdits, parseTownEdits, saveTownEdits,
+  type TownEdits, type TownProp, type TownTool,
+} from '@/lib/townEdits';
+import {
+  buildable, claimProp, cutTree, cutTrees, drawProp, drawTallGrass, paintable, paintRoads, placeProps, propCells,
+  releaseProp, renderTallGrass, treeAt,
+} from '@/game/townEdits';
+import { spend } from '@/lib/walletStore';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -35,6 +44,16 @@ export default class OverworldScene extends Phaser.Scene {
   private lastDoorKey: string | null = null;
   private fingerprint: string | undefined;
   private editingExterior = false;
+
+  // Village building: the town's grid and the player's edits to it, kept live while building.
+  private grid: WorldGrid | null = null;
+  private town: TownEdits = emptyTownEdits();
+  private propObjects = new Map<TownProp, Phaser.GameObjects.GameObject[]>();
+  // Ground painted this visit, drawn as plain tiles until the town is rebuilt on Done.
+  private paintObjects = new Map<string, Phaser.GameObjects.GameObject[]>();
+  private building = false;
+  private tool: TownTool | null = null;
+  private hover: Phaser.GameObjects.Graphics | null = null;
 
   private onCommitExterior = ({
     houseId,
@@ -101,9 +120,16 @@ export default class OverworldScene extends Phaser.Scene {
     this.doors = new Map();
     this.lastDoorKey = null;
     this.editingExterior = false;
+    this.building = false;
+    this.tool = null;
+    this.propObjects = new Map();
+    this.paintObjects = new Map();
 
     this.fingerprint = this.game.registry.get('vaultFingerprint') as string | undefined;
     const isGuest = this.game.registry.get('role') === 'guest';
+    this.town = isGuest
+      ? parseTownEdits(this.game.registry.get('sessionTown'))
+      : this.fingerprint ? loadTownEdits(this.fingerprint) : emptyTownEdits();
     if (this.fingerprint) {
       for (const region of world.regions) {
         for (const house of region.houses) {
@@ -145,6 +171,8 @@ export default class OverworldScene extends Phaser.Scene {
       areas: [],
       houses: [],
       lights: [],
+      trees: [],
+      edgeBushes: new Map(),
       biome,
       skin: (k) => skin(this, biome, k),
       skinAnim: (k) => skinAnim(this, biome, k),
@@ -186,12 +214,21 @@ export default class OverworldScene extends Phaser.Scene {
     const { plazas, anchors, wells } = placePlazas(grid);
     placePonds(grid);
     grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
+    // The player's own village edits, each slotted in where it can't move anything else
+    // (game/townEdits.ts).
+    const cut = new Set(this.town.cut);
+    cutTrees(grid, cut, true);
+    paintRoads(grid, this.town);
+    this.propObjects = placeProps(this, grid, this.town);
+    this.paintObjects = renderTallGrass(this, grid, this.town);
     const ground = buildGround(this, grid);
     renderWater(this, grid, ground.map, GID_WATER);
     renderPlazas(this, grid, plazas, wells);
     renderYards(this, grid);
     buildGroves(this, grid);
     buildGroundCover(this, grid);
+    cutTrees(grid, cut, false);
+    this.grid = grid;
 
     // Coming back out of a house puts the player on the road in front of that door.
     const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
@@ -257,15 +294,171 @@ export default class OverworldScene extends Phaser.Scene {
     bus.on('commit-exterior-variant', this.onCommitExterior);
     bus.on('close-exterior-editor', this.onCloseExteriorEditor);
     bus.on('world-updated', this.onWorldUpdated);
+    bus.on('open-town-editor', this.onOpenTownEditor);
+    bus.on('close-town-editor', this.onCloseTownEditor);
+    bus.on('town-tool', this.onTownTool);
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onBuildPointer);
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onBuildPointer);
     this.events.once('shutdown', () => {
       bus.off('commit-exterior-variant', this.onCommitExterior);
       bus.off('close-exterior-editor', this.onCloseExteriorEditor);
       bus.off('world-updated', this.onWorldUpdated);
+      bus.off('open-town-editor', this.onOpenTownEditor);
+      bus.off('close-town-editor', this.onCloseTownEditor);
+      bus.off('town-tool', this.onTownTool);
     });
   }
 
+  // ------------------------------------------------------------ village building
+
+  private onOpenTownEditor = () => {
+    this.building = true;
+    this.hover ??= this.add.graphics().setDepth(1e6);
+    bus.emit('town-edited', { bag: this.town.bag });
+  };
+
+  // Everything is saved as it's made; rebuild so painted ground gets proper edges and the
+  // new lamps light up at night.
+  private onCloseTownEditor = () => {
+    if (!this.building) return;
+    this.building = false;
+    this.tool = null;
+    if (this.player) {
+      const { gx, gy } = worldToTile(this.player.x, this.player.y);
+      this.game.registry.set('returnTile', { gx, gy });
+    }
+    this.scene.restart();
+  };
+
+  private onTownTool = ({ tool }: { tool: TownTool | null }) => {
+    this.tool = tool;
+    this.hover?.clear();
+  };
+
+  private message(text: string) {
+    bus.emit('town-message', { text });
+  }
+
+  private saveTown() {
+    if (this.fingerprint) saveTownEdits(this.fingerprint, this.town);
+    bus.emit('town-edited', { bag: this.town.bag });
+  }
+
+  private tileAt(p: Phaser.Input.Pointer) {
+    const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    return { gx: Math.floor(w.x / TILE), gy: Math.floor(w.y / TILE) };
+  }
+
+  // The tiles the current tool would touch at (gx, gy), and whether it may.
+  private toolCells(gx: number, gy: number): { cells: string[]; ok: boolean } {
+    const g = this.grid!;
+    const tool = this.tool!;
+    if (tool.kind === 'prop') {
+      const cells = propCells({ item: tool.item, gx, gy });
+      return { cells, ok: cells.every((k) => buildable(g, k)) };
+    }
+    if (tool.kind === 'ground') {
+      const cells: string[] = [];
+      for (let dy = 0; dy < BRUSH; dy++) for (let dx = 0; dx < BRUSH; dx++) cells.push(key(gx + dx, gy + dy));
+      return { cells, ok: cells.some((k) => paintable(g, k)) };
+    }
+    if (tool.kind === 'cut') {
+      const tree = treeAt(g, key(gx, gy));
+      return { cells: tree ? tree.cells : [key(gx, gy)], ok: !!tree };
+    }
+    const prop = this.propAt(key(gx, gy));
+    return { cells: prop ? propCells(prop) : [key(gx, gy)], ok: !!prop };
+  }
+
+  private propAt(k: string): TownProp | null {
+    return [...this.propObjects.keys()].find((p) => propCells(p).includes(k)) ?? null;
+  }
+
+  private onBuildPointer = (p: Phaser.Input.Pointer) => {
+    if (!this.building || !this.tool || !this.grid || !this.hover) return;
+    const { gx, gy } = this.tileAt(p);
+    const { cells, ok } = this.toolCells(gx, gy);
+    this.hover.clear();
+    this.hover.fillStyle(ok ? 0x63c74d : 0xe43b44, 0.35).lineStyle(1, ok ? 0xb8f28c : 0xff8a8a, 1);
+    for (const k of cells) {
+      const [x, y] = k.split(',').map(Number);
+      this.hover.fillRect(x * TILE, y * TILE, TILE, TILE).strokeRect(x * TILE + 0.5, y * TILE + 0.5, TILE - 1, TILE - 1);
+    }
+    // Ground paints while the button is held; everything else acts once per click.
+    const pressed = p.isDown && (p.event.type === 'pointerdown' || p.event.type === 'mousedown' || this.tool.kind === 'ground');
+    if (pressed) this.applyTool(gx, gy);
+  };
+
+  private applyTool(gx: number, gy: number) {
+    const g = this.grid!;
+    const tool = this.tool!;
+    const k = key(gx, gy);
+
+    if (tool.kind === 'prop') {
+      const spec = TOWN_PROP_BY_ID[tool.item];
+      const prop: TownProp = { item: tool.item, gx, gy };
+      if (!propCells(prop).every((c) => buildable(g, c))) return this.message("Something's in the way there.");
+      const fromBag = (this.town.bag[tool.item] ?? 0) > 0;
+      if (!fromBag && !spend(spec.price)) return this.message(`A ${spec.name.toLowerCase()} costs ${spec.price} coins. Write notes to earn more!`);
+      if (fromBag) {
+        const left = this.town.bag[tool.item]! - 1;
+        if (left > 0) this.town.bag[tool.item] = left;
+        else delete this.town.bag[tool.item];
+      }
+      this.town.props.push(prop);
+      this.propObjects.set(prop, drawProp(this, g, prop));
+      claimProp(g, prop);
+      this.saveTown();
+      return;
+    }
+
+    if (tool.kind === 'remove') {
+      const prop = this.propAt(k);
+      if (!prop) return this.message('Click a decoration you placed to pick it up.');
+      this.propObjects.get(prop)?.forEach((o) => o.destroy());
+      this.propObjects.delete(prop);
+      releaseProp(g, prop);
+      this.town.props = this.town.props.filter((p) => p !== prop);
+      this.town.bag[prop.item] = (this.town.bag[prop.item] ?? 0) + 1;
+      this.saveTown();
+      return;
+    }
+
+    if (tool.kind === 'cut') {
+      const tree = treeAt(g, k);
+      if (!tree) return this.message('Click a tree to cut it down.');
+      if (!spend(TREE_CUT_PRICE)) return this.message(`Cutting down a tree costs ${TREE_CUT_PRICE} coins. Write notes to earn more!`);
+      cutTree(g, tree);
+      this.town.cut.push(tree.id);
+      this.saveTown();
+      return;
+    }
+
+    // Ground: only tiles that would change, and only what's paintable, are paid for.
+    const paint = tool.paint;
+    const cells: string[] = [];
+    for (let dy = 0; dy < BRUSH; dy++) for (let dx = 0; dx < BRUSH; dx++) cells.push(key(gx + dx, gy + dy));
+    const current = (c: string) => this.town.ground[c] ?? (g.road.has(c) ? 'path' : 'grass');
+    const change = cells.filter((c) => paintable(g, c) && current(c) !== paint);
+    if (change.length === 0) return;
+    if (!spend(change.length * GROUND_PRICE[paint])) {
+      return this.message(`That costs ${change.length * GROUND_PRICE[paint]} coins. Write notes to earn more!`);
+    }
+    for (const c of change) {
+      this.paintObjects.get(c)?.forEach((o) => o.destroy());
+      const [x, y] = c.split(',').map(Number);
+      const at = [x * TILE + TILE / 2, y * TILE + TILE / 2] as const;
+      const objects =
+        paint === 'tall' ? drawTallGrass(this, g, c)
+        : [this.add.image(...at, g.skin(paint === 'path' ? 'terrain-path' : 'terrain-grass')).setDepth(-940)];
+      this.paintObjects.set(c, objects);
+      this.town.ground[c] = paint;
+    }
+    this.saveTown();
+  }
+
   private openExteriorEditor(house: House, region: Region) {
-    if (this.editingExterior) return;
+    if (this.editingExterior || this.building) return;
     this.editingExterior = true;
     bus.emit('open-exterior-editor', {
       houseId: house.id,
@@ -289,6 +482,9 @@ export default class OverworldScene extends Phaser.Scene {
 
     const { gx, gy } = worldToTile(player.x, player.y);
     const key = `${gx},${gy}`;
+
+    // While building you can walk the town, but not through a door.
+    if (this.building) return;
 
     if (this.doors.has(key) && !this.movement.isMoving()) {
       if (this.lastDoorKey !== key) {

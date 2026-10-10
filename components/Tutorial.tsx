@@ -332,8 +332,8 @@ const STEPS: Step[] = [
     id: 'more',
     text: (
       <p>
-        Your house has its new roof! Coins also unlock new town biomes down here, and new outfits at the wardrobe inside
-        houses.
+        Your house has its new roof! Down here, coins also unlock new town biomes, and Build lets you decorate the
+        village, paint paths and cut down trees. New outfits are at the wardrobe inside houses.
       </p>
     ),
     target: () => rectOf('[aria-label="Town biome"]'),

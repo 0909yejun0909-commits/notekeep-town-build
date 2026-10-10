@@ -3,6 +3,7 @@
 import { bus } from '@/game/bus';
 import { applyExteriorOverride, getExteriorOverride } from '@/lib/exteriorStore';
 import { getLayout } from '@/lib/interiorStore';
+import { emptyTownEdits, loadTownEdits } from '@/lib/townEdits';
 import type { InteriorLayout, VaultHandle, WorldModel } from '@/lib/types';
 import { bytesToBase64, exportRoomKey, generateRoomKey } from './crypto.ts';
 import { noteIdsOf, resolveNoteRequest } from './noteAccess.ts';
@@ -36,7 +37,7 @@ export function buildWorldPayload(world: WorldModel, fingerprint: string | undef
       }
     }
   }
-  return { world: copy, layouts, share };
+  return { world: copy, layouts, share, town: fingerprint ? loadTownEdits(fingerprint) : emptyTownEdits() };
 }
 
 export async function startHosting(vault: VaultHandle, name: string, share: ShareMode): Promise<void> {
@@ -73,6 +74,8 @@ export async function startHosting(vault: VaultHandle, name: string, share: Shar
   const onCommit = () => setTimeout(() => sendWorld('all'), 0);
   bus.on('commit-exterior-variant', onCommit);
   bus.on('commit-interior-layout', onCommit);
+  // Village edits are saved as they're made; guests get them when building is done.
+  bus.on('close-town-editor', onCommit);
 
   changeShare = (next) => {
     current = next;
@@ -84,6 +87,7 @@ export async function startHosting(vault: VaultHandle, name: string, share: Shar
     offRoom();
     bus.off('commit-exterior-variant', onCommit);
     bus.off('commit-interior-layout', onCommit);
+    bus.off('close-town-editor', onCommit);
     changeShare = null;
   });
 }

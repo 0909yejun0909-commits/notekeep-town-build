@@ -93,3 +93,10 @@
   font-size: 18px;
   line-height: 27px;
 }
+
+/* The Build button, set apart from the biome choices by a groove. */
+.build {
+  margin-left: 6px;
+  border-left: 3px solid #1f1418;
+  color: #ffe066;
+}
