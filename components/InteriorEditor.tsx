@@ -34,6 +34,24 @@ type Target = number | 'shelf';
 const installed = (entry: CatalogEntry) =>
   !missingExtra(entry, (k) => (window as any).__game?.textures.exists(k) ?? true);
 
+function useViewport() {
+  const [size, setSize] = useState({ w: 1280, h: 720 });
+  useEffect(() => {
+    const on = () => setSize({ w: window.innerWidth, h: window.innerHeight });
+    on();
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return size;
+}
+
+// The shop column's width (four pieces a row) and the panel space above and around the room.
+const SIDE_W = 244;
+// How many tiles a piece may slide from the clicked tile to find room.
+const NUDGE = 2;
+const CHROME_W = 110;
+const CHROME_H = 300;
+
 function nameOf(item: CatalogItemId): string {
   return CATALOG_BY_ID[item]?.name ?? item;
 }
@@ -71,7 +89,7 @@ function ShopTile({ entry, owned, balance, disabled, onClick }: {
   const forSale = owned !== null && owned <= 0;
   const short = forSale && price !== null && price > balance;
   const title = disabled
-    ? `${entry.name} - doesn't fit here`
+    ? `${entry.name} - no room for it near this spot`
     : forSale
       ? `${entry.name} (${entry.tier}) - buy for ${price} coins`
       : owned !== null
@@ -121,6 +139,7 @@ export default function InteriorEditor() {
   const [roomName, setRoomName] = useState('');
   const [roomError, setRoomError] = useState<string | null>(null);
   const [creatingRoom, setCreatingRoom] = useState(false);
+  const viewport = useViewport();
 
   useEffect(() => {
     const onOpen = (payload: Session & { layout: InteriorLayout }) => {
@@ -195,6 +214,13 @@ export default function InteriorEditor() {
 
   const [w, h] = ROOM_SIZES[draft.roomSize];
   const [doorGx, doorGy] = doorPositionFor(w, h);
+  // The room drawn as big as fits, in whole steps so the pixels stay square; at least 2x
+  // (the panel scrolls on a short screen), at most 4x.
+  const fit = Math.min(
+    (viewport.w * 0.96 - SIDE_W - CHROME_W) / (w * 16 + 6),
+    (viewport.h * 0.94 - CHROME_H) / (h * 16 + 6),
+  );
+  const zoom = Math.max(2, Math.min(4, Math.floor(fit)));
   // A fresh non-null binding: nested function declarations below close over `draft`
   // without narrowing (TS doesn't carry the early-return null check across function
   // boundaries), so they read this instead.
@@ -330,14 +356,34 @@ export default function InteriorEditor() {
     }
   }
 
+  // Where a piece goes for the tile you clicked: with its corner on that tile if it fits, or
+  // else the nearest spot that does, covering the tile if possible and never more than a
+  // couple of tiles off. A big piece by a wall would never fit otherwise.
+  function spotFor(item: CatalogItemId): { gx: number; gy: number } | null {
+    if (!picking || !draft) return null;
+    const [fw, fh] = CATALOG_BY_ID[item].footprint;
+    let best: { gx: number; gy: number; d: number } | null = null;
+    for (let gy = picking.gy - fh + 1 - NUDGE; gy <= picking.gy + NUDGE; gy++) {
+      for (let gx = picking.gx - fw + 1 - NUDGE; gx <= picking.gx + NUDGE; gx++) {
+        // How far the clicked tile is from the piece, then how far its corner moved.
+        const off = Math.max(gx - picking.gx, picking.gx - (gx + fw - 1), 0) + Math.max(gy - picking.gy, picking.gy - (gy + fh - 1), 0);
+        const d = off * 100 + Math.abs(gx - picking.gx) + Math.abs(gy - picking.gy);
+        if (best && d >= best.d) continue;
+        if (canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, item, gx, gy)) best = { gx, gy, d };
+      }
+    }
+    return best;
+  }
+
   function placeItem(item: CatalogItemId) {
     if (!picking || !draft) return;
-    if (!canPlace(draft, CATALOG_BY_ID, structuralWithShelf, w, h, item, picking.gx, picking.gy)) {
-      setError("Doesn't fit there.");
+    const spot = spotFor(item);
+    if (!spot) {
+      setError('No room for that here. Pick a more open spot, or make the room bigger.');
       return;
     }
     if (!acquire(item)) return;
-    const placement: FurniturePlacement = { item, gx: picking.gx, gy: picking.gy, rotation: 0 };
+    const placement: FurniturePlacement = { item, gx: spot.gx, gy: spot.gy, rotation: 0 };
     setDraft({ ...draft, placements: [...draft.placements, placement] });
     setPicking(null);
   }
@@ -421,6 +467,8 @@ export default function InteriorEditor() {
           </div>
         </div>
 
+        <div className={styles.body}>
+        <div className={styles.main}>
         <div className={styles.row}>
           <span className={styles.label}>Floor</span>
           {FLOOR_FRAMES.map((frame, i) => (
@@ -539,12 +587,11 @@ export default function InteriorEditor() {
           </div>
         )}
 
-        <div className="flex items-start gap-4">
           <div className="flex flex-col gap-2">
             <div
               className={styles.grid}
               data-tour="room-grid"
-              style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)` }}
+              style={{ gridTemplateColumns: `repeat(${w}, 16px)`, gridTemplateRows: `repeat(${h}, 16px)`, zoom }}
             >
               {Array.from({ length: h }).map((_, gy) =>
                 Array.from({ length: w }).map((_, gx) => {
@@ -566,6 +613,7 @@ export default function InteriorEditor() {
                               ? '#5a7a5a'
                               : '#2a1c20',
                         cursor: isStructural ? 'default' : 'pointer',
+                        borderWidth: 1 / zoom,
                       }}
                       disabled={isStructural}
                       onClick={() => onCellClick(gx, gy)}
@@ -681,18 +729,20 @@ export default function InteriorEditor() {
             {error && <span className={`${styles.error} ${styles.under}`}>{error}</span>}
             {moving !== null && <span className={`${styles.note} ${styles.under}`}>Drag it, or click a cell to move it there.</span>}
           </div>
+        </div>
 
-          <div className={styles.side}>
+          <div className={styles.side} style={{ width: SIDE_W }}>
+            <div className={styles.sideInner}>
             {picking && (
               <>
-                <span className={styles.small}>
+                <span className={`${styles.small} ${styles.sideNote}`}>
                   {wallet.active ? 'Place from your inventory, or buy something new' : 'Place'}
                 </span>
                 <div className={styles.row}>
                   {CATALOG_GROUPS.filter((g) => CATALOG_BY_GROUP[g.id].some(installed)).map((g) => (
                     <button
                       key={g.id}
-                      className={`${styles.btn} ${tab === g.id ? styles.on : ''}`}
+                      className={`${styles.btn} ${styles.tab} ${tab === g.id ? styles.on : ''}`}
                       onClick={() => setTab(g.id)}
                     >
                       {g.label}
@@ -700,13 +750,18 @@ export default function InteriorEditor() {
                   ))}
                 </div>
                 <div className={styles.shelf} data-tour="furniture">
-                  {CATALOG_BY_GROUP[tab].filter(installed).map((entry) => (
+                  {CATALOG_BY_GROUP[tab]
+                    .filter(installed)
+                    .map((entry) => ({ entry, fits: !!spotFor(entry.id) }))
+                    // Pieces that fit here first, so the shelf doesn't open on a row of greyed-out ones.
+                    .sort((a, b) => Number(b.fits) - Number(a.fits))
+                    .map(({ entry, fits }) => (
                     <ShopTile
                       key={entry.id}
                       entry={entry}
                       owned={wallet.active ? owned(entry.id) : null}
                       balance={wallet.balance}
-                      disabled={!canPlace(layout, CATALOG_BY_ID, structuralWithShelf, w, h, entry.id, picking.gx, picking.gy)}
+                      disabled={!fits}
                       onClick={() => placeItem(entry.id)}
                     />
                   ))}
@@ -773,6 +828,7 @@ export default function InteriorEditor() {
                 <Coin size={10} /> Every new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins.
               </p>
             )}
+          </div>
           </div>
         </div>
       </div>
