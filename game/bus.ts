@@ -18,6 +18,12 @@ type BusEvents = {
   'appearance-changed': undefined;
   'open-wardrobe': undefined;
   'close-wardrobe': undefined;
+  'open-study': { houseId: string; mode: 'flashcards' | 'quiz' };
+  'close-study': undefined;
+  'open-computer': { houseId: string };
+  'close-computer': undefined;
+  'open-arcade': { houseId: string };
+  'close-arcade': undefined;
   // index is the option picked, null if the menu was dismissed.
   'open-choice-menu': { title: string; options: string[] };
   'choice-menu-choice': { index: number | null };

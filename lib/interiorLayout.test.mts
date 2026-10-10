@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FLOOR_FRAMES, ROOM_SIZES, SHELF_GY, SHELF_W, canResize, computeDefaultLayout, doorCells, doorPositionFor, doorSlots,
-  resizeLayout, restyleShelf, shelfGxFor, shelfOccupied, structuralOccupied,
+  FLOOR_FRAMES, ROOM_SIZES, SHELF_GY, SHELF_W, canPlace, canResize, computeDefaultLayout, doorCells, doorPositionFor, doorSlots,
+  placementSpot, resizeLayout, restyleShelf, ridersOf, shelfGxFor, shelfOccupied, structuralOccupied,
 } from './interiorLayout.ts';
 import { CATALOG_BY_ID } from './catalog.ts';
 import { hash } from './types.ts';
@@ -222,6 +222,7 @@ test('shrinking a furnished room moves pieces inside the new walls instead of re
     const cells = new Set<string>();
     for (let x = 0; x < SHELF_W; x++) for (let y = 0; y < 2; y++) cells.add(`${layout.shelf.gx + x},${layout.shelf.gy + y}`);
     for (const p of layout.placements) {
+      if (CATALOG_BY_ID[p.item].layer === 'rug') continue;
       const [fw, fh] = CATALOG_BY_ID[p.item].footprint;
       for (let x = 0; x < fw; x++) for (let y = 0; y < fh; y++) {
         const c = `${p.gx + x},${p.gy + y}`;
@@ -234,4 +235,51 @@ test('shrinking a furnished room moves pieces inside the new walls instead of re
       assert.ok(large.placements.some((q) => q.noteId === p.noteId && q.item === p.item));
     }
   }
+});
+
+const at = (item: string, gx: number, gy: number) => ({ item, gx, gy, rotation: 0 as const });
+const fits = (layout: InteriorLayout, item: string, gx: number, gy: number) =>
+  canPlace(layout, CATALOG_BY_ID, structuralOccupied(13, 10), 13, 10, item, gx, gy);
+
+test('furniture stands on rugs, but rugs never overlap each other', () => {
+  const layout = { ...empty('small'), placements: [at('rug', 2, 4)] };
+  assert.equal(fits(layout, 'chair_ladder', 3, 5), true);
+  assert.equal(fits(layout, 'desk', 3, 5), true);
+  assert.equal(fits(layout, 'mat_cyan', 3, 5), false);
+  assert.equal(fits({ ...layout, placements: [at('desk', 3, 5)] }, 'rug', 2, 4), true);
+});
+
+test("wall pieces hang on the back wall's two rows, clear of the shelf and furniture", () => {
+  const layout = { ...empty('small'), placements: [at('bed', 10, 1)] };
+  assert.equal(fits(layout, 'window_cross', 9, 0), true);
+  assert.equal(fits(layout, 'window_cross', 9, 1), false);
+  assert.equal(fits(layout, 'window_cross', 10, 0), false);
+  assert.equal(fits(layout, 'wall_clock_red', 10, 0), true);
+  assert.equal(fits(layout, 'wall_clock_red', 5, 0), true);
+  assert.equal(fits(layout, 'window_cross', 5, 0), false);
+  assert.equal(fits(layout, 'window_cross', 0, 0), false);
+  assert.equal(fits(layout, 'wall_clock_red', 5, 4), false);
+  assert.deepEqual(placementSpot(layout, CATALOG_BY_ID, structuralOccupied(13, 10), 13, 10, 'window_cross', 9, 1), [9, 0]);
+});
+
+test("tabletop pieces stand on a surface's back row, or on the floor", () => {
+  const layout = { ...empty('small'), placements: [at('desk', 9, 5), at('candle_red', 9, 5)] };
+  assert.equal(fits(layout, 'candle_blue', 10, 5), true);
+  assert.equal(fits(layout, 'candle_blue', 9, 5), false);
+  assert.equal(fits(layout, 'candle_blue', 10, 6), false);
+  assert.equal(fits(layout, 'candle_blue', 5, 6), true);
+  assert.equal(fits(layout, 'chair_ladder', 10, 5), false);
+  assert.deepEqual(ridersOf(layout, CATALOG_BY_ID, 0), [1]);
+  assert.deepEqual(ridersOf(layout, CATALOG_BY_ID, 1), []);
+});
+
+test('a wall piece keeps a top-wall door from opening under it', () => {
+  const layout = { ...empty('large'), placements: [at('wall_clock_red', 4, 0)] };
+  const top = doorSlots(layout, CATALOG_BY_ID, 99).filter((d) => d.side === 'top').map((d) => d.gx);
+  assert.ok(!top.includes(4), String(top));
+});
+
+test("wall pieces don't stop a room growing", () => {
+  const layout = { ...empty('small'), placements: [at('window_cross', 10, 0)] };
+  assert.equal(canResize(layout, CATALOG_BY_ID, 'medium'), true);
 });

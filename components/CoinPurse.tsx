@@ -52,6 +52,15 @@ export default function CoinPurse() {
           <Coin size={24} />
           <span key={wallet.balance} className={styles.amount}>{wallet.balance}</span>
         </div>
+        <div
+          className={`${styles.streak} ${wallet.studiedToday ? styles.lit : ''}`}
+          title={wallet.streak > 0
+            ? `${wallet.streak} day${wallet.streak === 1 ? '' : 's'} in a row. Pass a quiz at a desk every day to keep it going.`
+            : 'Pass a quiz at a desk to start a study streak.'}
+        >
+          <span className={styles.flame}>🔥</span>
+          <span>{wallet.streak}</span>
+        </div>
       </div>
       {shown && (
         <div key={shown.id} className={styles.toast} onClick={() => setShown(null)}>

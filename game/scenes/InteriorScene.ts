@@ -26,6 +26,7 @@ import {
   computeDefaultLayout,
   HEADER_TILES,
   TOP_FIRST_GX,
+  surfaceUnder,
   type DoorSlot,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
@@ -33,8 +34,10 @@ import {
   CATALOG_BY_ID,
   FURNITURE_ACTIONS,
   SHELF_SHEET,
+  SURFACES,
   WALKABLE,
   furnitureTextureKey,
+  windowView,
   shelfLook,
   type FurnitureAction,
 } from '@/lib/catalog';
@@ -54,7 +57,6 @@ type PieceAction = {
   action: FurnitureAction;
   entry: CatalogEntry;
   placement: FurniturePlacement;
-  note?: NoteRef;
 };
 
 // A doorway in the entrance's wall to one of the house's other rooms.
@@ -63,6 +65,10 @@ type Door = { slot: DoorSlot; roomId: string; name: string };
 function shorten(name: string, max: number): string {
   return name.length <= max ? name : `${name.slice(0, max - 2)}..`;
 }
+
+// Rugs under everything, wall pieces over the wall, tabletop pieces over what they stand on;
+// the player (10) is drawn over all of them.
+const LAYER_DEPTH = { rug: 2, wall: 3, floor: 5, tabletop: 6 } as const;
 
 // Half the overworld's, so room names fit along a small room's top wall.
 const ROOM_LABEL_FONT = 7;
@@ -93,7 +99,7 @@ export default class InteriorScene extends Phaser.Scene {
   private blocked = new Set<string>();
   private shelfApproach = new Set<string>();
   private approach = new Map<string, NoteRef>();
-  private actions = new Map<string, PieceAction>();
+  private actions = new Map<string, PieceAction[]>();
 
   private player!: Phaser.GameObjects.Sprite;
   private appearance!: Appearance;
@@ -117,6 +123,8 @@ export default class InteriorScene extends Phaser.Scene {
   private shelfOpen = false;
   private noteOpen = false;
   private wardrobeOpen = false;
+  // The study desk, computer or games console.
+  private appOpen = false;
   private exiting = false;
   private prevGx = 0;
   private prevGy = 0;
@@ -158,6 +166,11 @@ export default class InteriorScene extends Phaser.Scene {
     this.stopPet = spawnPet(this, this.player, equipped.pet, () => 9.9);
   };
 
+  private onCloseApp = () => {
+    this.appOpen = false;
+    this.input.keyboard?.resetKeys();
+  };
+
   private onMenuChoice = ({ index }: { index: number | null }) => {
     const menu = this.menu;
     this.menu = null;
@@ -191,6 +204,7 @@ export default class InteriorScene extends Phaser.Scene {
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
+    this.appOpen = false;
     this.exiting = false;
     this.editingLayout = false;
     this.blocked = new Set();
@@ -275,9 +289,13 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     // Back wall gets a second row so the shelf has something to lean on — only
-    // when the shelf is actually against the top wall; moved elsewhere, it's
-    // just a free-standing piece like any other furniture.
-    if (shelfGy === SHELF_GY) {
+    // when the shelf is actually against the top wall, or something hangs on that row;
+    // moved elsewhere, the shelf is just a free-standing piece like any other furniture.
+    const hangsLow = this.layout.placements.some((p) => {
+      const entry = CATALOG_BY_ID[p.item];
+      return entry?.layer === 'wall' && p.gy + entry.footprint[1] > SHELF_GY;
+    });
+    if (shelfGy === SHELF_GY || hangsLow) {
       for (let x = 1; x < w - 1; x++) {
         if (this.doors.has(`${x},0`)) continue;
         this.add.image(x * TILE, SHELF_GY * TILE, 'interior-walls', wallBase).setOrigin(0, 0).setDepth(1);
@@ -392,6 +410,9 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('close-interior-editor', this.onCloseEditor);
     bus.on('close-wardrobe', this.onCloseWardrobe);
     bus.on('choice-menu-choice', this.onMenuChoice);
+    bus.on('close-study', this.onCloseApp);
+    bus.on('close-computer', this.onCloseApp);
+    bus.on('close-arcade', this.onCloseApp);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
     this.events.once('shutdown', () => {
@@ -402,6 +423,9 @@ export default class InteriorScene extends Phaser.Scene {
       bus.off('close-interior-editor', this.onCloseEditor);
       bus.off('close-wardrobe', this.onCloseWardrobe);
       bus.off('choice-menu-choice', this.onMenuChoice);
+      bus.off('close-study', this.onCloseApp);
+      bus.off('close-computer', this.onCloseApp);
+      bus.off('close-arcade', this.onCloseApp);
       bus.off('commit-interior-layout', this.onCommitLayout);
       bus.off('world-updated', this.onWorldUpdated);
     });
@@ -455,7 +479,7 @@ export default class InteriorScene extends Phaser.Scene {
   };
 
   private overlayOpen() {
-    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.menu !== null || this.editingLayout;
+    return this.shelfOpen || this.noteOpen || this.wardrobeOpen || this.appOpen || this.menu !== null || this.editingLayout;
   }
 
   private openNote(note: NoteRef) {
@@ -479,6 +503,18 @@ export default class InteriorScene extends Phaser.Scene {
     if (this.overlayOpen() || this.exiting) return;
     this.wardrobeOpen = true;
     bus.emit('open-wardrobe', undefined);
+  }
+
+  private openApp(event: 'open-computer' | 'open-arcade') {
+    if (this.overlayOpen() || this.exiting) return;
+    this.appOpen = true;
+    bus.emit(event, { houseId: this.houseId });
+  }
+
+  private openStudy(mode: 'flashcards' | 'quiz') {
+    if (this.overlayOpen() || this.exiting) return;
+    this.appOpen = true;
+    bus.emit('open-study', { houseId: this.houseId, mode });
   }
 
   private openMenu(title: string, options: Array<[string, () => void]>) {
@@ -522,20 +558,34 @@ export default class InteriorScene extends Phaser.Scene {
     this.scene.restart({ houseId: this.houseId, roomId });
   }
 
-  private openBedMenu(piece: PieceAction, note: NoteRef) {
-    this.openMenu(note.title, [['Read note', () => this.openNote(note)], ['Lie down', () => this.act(piece)]]);
+  private optionsFor(piece: PieceAction): Array<[string, () => void]> {
+    switch (piece.action) {
+      case 'sit': return [['Sit down', () => this.takePose(piece, 'sit')]];
+      case 'lie': return [['Lie down', () => this.takePose(piece, 'lie')]];
+      case 'wardrobe': return [['Change outfit', () => this.openWardrobe()]];
+      case 'study': return [['Flashcards', () => this.openStudy('flashcards')], ['Quiz', () => this.openStudy('quiz')]];
+      case 'computer': return [['Use computer', () => this.openApp('open-computer')]];
+      case 'arcade': return [['Play games', () => this.openApp('open-arcade')]];
+    }
   }
 
-  private act(piece: PieceAction) {
-    if (piece.action === 'wardrobe') {
-      this.openWardrobe();
-      return;
-    }
+  // One thing to do runs at once; more (a note on a desk, a computer on it) asks which.
+  // A piece standing on the table comes before the table.
+  private use(note: NoteRef | undefined, pieces: PieceAction[]) {
+    const sorted = [...pieces].sort((a, b) => Number(b.entry.layer === 'tabletop') - Number(a.entry.layer === 'tabletop'));
+    const options: Array<[string, () => void]> = [];
+    if (note) options.push(['Read note', () => this.openNote(note)]);
+    for (const p of sorted) options.push(...this.optionsFor(p));
+    if (options.length === 1) options[0][1]();
+    else if (options.length > 1) this.openMenu(note?.title ?? sorted[0].entry.name, options);
+  }
+
+  private takePose(piece: PieceAction, kind: 'sit' | 'lie') {
     const { gx, gy } = this.movement.getTile();
     this.indicator.visible = false;
-    sfx(piece.action);
+    sfx(kind);
     const undo =
-      piece.action === 'sit'
+      kind === 'sit'
         ? sit(this, this.player, piece.entry, piece.placement)
         : lie(this, this.player, piece.entry, piece.placement, this.appearance, this.skin);
     this.pose = { undo, gx, gy, held: new Set(this.standKeys.filter((k) => k.isDown)) };
@@ -571,10 +621,17 @@ export default class InteriorScene extends Phaser.Scene {
     const { gx, gy, rotation } = placement;
     const walkable = WALKABLE.has(entry.category);
 
+    // A tabletop piece on a surface stands on its top, not in front of it.
+    const under = entry.layer === 'tabletop' ? surfaceUnder(this.layout, CATALOG_BY_ID, gx, gy) : null;
+    const lift = under === null ? 0 : (SURFACES[CATALOG_BY_ID[this.layout.placements[under].item].category] ?? 0);
+    // A sprite taller than its footprint stands on it and overhangs the tiles behind, so pieces
+    // further down the room draw over the ones behind them.
+    const view = entry.views ? windowView(new Date().getHours()) : 'day';
+    const frame = view !== 'day' && entry.views?.[view] !== undefined ? `${entry.frameKey}@${view}` : entry.frameKey;
     const img = this.add
-      .image(gx * TILE, gy * TILE, entry.textureKey, entry.frameKey)
+      .image(gx * TILE, (gy + fh) * TILE - entry.rect[3] - lift, entry.textureKey, frame)
       .setOrigin(0, 0)
-      .setDepth(walkable ? 2 : 5);
+      .setDepth(LAYER_DEPTH[entry.layer] + (gy + fh) / 1000);
 
     if (entry.rotations.length > 2) {
       img.setOrigin(0.5, 0.5).setPosition((gx + fw / 2) * TILE, (gy + fh / 2) * TILE).setAngle(rotation);
@@ -598,7 +655,18 @@ export default class InteriorScene extends Phaser.Scene {
     }
 
     const action = FURNITURE_ACTIONS[entry.category];
-    if (action && !this.actions.has(apKey)) this.actions.set(apKey, { action, entry, placement, note });
+    if (!action) return;
+    // A computer on a desk is used from in front of the desk, along its whole front edge.
+    const surface = under === null ? null : this.layout.placements[under];
+    const surfaceEntry = surface ? CATALOG_BY_ID[surface.item] : undefined;
+    const keys = surface && surfaceEntry
+      ? Array.from({ length: surfaceEntry.footprint[0] }, (_, i) => `${surface.gx + i},${surface.gy + surfaceEntry.footprint[1]}`)
+      : [apKey];
+    for (const key of keys) {
+      const list = this.actions.get(key) ?? [];
+      if (!list.some((p) => p.action === action)) list.push({ action, entry, placement });
+      this.actions.set(key, list);
+    }
   }
 
   update() {
@@ -637,14 +705,12 @@ export default class InteriorScene extends Phaser.Scene {
     const here = `${gx},${gy}`;
     const atShelf = settled && this.shelfApproach.has(here);
     const note = settled ? this.approach.get(here) : undefined;
-    const piece = settled ? this.actions.get(here) : undefined;
-    if (atShelf || note || piece) {
+    const pieces = settled ? (this.actions.get(here) ?? []) : [];
+    if (atShelf || note || pieces.length > 0) {
       Object.assign(this.indicator, { x: this.player.x, y: this.player.y - 34, visible: true });
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
-        if (note && piece?.note === note && piece.action === 'lie') this.openBedMenu(piece, note);
-        else if (note) this.openNote(note);
-        else if (atShelf) this.useShelf();
-        else if (piece) this.act(piece);
+        if (atShelf && !note) this.useShelf();
+        else this.use(note, pieces);
       }
     } else {
       this.indicator.visible = false;

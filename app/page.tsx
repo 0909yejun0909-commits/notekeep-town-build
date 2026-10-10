@@ -23,6 +23,9 @@ import AchievementTracker from '@/components/AchievementTracker';
 import AchievementToast from '@/components/AchievementToast';
 import AchievementsPanel from '@/components/AchievementsPanel';
 import Wardrobe from '@/components/Wardrobe';
+import StudyDesk from '@/components/StudyDesk';
+import Computer from '@/components/Computer';
+import Arcade from '@/components/Arcade';
 import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
@@ -78,6 +81,9 @@ function Game() {
       <AchievementToast />
       <AchievementsPanel />
       <Wardrobe />
+      <StudyDesk />
+      <Computer />
+      <Arcade />
       <ChoiceMenu />
       <BiomePicker />
       <SoundToggle />
