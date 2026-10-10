@@ -15,6 +15,7 @@ export type Engine = {
 export type Sample = { buffer: AudioBuffer; norm: number };
 
 const MUTE_KEY = 'notekeep-town:muted';
+const VOLUME_KEY = 'notekeep-town:volume';
 const MASTER = 0.8;
 const MUSIC = 0.5;
 const SFX = 0.6;
@@ -23,10 +24,23 @@ const REVERB = 0.22;
 const PEAK = 0.5;
 
 let engine: Engine | null = null;
+let master: GainNode | null = null;
 let installed = false;
 let muted = loadMuted();
+let volume = loadVolume();
 const waiting: Array<(e: Engine) => void> = [];
 const muteListeners = new Set<() => void>();
+
+// The player's volume, 0 to 1, on top of the mix below.
+function loadVolume(): number {
+  try {
+    const v = typeof window === 'undefined' ? null : localStorage.getItem(VOLUME_KEY);
+    const n = v === null ? 1 : Number(v);
+    return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1;
+  } catch {
+    return 1;
+  }
+}
 
 function loadMuted(): boolean {
   try {
@@ -49,8 +63,8 @@ function impulse(ctx: AudioContext): AudioBuffer {
 
 function create(): Engine {
   const ctx = new AudioContext();
-  const master = ctx.createGain();
-  master.gain.value = MASTER;
+  master = ctx.createGain();
+  master.gain.value = MASTER * volume;
   master.connect(ctx.destination);
   const music = ctx.createGain();
   music.gain.value = MUSIC;
@@ -131,6 +145,24 @@ export function toggleMute() {
   muteListeners.forEach((l) => l());
 }
 
+export function getVolume(): number {
+  return volume;
+}
+
+// Turning the volume up also unmutes, so dragging the slider is always heard.
+export function setVolume(v: number) {
+  volume = Math.min(1, Math.max(0, Math.round(v * 100) / 100));
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume));
+  } catch {
+    // Storage unavailable (private browsing): the level just won't be remembered.
+  }
+  if (master && engine) master.gain.setTargetAtTime(MASTER * volume, engine.ctx.currentTime, 0.02);
+  if (muted && volume > 0) toggleMute();
+  else muteListeners.forEach((l) => l());
+}
+
+// Fires on mute and volume changes alike.
 export function subscribeMute(cb: () => void) {
   install();
   muteListeners.add(cb);

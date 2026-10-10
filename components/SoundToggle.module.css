@@ -1,9 +1,18 @@
-/* The fast-travel launcher's wood (components/FastTravel.module.css), stacked above it. */
-.toggle {
+/* The fast-travel launcher's wood (components/FastTravel.module.css), stacked above it. The
+   slider panel is tucked behind the button and slides out to its left on hover. */
+.dock {
   position: absolute;
   right: 16px;
   bottom: 136px;
   z-index: 30;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+.toggle {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22,4 +31,72 @@
   width: 27px;
   height: 27px;
   shape-rendering: crispEdges;
+}
+
+.panel {
+  display: flex;
+  box-sizing: border-box;
+  width: 0;
+  height: 40px;
+  align-items: center;
+  gap: 10px;
+  margin-right: -3px;
+  overflow: hidden;
+  background: #6d483b;
+  border: 0 solid #1f1418;
+  box-shadow: inset 0 3px 0 #b86f50, 0 4px 0 #1f1418;
+  font-family: var(--pixel-font);
+  transition: width 120ms steps(4);
+}
+.dock:hover .panel,
+.dock:focus-within .panel,
+.open .panel {
+  width: 186px;
+  padding: 0 10px 0 14px;
+  border-width: 3px;
+}
+
+/* A sunken groove, filled light up to the level, with a square knob. */
+.track {
+  position: relative;
+  flex: none;
+  width: 118px;
+  height: 12px;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+.track:focus-visible {
+  box-shadow: 0 0 0 2px #ffe066;
+}
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #f7c948;
+  box-shadow: inset 0 -2px 0 #c8964f;
+}
+.knob {
+  position: absolute;
+  top: -8px;
+  width: 12px;
+  height: 22px;
+  margin-left: -6px;
+  background: #f4e4c1;
+  border: 3px solid #1f1418;
+  box-shadow: inset 0 -3px 0 #e4a672;
+}
+.dim .fill {
+  background: #91533b;
+  box-shadow: none;
+}
+
+.value {
+  flex: none;
+  width: 30px;
+  color: #f4e4c1;
+  font-size: 16px;
+  line-height: 18px;
+  text-align: right;
 }
