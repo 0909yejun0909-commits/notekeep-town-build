@@ -22,6 +22,8 @@ const PAGES_W = 754;
 const PAGES_H = 400;
 const SPINE_GAP = 140;
 const PAGE_STRIDE = PAGES_W + SPINE_GAP; // one "turn" = two columns + one gap
+const BAR_GAP = 10;
+const BAR_H = 50;
 const EDIT_LINE = 21; // .note-editor's line-height: edit pages turn by whole lines
 
 const INK = '#3b2a20';
@@ -183,6 +185,21 @@ const READER_CSS = `
   }
   .note-btn:hover { background: rgba(255, 248, 232, 0.95); border-color: ${INK}; }
   .note-btn:disabled { opacity: 0.4; cursor: default; }
+  /* The controls sit on a wood plank under the book, like the town's other bars, so they
+     never cover the page edges and ornaments printed along the book's bottom. */
+  .note-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 7px 10px; background: #3f2832; border: 3px solid #1f1418;
+    box-shadow: inset 0 3px 0 #6d483b, 0 4px 0 rgba(24, 20, 37, 0.45);
+  }
+  .note-bar .note-hint { color: #e4a672; }
+  .note-bar .note-btn {
+    color: #3f2832; background: #f4e4c1; border: 3px solid #1f1418; border-radius: 0;
+    box-shadow: inset 0 -3px 0 #e4a672; padding: 4px 10px 6px;
+  }
+  .note-bar .note-btn:hover:not(:disabled) { background: #fff7e6; border-color: #1f1418; }
+  .note-bar .note-btn.primary { background: #f7c948; box-shadow: inset 0 -3px 0 #c8964f; }
+  .note-bar .note-btn.primary:hover:not(:disabled) { background: #ffe066; }
   .note-btn.primary { background: ${INK}; color: #f6e7c8; border-color: ${INK}; }
   .note-btn.primary:hover { background: #2a1a12; }
   .note-hint { font-family: ${PIXEL_FONT}; font-size: 16px; color: ${INK_SOFT}; }
@@ -427,6 +444,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
           style={{
             width: PANEL_W,
             height: PANEL_H,
+            // Room for the control plank hung below, so book and plank centre together.
+            marginBottom: BAR_GAP + BAR_H,
             backgroundImage: "url('/assets/ui/book.png')",
             backgroundPosition: '-32px 0px',
             backgroundSize: '6720px 1728px',
@@ -490,18 +509,11 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             )}
           </div>
 
-          {/* Controls: one group under each page, clear of the spine between them */}
+          {/* Controls: a plank under the book, off the art */}
           <div
             data-tour="note-controls"
-            style={{
-              position: 'absolute',
-              left: PAGES_LEFT,
-              top: PAGES_TOP + PAGES_H + 14,
-              width: PAGES_W,
-              display: 'grid',
-              gridTemplateColumns: `minmax(0, 1fr) ${SPINE_GAP}px minmax(0, 1fr)`,
-              alignItems: 'center',
-            }}
+            className="note-bar"
+            style={{ position: 'absolute', left: 0, top: PANEL_H + BAR_GAP, width: PANEL_W, boxSizing: 'border-box' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               {!editing ? (
@@ -530,7 +542,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 ) : !canWrite ? (
                   'Read-only vault'
                 ) : progress ? (
-                  <span data-tour="note-progress" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#9a5b00' }}>
+                  <span data-tour="note-progress" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#f7c948' }}>
                     <Coin size={10} />
                     {progress.words >= progress.needed
                       ? `Save to earn +${progress.reward}`
@@ -539,8 +551,6 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 ) : null}
               </span>
             </div>
-
-            <div />
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
               {!editing ? (
