@@ -42,7 +42,11 @@ const TONES: Record<BiomeId, [Tone, Tone]> = {
   snow: [4, 2],
 };
 
-export type Ground = { map: Phaser.Tilemaps.Tilemap; toneAt: (x: number, y: number) => Tone | 1 };
+export type Ground = {
+  map: Phaser.Tilemaps.Tilemap;
+  roads: Phaser.Tilemaps.TilemapLayer | null;
+  toneAt: (x: number, y: number) => Tone | 1;
+};
 
 export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
   const map = scene.make.tilemap({ tileWidth: 16, tileHeight: 16, width: g.w, height: g.h });
@@ -142,5 +146,31 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
     roadLayer.putTileAt(frame, x, y);
   }
 
-  return { map, toneAt: (x, y) => tone.get(key(x, y)) ?? 1 };
+  return { map, roads: g1 ? roadLayer : null, toneAt: (x, y) => tone.get(key(x, y)) ?? 1 };
+}
+
+// Re-tiles the roads around tiles whose road-ness just changed (build mode's path brush), so a
+// painted path gets its proper edges straight away. Cobbles and pebbles in the middle of a
+// road stay as they are.
+export function retileRoads(g: WorldGrid, ground: Ground, cells: string[]) {
+  const layer = ground.roads;
+  if (!layer) return;
+  const near = new Set<string>();
+  for (const c of cells) {
+    const [x, y] = c.split(',').map(Number);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) near.add(key(x + dx, y + dy));
+  }
+  for (const k of near) {
+    const [x, y] = k.split(',').map(Number);
+    if (x < 0 || y < 0 || x >= g.w || y >= g.h) continue;
+    if (!g.road.has(k)) {
+      layer.removeTileAt(x, y);
+      continue;
+    }
+    const frame = edgeFrame(g.road, x, y, ROAD_EDGES);
+    const cur = layer.getTileAt(x, y)?.index ?? -1;
+    const decorated = cur >= GID_PEBBLE && cur < GID_COBBLE + 15;
+    if (frame === ROAD_EDGES.centre && decorated) continue;
+    layer.putTileAt(frame, x, y);
+  }
 }

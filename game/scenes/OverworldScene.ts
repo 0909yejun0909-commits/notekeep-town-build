@@ -13,7 +13,7 @@ import { setSelfPresence } from '@/lib/multiplayer/session';
 import { hash } from '@/lib/types';
 import { HOUSE_FOOTPRINT } from '@/lib/houseCatalog';
 import { key, type WorldGrid } from '@/game/worldGrid';
-import { buildGround, GID_WATER } from '@/game/ground';
+import { buildGround, GID_WATER, retileRoads, type Ground } from '@/game/ground';
 import { placePonds, renderWater } from '@/game/water';
 import { placePlazas, renderPlazas, renderYards } from '@/game/townProps';
 import { buildForestBorder, buildGroundCover, buildGroves } from '@/game/nature';
@@ -54,6 +54,7 @@ export default class OverworldScene extends Phaser.Scene {
   private building = false;
   private tool: TownTool | null = null;
   private hover: Phaser.GameObjects.Graphics | null = null;
+  private ground: Ground | null = null;
 
   private onCommitExterior = ({
     houseId,
@@ -224,6 +225,7 @@ export default class OverworldScene extends Phaser.Scene {
     this.propObjects = placeProps(this, grid, this.town);
     this.paintObjects = renderTallGrass(this, grid, this.town);
     const ground = buildGround(this, grid);
+    this.ground = ground;
     renderWater(this, grid, ground.map, GID_WATER);
     renderPlazas(this, grid, plazas, wells);
     renderYards(this, grid);
@@ -347,8 +349,13 @@ export default class OverworldScene extends Phaser.Scene {
     bus.emit('town-edited', { bag: this.town.bag });
   }
 
+  // The tile under the pointer; for the ground brush, the brush's top-left tile with the
+  // pointer at its middle.
   private tileAt(p: Phaser.Input.Pointer) {
     const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    if (this.tool?.kind === 'ground') {
+      return { gx: Math.round(w.x / TILE - BRUSH / 2), gy: Math.round(w.y / TILE - BRUSH / 2) };
+    }
     return { gx: Math.floor(w.x / TILE), gy: Math.floor(w.y / TILE) };
   }
 
@@ -449,14 +456,13 @@ export default class OverworldScene extends Phaser.Scene {
     }
     for (const c of change) {
       this.paintObjects.get(c)?.forEach((o) => o.destroy());
-      const [x, y] = c.split(',').map(Number);
-      const at = [x * TILE + TILE / 2, y * TILE + TILE / 2] as const;
-      const objects =
-        paint === 'tall' ? drawTallGrass(this, g, c)
-        : [this.add.image(...at, g.skin(paint === 'path' ? 'terrain-path' : 'terrain-grass')).setDepth(-940)];
-      this.paintObjects.set(c, objects);
+      this.paintObjects.delete(c);
+      if (paint === 'path') g.road.add(c);
+      else g.road.delete(c);
+      if (paint === 'tall') this.paintObjects.set(c, drawTallGrass(this, g, c));
       this.town.ground[c] = paint;
     }
+    if (this.ground) retileRoads(g, this.ground, change);
     this.saveTown();
   }
 
