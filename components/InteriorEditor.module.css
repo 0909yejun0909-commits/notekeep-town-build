@@ -176,6 +176,12 @@
   align-items: stretch;
   gap: 16px;
 }
+.main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
 .side {
   display: flex;
   flex: none;
@@ -306,4 +312,20 @@
 }
 .swaps {
   max-height: 22vh;
+}
+
+/* The catalogue column is narrow: smaller tabs and labels so the pieces get the height. */
+.side .tab {
+  padding: 0 5px;
+  font-size: 15px;
+  line-height: 20px;
+}
+.side .info,
+.side .catalogueHead {
+  font-size: 16px;
+  line-height: 20px;
+}
+.side .coinNote {
+  font-size: 16px;
+  line-height: 20px;
 }

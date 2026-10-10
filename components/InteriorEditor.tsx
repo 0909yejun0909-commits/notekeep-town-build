@@ -498,7 +498,7 @@ export default function InteriorEditor() {
         data-panel="room-editor"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={styles.header}>
+        <div className={styles.header} data-panel-part>
           <span className={styles.title}>
             Customize
             {wallet.active && (
@@ -526,7 +526,9 @@ export default function InteriorEditor() {
           </div>
         </div>
 
-        <div className={styles.row}>
+        <div className={styles.body}>
+        <div className={styles.main}>
+        <div className={styles.row} data-panel-part>
           <span className={styles.label}>Floor</span>
           {FLOOR_FRAMES.map((frame, i) => (
             <button
@@ -542,7 +544,7 @@ export default function InteriorEditor() {
             />
           ))}
         </div>
-        <div className={styles.row}>
+        <div className={styles.row} data-panel-part>
           <span className={styles.label}>Wallpaper</span>
           {WALL_TRIPLES.map((triple, i) => (
             <button
@@ -558,7 +560,7 @@ export default function InteriorEditor() {
             />
           ))}
         </div>
-        <div className={styles.row}>
+        <div className={styles.row} data-panel-part>
           <span className={styles.label}>Room size</span>
           {(['small', 'medium', 'large'] as const).map((size) => (
             <button
@@ -594,7 +596,7 @@ export default function InteriorEditor() {
           ))}
         </div>
         {session.canAddRooms && (
-          <div className={styles.row}>
+          <div className={styles.row} data-panel-part>
             <span className={styles.label}>Rooms</span>
             {[...session.roomNames, ...added].map((name) => (
               <span key={name} className={styles.chip}>{name}</span>
@@ -644,8 +646,7 @@ export default function InteriorEditor() {
           </div>
         )}
 
-        <div className={styles.body}>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" data-panel-part>
             <div
               ref={gridRef}
               className={styles.grid}
@@ -784,8 +785,9 @@ export default function InteriorEditor() {
             {error && <span className={`${styles.error} ${styles.under}`}>{error}</span>}
             {moving !== null && <span className={`${styles.note} ${styles.under}`}>Drag it, or click a cell to move it there.</span>}
           </div>
+        </div>
 
-          <div className={styles.side} style={{ width: SIDE_W }}>
+          <div className={styles.side} style={{ width: SIDE_W }} data-panel-part>
             {selectedPlacement && (
               <>
                 <div className={styles.row}>
@@ -880,7 +882,7 @@ export default function InteriorEditor() {
                     </>
                   ) : (
                     <span className={styles.small}>
-                      {shown.length} pieces{wallet.active ? ' - place one you own, or buy it' : ''}
+                      {shown.length} pieces
                     </span>
                   )}
                 </div>

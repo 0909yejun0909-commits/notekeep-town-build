@@ -373,8 +373,19 @@ function advanceFrom(step: number) {
 
 // Interface the bubble must never cover: open panels and the always-on corners, plus, for
 // walking steps, the room or the stretch of town between the player and where they're going.
+// A panel that fills the window (the room editor) marks its pieces with data-panel-part, and
+// those are avoided instead, so the bubble can sit in the panel's empty space.
+function panelRects(): Rect[] {
+  return [...document.querySelectorAll('[data-panel]')].flatMap((p) => {
+    const r = p.getBoundingClientRect();
+    const parts = p.querySelectorAll('[data-panel-part]');
+    const fills = r.width * r.height > 0.8 * window.innerWidth * window.innerHeight;
+    return fills && parts.length ? [...parts].map((e) => e.getBoundingClientRect()) : [r];
+  });
+}
+
 function avoid(s: Step): Rect[] {
-  const out = [...rectsOf('[data-panel]'), ...rectsOf('[data-hud]')];
+  const out = [...panelRects(), ...rectsOf('[data-hud]')];
   if (s.keysOnly) {
     const r = inHouse() ? room() : union(playerRect(), s.target?.() ?? null);
     if (r) out.push(r);
