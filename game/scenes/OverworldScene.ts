@@ -155,6 +155,7 @@ export default class OverworldScene extends Phaser.Scene {
       .setDepth(-1000);
 
     const blocked = new Set<string>();
+    const houseGaps = new Set<string>();
     const entries: Entry[] = [];
     const areas: NpcSpawnArea[] = [];
     const grid: WorldGrid = {
@@ -186,6 +187,7 @@ export default class OverworldScene extends Phaser.Scene {
       grid.areas.push({ region, originGx, originGy, width: w, height: h });
       const result = buildHouses(this, region, originGx, originGy, biome);
       result.blocked.forEach((k) => blocked.add(k));
+      result.open.forEach((k) => houseGaps.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
       for (const e of result.entries) {
@@ -228,6 +230,7 @@ export default class OverworldScene extends Phaser.Scene {
     buildGroves(this, grid);
     buildGroundCover(this, grid);
     cutTrees(grid, cut, false);
+    for (const k of houseGaps) if (!grid.used.has(k)) blocked.delete(k);
     this.grid = grid;
 
     // Coming back out of a house puts the player on the road in front of that door.

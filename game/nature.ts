@@ -4,6 +4,7 @@ import { fbm, mix, pick, rand01 } from '@/game/noise';
 import { areaAt, isFree, key, nearHouse, ringDistance, TILE, type WorldGrid } from '@/game/worldGrid';
 import { desertTree, BARREL_CACTUS, DESERT_DECOR, desertDecorFrame } from '@/game/desertArt';
 import { SNOWMAN, WINTER_DECOR, winterDecorFrame } from '@/game/winterArt';
+import { paintsTile } from '@/game/artCoverage';
 
 // (ox, oy) is the pixel in the frame where the trunk meets the ground. Wide trees have a
 // two-tile trunk and are anchored on the line between their two trunk tiles.
@@ -153,11 +154,12 @@ export function buildGroves(scene: Phaser.Scene, g: WorldGrid) {
 export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
   const seed = g.seed ^ 0xd2;
   const decor = g.skin('decor');
+  // A pebble too small to read as an obstacle lies flat on the grass and you walk over it.
   const solid = (x: number, y: number, frame: number, wide = false) => {
-    scene.add.image(x * TILE, (y + 1) * TILE, decor, frame).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
-    if (wide) scene.add.image((x + 1) * TILE, (y + 1) * TILE, decor, frame + 1).setOrigin(0, 1).setDepth((y + 1) * TILE - 1);
-    for (const cx of wide ? [x, x + 1] : [x]) {
-      g.blocked.add(key(cx, y));
+    for (const [cx, f] of wide ? [[x, frame], [x + 1, frame + 1]] : [[x, frame]]) {
+      const blocks = paintsTile(scene, decor, f, cx * TILE, y * TILE, cx, y);
+      scene.add.image(cx * TILE, (y + 1) * TILE, decor, f).setOrigin(0, 1).setDepth(blocks ? (y + 1) * TILE - 1 : -600);
+      if (blocks) g.blocked.add(key(cx, y));
       g.used.add(key(cx, y));
     }
   };

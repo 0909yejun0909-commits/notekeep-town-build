@@ -2,6 +2,7 @@ import type { Region, TownBiome } from '@/lib/types';
 import { HOUSE_FOOTPRINT, HOUSE_DOOR, houseTextureKey } from '@/lib/houseCatalog';
 import { skin } from '@/game/biomeArt';
 import { WREATH } from '@/game/winterArt';
+import { paintsTile } from '@/game/artCoverage';
 
 const TILE = 16;
 
@@ -9,6 +10,9 @@ export type Entry = { gx: number; gy: number; houseId: string };
 
 export type TilemapResult = {
   blocked: Set<string>;
+  // Tiles inside a house's footprint its art leaves empty (a roof's corners). They stay in
+  // blocked while the town is laid out, so nothing is placed there, and open up afterwards.
+  open: Set<string>;
   doors: Map<string, string>;
   entries: Entry[];
   houseImages: Map<string, Phaser.GameObjects.Image>;
@@ -24,6 +28,7 @@ export function buildHouses(
   biome: TownBiome = 'forest',
 ): TilemapResult {
   const blocked = new Set<string>();
+  const open = new Set<string>();
   const doors = new Map<string, string>();
   const entries: Entry[] = [];
   const houseImages = new Map<string, Phaser.GameObjects.Image>();
@@ -50,6 +55,7 @@ export function buildHouses(
     for (let y = 0; y < h - 1; y++) {
       for (let x = 0; x < w; x++) {
         blocked.add(key(gx + x, gy + y));
+        if (!paintsTile(scene, img.texture.key, undefined, gx * TILE, gy * TILE, gx + x, gy + y)) open.add(key(gx + x, gy + y));
       }
     }
 
@@ -60,7 +66,7 @@ export function buildHouses(
     entries.push({ gx: entryX, gy: entryY, houseId: house.id });
   }
 
-  return { blocked, doors, entries, houseImages };
+  return { blocked, open, doors, entries, houseImages };
 }
 
 class MinHeap {
