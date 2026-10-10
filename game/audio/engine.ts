@@ -7,6 +7,7 @@ export type Engine = {
   ctx: AudioContext;
   music: GainNode;
   sfx: GainNode;
+  ambience: GainNode;
   noise: AudioBuffer;
 };
 
@@ -17,6 +18,7 @@ const MUTE_KEY = 'notekeep-town:muted';
 const MASTER = 0.8;
 const MUSIC = 0.5;
 const SFX = 0.6;
+const AMBIENCE = 0.5;
 const REVERB = 0.22;
 const PEAK = 0.5;
 
@@ -61,10 +63,13 @@ function create(): Engine {
   const sfx = ctx.createGain();
   sfx.gain.value = SFX;
   sfx.connect(master);
+  const ambience = ctx.createGain();
+  ambience.gain.value = AMBIENCE;
+  ambience.connect(master);
   const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const data = noise.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-  return { ctx, music, sfx, noise };
+  return { ctx, music, sfx, ambience, noise };
 }
 
 function sync() {

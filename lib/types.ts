@@ -94,7 +94,9 @@ export type DecorKind =
   | 'window' | 'window_wide' | 'wall_clock' | 'wall_mirror' | 'wall_mirror_wide' | 'towel' | 'pot_rack'
   | 'table_lamp' | 'candle' | 'potion' | 'book' | 'dish' | 'food' | 'vase' | 'trinket' | 'toiletry' | 'tabletop_plant'
   | 'xmas_tree' | 'candy_cane' | 'gift' | 'gift_pile' | 'wreath' | 'stocking'
-  | 'computer' | 'laptop' | 'computer_desk' | 'tv_console' | 'arcade';
+  | 'computer' | 'laptop' | 'computer_desk' | 'tv_console' | 'arcade'
+  | 'speaker' | 'headphones' | 'earphones' | 'radio' | 'record_player' | 'noise_machine'
+  | 'beanbag' | 'cushion';
 
 // Where a piece goes, Stardew-style: rugs lie under everything, wall pieces hang on the
 // back wall, tabletop pieces stand on a table, counter or nightstand (or on the floor), and

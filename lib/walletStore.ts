@@ -179,6 +179,14 @@ export function topUpTutorial(min: number) {
   publish(notice(gift, 'Tutorial bonus, so you can try everything.'));
 }
 
+// Coins for something other than a note (resting, meditating). No wallet, nothing paid.
+export function reward(amount: number, text: string) {
+  if (!session || amount <= 0) return;
+  session.data = { ...session.data, balance: session.data.balance + amount };
+  track('coinsEarned', amount);
+  publish(notice(amount, text));
+}
+
 // Pays for something with no inventory of its own (village building). False, and nothing
 // spent, when the balance is short or there's no wallet.
 export function spend(amount: number): boolean {

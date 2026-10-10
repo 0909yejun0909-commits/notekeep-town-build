@@ -49,6 +49,13 @@ const fridgeClose: Play = (e, d, t) => {
   tone(e, d, t + 0.1, { wave: 'sine', freq: 2600, to: 2400, dur: 0.06, gain: 0.07 });
 };
 
+// A singing bowl: a low fundamental with two inharmonic overtones, ringing out for a few seconds.
+const bowl: Play = (e, d, t) => {
+  tone(e, d, t, { wave: 'sine', freq: 392, dur: 3.6, gain: 0.28 });
+  tone(e, d, t, { wave: 'sine', freq: 392 * 2.76, dur: 2.2, gain: 0.1 });
+  tone(e, d, t, { wave: 'sine', freq: 392 * 5.4, dur: 1.1, gain: 0.04 });
+};
+
 const SOUNDS = {
   doorOpen: file(['door-open'], 0.9),
   doorClose: file(['door-close-1', 'door-close-2'], 0.8),
@@ -61,6 +68,7 @@ const SOUNDS = {
   fridgeClose,
   wardrobeOpen: both(file(['creak-1', 'creak-2'], 0.55, 0, 0.8), file(['cloth'], 0.5, 0.12)),
   wardrobeClose: both(muffled(file(['door-close-1', 'door-close-2'], 0.6, 0, 1.15), 1800), file(['cloth'], 0.3, 0.06)),
+  bowl,
   talk: phrase(PHRASES.talk),
   coin: both(phrase(PHRASES.coin), file(['coins'], 0.5)),
   buy: both(phrase(PHRASES.buy), file(['coins'], 0.5)),

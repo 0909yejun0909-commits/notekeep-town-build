@@ -1,0 +1,123 @@
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(24, 20, 37, 0.55);
+}
+
+.panel {
+  width: min(640px, 100%);
+}
+
+.title {
+  margin: 0 0 6px;
+  overflow: hidden;
+  font-size: 24px;
+  line-height: 30px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  font: inherit;
+  font-size: 24px;
+  line-height: 30px;
+  padding: 0 14px;
+  color: #9a6149;
+  background: none;
+  border: 3px solid transparent;
+  cursor: pointer;
+}
+
+.tabOn {
+  color: #3f2832;
+  border-color: #3f2832;
+  background: #fff7e6;
+}
+
+.muted {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 24px;
+  text-align: center;
+  color: #c0392b;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.state {
+  display: inline-block;
+  width: 32px;
+  font-size: 22px;
+  color: #c0392b;
+}
+
+.name {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.mood {
+  font-size: 20px;
+  color: #9a6149;
+}
+
+.mix {
+  gap: 0;
+  cursor: default;
+}
+
+.mix > button {
+  flex: 1;
+}
+
+.bar {
+  display: flex;
+  gap: 3px;
+  padding-right: 4px;
+}
+
+.barOff {
+  opacity: 0.45;
+}
+
+.seg {
+  width: 12px;
+  height: 22px;
+  padding: 0;
+  background: #e0b88f;
+  border: 2px solid #3f2832;
+  cursor: pointer;
+}
+
+.segLit {
+  background: #c0392b;
+}
+
+.hint {
+  margin: 12px 0 0;
+  font-size: 18px;
+  line-height: 22px;
+  text-align: center;
+  color: #9a6149;
+}

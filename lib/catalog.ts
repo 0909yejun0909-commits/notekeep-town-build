@@ -7,14 +7,14 @@ export const FURNITURE_SHEETS = [
   'tables', 'bookshelves', 'beds', 'chest', 'plants', 'decor', 'lamps', 'carpets',
   'chairs', 'other', 'bathroom', 'kitchen', 'clocks', 'fireplaces', 'planters',
   'chest_gold', 'chest_jeweled', 'chest_metal', 'windows', 'tabletop', 'counters', 'festive',
-  'desert_rugs', 'desert_pots', 'golden_pots', 'curios', 'tech',
+  'desert_rugs', 'desert_pots', 'golden_pots', 'curios', 'tech', 'chill',
 ] as const;
 export type FurnitureSheet = (typeof FURNITURE_SHEETS)[number];
 
 export const furnitureTextureKey = (sheet: FurnitureSheet) => `furn_${sheet}`;
 // Our own drawn art is committed under public/art; the licensed packs are gitignored under public/assets.
 export const furnitureSheetUrl = (sheet: FurnitureSheet) =>
-  sheet === 'tech' ? '/art/tech.png' : `/assets/furniture/${sheet}.png`;
+  sheet === 'tech' ? '/art/tech.png' : sheet === 'chill' ? '/art/chill.png' : `/assets/furniture/${sheet}.png`;
 
 // The bookshelf isn't a catalog item (it's structural and always present), but
 // it's carved from the same sheet as the placeable bookcases.
@@ -568,6 +568,27 @@ export const CATALOG: CatalogEntry[] = [
   item('computer_desk', 'Computer desk', 'computer_desk', 'rare', 'tech', [32, 0, 32, 32], { base: [2, 1] }),
   item('tv_console', 'TV and games console', 'tv_console', 'rare', 'tech', [64, 0, 32, 32], { base: [2, 1] }),
 
+  // Chill: music, white noise, meditation and rest (scripts/draw-chill.py)
+  item('speaker_tower', 'Black tower speaker', 'speaker', 'uncommon', 'chill', [0, 0, 16, 32]),
+  item('speaker_wood', 'Wooden tower speaker', 'speaker', 'uncommon', 'chill', [16, 0, 16, 32]),
+  item('headphones_red', 'Red headphones on a stand', 'headphones', 'uncommon', 'chill', [32, 0, 16, 32]),
+  item('headphones_white', 'White headphones on a stand', 'headphones', 'uncommon', 'chill', [48, 0, 16, 32]),
+  item('headphones_navy', 'Navy headphones on a stand', 'headphones', 'uncommon', 'chill', [64, 0, 16, 32]),
+  item('boombox', 'Boombox', 'radio', 'common', 'chill', [0, 32, 16, 16]),
+  item('boombox_red', 'Red boombox', 'radio', 'common', 'chill', [16, 32, 16, 16]),
+  item('record_player', 'Record player', 'record_player', 'rare', 'chill', [32, 32, 16, 16]),
+  item('earbuds_white', 'Earbuds on a side table', 'earphones', 'common', 'chill', [48, 32, 16, 16]),
+  item('earbuds_pink', 'Pink earbuds on a side table', 'earphones', 'common', 'chill', [64, 32, 16, 16]),
+  item('noise_machine', 'White-noise machine', 'noise_machine', 'uncommon', 'chill', [80, 32, 16, 16]),
+  item('noise_machine_sage', 'Sage white-noise machine', 'noise_machine', 'uncommon', 'chill', [96, 32, 16, 16]),
+  item('beanbag_blue', 'Blue beanbag', 'beanbag', 'common', 'chill', [0, 48, 16, 16]),
+  item('beanbag_pink', 'Pink beanbag', 'beanbag', 'common', 'chill', [16, 48, 16, 16]),
+  item('beanbag_green', 'Green beanbag', 'beanbag', 'common', 'chill', [32, 48, 16, 16]),
+  item('beanbag_orange', 'Orange beanbag', 'beanbag', 'common', 'chill', [48, 48, 16, 16]),
+  item('cushion_purple', 'Purple meditation cushion', 'cushion', 'common', 'chill', [64, 48, 16, 16]),
+  item('cushion_teal', 'Teal meditation cushion', 'cushion', 'common', 'chill', [80, 48, 16, 16]),
+  item('cushion_rose', 'Rose meditation cushion', 'cushion', 'common', 'chill', [96, 48, 16, 16]),
+
   ...generated(),
 ];
 
@@ -591,6 +612,7 @@ export const CATALOG_GROUPS = [
   { id: 'hobby', label: 'Hobby', categories: ['piano', 'guitar', 'clock'] },
   { id: 'tech', label: 'Tech', categories: ['computer', 'laptop', 'computer_desk', 'tv_console', 'arcade'] },
   { id: 'festive', label: 'Festive', categories: ['xmas_tree', 'candy_cane', 'gift', 'gift_pile', 'wreath', 'stocking'] },
+  { id: 'chill', label: 'Chill', categories: ['speaker', 'headphones', 'earphones', 'radio', 'record_player', 'noise_machine', 'beanbag', 'cushion'] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; categories: readonly CatalogCategory[] }>;
 export type CatalogGroupId = (typeof CATALOG_GROUPS)[number]['id'];
 
@@ -611,7 +633,7 @@ export const WALKABLE: ReadonlySet<CatalogCategory> = new Set<CatalogCategory>(R
 
 // What Space does when you stand in front of a piece (InteriorScene). A note on the piece, or
 // another piece sharing the approach tile, turns Space into a menu.
-export type FurnitureAction = 'sit' | 'lie' | 'wardrobe' | 'study' | 'computer' | 'arcade';
+export type FurnitureAction = 'sit' | 'lie' | 'wardrobe' | 'study' | 'computer' | 'arcade' | 'listen' | 'meditate';
 export const FURNITURE_ACTIONS: Partial<Record<CatalogCategory, FurnitureAction>> = {
   sofa: 'sit',
   armchair: 'sit',
@@ -628,4 +650,12 @@ export const FURNITURE_ACTIONS: Partial<Record<CatalogCategory, FurnitureAction>
   computer_desk: 'computer',
   tv_console: 'arcade',
   arcade: 'arcade',
+  beanbag: 'sit',
+  speaker: 'listen',
+  headphones: 'listen',
+  earphones: 'listen',
+  radio: 'listen',
+  record_player: 'listen',
+  noise_machine: 'listen',
+  cushion: 'meditate',
 };

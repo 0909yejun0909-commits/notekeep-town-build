@@ -17,6 +17,14 @@ type BusEvents = {
   'world-updated': { exteriorChanged: boolean };
   'appearance-changed': undefined;
   'open-wardrobe': undefined;
+  // A sound device: the music player and ambient mixer. `device` is the piece's name.
+  'open-sound-player': { device: string; tab: 'music' | 'ambience' };
+  'close-sound-player': undefined;
+  'open-meditate': undefined;
+  'close-meditate': undefined;
+  // Sitting or lying on a piece starts a rest; standing up ends it.
+  'rest-start': { kind: 'sit' | 'lie' };
+  'rest-end': undefined;
   'close-wardrobe': undefined;
   'open-study': { houseId: string; mode: 'flashcards' | 'quiz' };
   'close-study': undefined;
