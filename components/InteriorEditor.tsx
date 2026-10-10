@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { bus } from '@/game/bus';
-import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl } from '@/lib/catalog';
+import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, SHELF_RECT, SHELF_SHEET, furnitureSheetUrl, missingExtra } from '@/lib/catalog';
 import type { CatalogGroupId } from '@/lib/catalog';
 import { canPlace, canPlaceShelf, resizeLayout, doorCells, doorSlots, structuralOccupied, shelfOccupied, ROOM_SIZES, doorPositionFor, SHELF_W, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogEntry, CatalogItemId, CatalogTier, FurniturePlacement, InteriorLayout, RoomSize } from '@/lib/types';
@@ -29,6 +29,10 @@ const CROWDED = "You can't add rooms while friends are in your town.";
 // the shelf, which isn't part of `placements` — it's always present, always
 // the same style, only its position is editable.
 type Target = number | 'shelf';
+
+// Pieces whose sheet isn't installed are left out (see EXTRA_SHEETS).
+const installed = (entry: CatalogEntry) =>
+  !missingExtra(entry, (k) => (window as any).__game?.textures.exists(k) ?? true);
 
 function nameOf(item: CatalogItemId): string {
   return CATALOG_BY_ID[item]?.name ?? item;
@@ -375,7 +379,7 @@ export default function InteriorEditor() {
   const selectedPlacement = typeof selected === 'number' ? draft.placements[selected] : null;
   const selectedCategory = selectedPlacement ? CATALOG_BY_ID[selectedPlacement.item]?.category : null;
   const swaps = selectedPlacement
-    ? CATALOG.filter((e) => e.category === selectedCategory && e.id !== selectedPlacement.item)
+    ? CATALOG.filter((e) => e.category === selectedCategory && e.id !== selectedPlacement.item && installed(e))
     : [];
   const shelfSelected = selected === 'shelf';
 
@@ -685,7 +689,7 @@ export default function InteriorEditor() {
                   {wallet.active ? 'Place from your inventory, or buy something new' : 'Place'}
                 </span>
                 <div className={styles.row}>
-                  {CATALOG_GROUPS.map((g) => (
+                  {CATALOG_GROUPS.filter((g) => CATALOG_BY_GROUP[g.id].some(installed)).map((g) => (
                     <button
                       key={g.id}
                       className={`${styles.btn} ${tab === g.id ? styles.on : ''}`}
@@ -696,7 +700,7 @@ export default function InteriorEditor() {
                   ))}
                 </div>
                 <div className={styles.shelf} data-tour="furniture">
-                  {CATALOG_BY_GROUP[tab].map((entry) => (
+                  {CATALOG_BY_GROUP[tab].filter(installed).map((entry) => (
                     <ShopTile
                       key={entry.id}
                       entry={entry}

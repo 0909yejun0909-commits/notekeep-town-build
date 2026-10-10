@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CATALOG, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
+import { CATALOG, EXTRA_SHEETS, FURNITURE_SHEETS, SHELF_RECT, SHELF_SHEET, furnitureTextureKey } from '@/lib/catalog';
 import { HOUSE_VARIANTS, MATERIALS, ROOF_COLORS, availableWallColors, houseTextureKey } from '@/lib/houseCatalog';
 import {
   CLOTH_COLORS,
@@ -30,7 +30,11 @@ export default class BootScene extends Phaser.Scene {
     // Phaser draws any texture that failed to load as a black box, which looks like broken
     // code; collect the failures so components/MissingArtBanner.tsx can say what's missing.
     const missing: string[] = [];
-    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => missing.push(file.url as string));
+    // The later furniture sheets are optional: their pieces just stay out of the shop.
+    const optional = new Set(EXTRA_SHEETS.map((sheet) => `assets/furniture/${sheet}.png`));
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      if (!optional.has(file.url as string)) missing.push(file.url as string);
+    });
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       if (missing.length === 0) return;
       this.game.registry.set('missingAssets', missing);

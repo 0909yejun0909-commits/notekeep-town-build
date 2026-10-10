@@ -89,16 +89,29 @@ cp "$D/House_Plants.png"   "$DEST/furniture/plants.png"
 cp "$D/Indoor_Decor.png"   "$DEST/furniture/decor.png"
 cp "$D/Standing_Lamps.png" "$DEST/furniture/lamps.png"
 cp "$D/Carpets.png"        "$DEST/furniture/carpets.png"
-cp "$D/Chairs.png"         "$DEST/furniture/chairs.png"
-cp "$D/Furniture_Other.png" "$DEST/furniture/other.png"
-cp "$D/Bathroom_Furniture.png" "$DEST/furniture/bathroom.png"
-cp "$D/Kitchen_Furniture.png" "$DEST/furniture/kitchen.png"
-cp "$D/Clocks.png"         "$DEST/furniture/clocks.png"
-cp "$D/Fireplaces.png"     "$DEST/furniture/fireplaces.png"
-cp "$D/Planters.png"       "$DEST/furniture/planters.png"
-cp "$D/Golden_Chest_Anim.png" "$DEST/furniture/chest_gold.png"
-cp "$D/Golden_Jeweled_Chest_Anim.png" "$DEST/furniture/chest_jeweled.png"
-cp "$D/Metal_Chest_Anim.png" "$DEST/furniture/chest_metal.png"
+# Later furniture sheets. Kenmi has moved and renamed files between pack versions, so each is
+# looked for by name anywhere in the packs, and a missing one is skipped with a warning
+# instead of stopping the whole install: the game just leaves those pieces out of the shop.
+SKIPPED=""
+extra() {
+  local src="$D/$1"
+  if [ ! -f "$src" ]; then src="$(find "$KENMI" -type f -iname "$1" 2>/dev/null | head -n 1 || true)"; fi
+  if [ -n "$src" ] && [ -f "$src" ]; then
+    cp "$src" "$DEST/furniture/$2"
+  else
+    SKIPPED="$SKIPPED $1"
+  fi
+}
+extra Chairs.png                    chairs.png
+extra Furniture_Other.png           other.png
+extra Bathroom_Furniture.png        bathroom.png
+extra Kitchen_Furniture.png         kitchen.png
+extra Clocks.png                    clocks.png
+extra Fireplaces.png                fireplaces.png
+extra Planters.png                  planters.png
+extra Golden_Chest_Anim.png         chest_gold.png
+extra Golden_Jeweled_Chest_Anim.png chest_jeweled.png
+extra Metal_Chest_Anim.png          chest_metal.png
 
 P="$CF/Player"
 cp "$P/Player_Base/Player_Base_animations.png" "$DEST/character/base.png"
@@ -179,6 +192,9 @@ cp "$CF/Trees/Oak_Leaf_Particle.png"   "$S/leaf_oak.png"
 cp "$CF/Trees/Birch_Leaf_Particle.png" "$S/leaf_birch.png"
 
 echo "copied $(find "$DEST" -type f | wc -l | tr -d ' ') files into $DEST"
+if [ -n "$SKIPPED" ]; then
+  echo "note: not found in your packs, so those furniture pieces stay hidden in the game:$SKIPPED"
+fi
 if [ -z "$PY" ]; then
   echo "incomplete: rerun after installing Python 3 and Pillow to finish the Stone houses and title menu." >&2
   exit 1

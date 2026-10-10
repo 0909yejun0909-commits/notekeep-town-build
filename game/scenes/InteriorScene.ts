@@ -24,6 +24,7 @@ import {
 import { getLayout, saveLayout } from '@/lib/interiorStore';
 import {
   CATALOG_BY_ID,
+  missingExtra,
   FURNITURE_ACTIONS,
   SHELF_SHEET,
   WALKABLE,
@@ -507,7 +508,7 @@ export default class InteriorScene extends Phaser.Scene {
 
   private renderPlacement(placement: FurniturePlacement, allNotes: NoteRef[]) {
     const entry = CATALOG_BY_ID[placement.item];
-    if (!entry) return;
+    if (!entry || missingExtra(entry, (k) => this.textures.exists(k))) return;
     const [fw, fh] = entry.footprint;
     const { gx, gy, rotation } = placement;
     const walkable = WALKABLE.has(entry.category);

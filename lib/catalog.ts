@@ -13,6 +13,14 @@ export type FurnitureSheet = (typeof FURNITURE_SHEETS)[number];
 export const furnitureTextureKey = (sheet: FurnitureSheet) => `furn_${sheet}`;
 export const furnitureSheetUrl = (sheet: FurnitureSheet) => `/assets/furniture/${sheet}.png`;
 
+// The first eight sheets come with every install. The rest were added later, so an older or
+// partial install can lack them; their pieces are then left out of the shop and the rooms
+// rather than drawn as black boxes.
+export const EXTRA_SHEETS: readonly FurnitureSheet[] = FURNITURE_SHEETS.slice(8);
+const EXTRA_TEXTURES = new Set(EXTRA_SHEETS.map(furnitureTextureKey));
+export const missingExtra = (entry: CatalogEntry, hasTexture: (key: string) => boolean) =>
+  EXTRA_TEXTURES.has(entry.textureKey) && !hasTexture(entry.textureKey);
+
 // The bookshelf isn't a catalog item (it's structural and always present), but
 // it's carved from the same sheet as the placeable bookcases.
 export const SHELF_SHEET: FurnitureSheet = 'bookshelves';
