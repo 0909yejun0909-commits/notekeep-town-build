@@ -137,6 +137,7 @@ type Step = {
   target?: () => Rect | null;
   also?: () => Rect | null; // something else to keep lit, without an arrow
   keysOnly?: boolean; // walking: the highlight takes no clicks
+  enterInField?: boolean; // Enter in a text field still means Next (a one-line field)
   done?: (c: Ctx) => boolean; // absent: an explanation, Next moves on
   auto?: () => void; // what Next does on a step that asks for an action: the action itself
   onEnter?: () => void;
@@ -161,6 +162,7 @@ const STEPS: Step[] = [
       <>
         <p>Welcome to Notekeep Town! This is you.</p>
         <p>Every house is a folder of notes, and every book inside is a note. Let&apos;s write one, earn some coins and spend them.</p>
+        <p>Press Enter or Next to go on.</p>
       </>
     ),
   },
@@ -192,6 +194,7 @@ const STEPS: Step[] = [
   {
     id: 'name',
     text: <p>Give your note a title, then press Create.</p>,
+    enterInField: true,
     target: () => rectOf('[data-tour="note-namer"]'),
     done: noteOpen,
     auto: () => {
@@ -385,6 +388,8 @@ export default function Tutorial() {
   const balance = useRef(wallet.balance);
   balance.current = wallet.balance;
   const startBalance = useRef(wallet.balance);
+  // What Enter does right now: the bubble's main button (Next, Finish, or Keep going).
+  const primary = useRef<{ press: () => void; inFields: boolean } | null>(null);
 
   useEffect(() => {
     setSkipping(false);
@@ -414,6 +419,23 @@ export default function Tutorial() {
     return () => cancelAnimationFrame(raf);
   }, [step]);
 
+  // Enter presses the main button. Registered once, on the window's capture phase, as the app
+  // starts, so it runs before any panel's or the game's own Enter handling and one press can't
+  // also save a panel or interact in the room. Typing in a field keeps its own Enter.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !primary.current) return;
+      const inField = (e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]');
+      if (inField && !primary.current.inFields) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!e.repeat) primary.current.press();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
+  primary.current = null;
   if (step === null || !STEPS[step]) return null;
   const s = STEPS[step];
   const last = step === STEPS.length - 1;
@@ -423,6 +445,8 @@ export default function Tutorial() {
     if (s.done && s.auto) s.auto();
     else advanceFrom(step);
   };
+
+  primary.current = { press: skipping ? () => setSkipping(false) : last ? finish : next, inFields: !skipping && !!s.enterInField };
 
   const press = (fn: () => void) => ({ onMouseDown: (e: { preventDefault: () => void }) => e.preventDefault(), onClick: fn });
 
@@ -439,7 +463,7 @@ export default function Tutorial() {
             <button className={`${styles.button} ${styles.quiet}`} {...press(finish)}>
               Skip it
             </button>
-            <button className={`${styles.button} ${styles.primary}`} {...press(() => setSkipping(false))}>
+            <button className={`${styles.button} ${styles.primary}`} title="Enter" {...press(() => setSkipping(false))}>
               Keep going
             </button>
           </>
@@ -452,7 +476,7 @@ export default function Tutorial() {
             ) : (
               <span />
             )}
-            <button className={`${styles.button} ${styles.primary}`} {...press(last ? finish : next)}>
+            <button className={`${styles.button} ${styles.primary}`} title="Enter" {...press(last ? finish : next)}>
               {last ? 'Finish' : 'Next'}
             </button>
           </>
