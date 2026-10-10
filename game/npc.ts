@@ -4,6 +4,7 @@ import { DEFAULT_TOWN_BIOME } from '@/lib/biome';
 import { bus } from './bus';
 import { tileToWorld } from './gridMovement';
 import { npcTexture } from './npcOutfits';
+import { getLabelSource, setLabelSource, type SceneLabel } from './sceneLabels';
 
 // Hardcoded dialogue — no AI, no network call.
 const DIALOGUE: Record<string, string> = {
@@ -89,8 +90,38 @@ function ensureTalkHandler(scene: Phaser.Scene): LiveNpc[] {
   };
   keyboard?.on('keydown-SPACE', onSpace);
 
+  // A "Talk" prompt over the head of the NPC you're close enough to talk to, drawn as page
+  // text (components/SceneLabels.tsx) like the labels indoors.
+  const prompt = (): SceneLabel[] => {
+    const player = scene.game.registry.get('player') as Phaser.GameObjects.Sprite | undefined;
+    // Hidden while components/NpcDialogue.tsx has a line up.
+    if (!player || scene.game.registry.get('npcTalking')) return [];
+    const near = list
+      .map((npc) => ({ npc, d: Phaser.Math.Distance.Between(player.x, player.y, npc.sprite.x, npc.sprite.y) }))
+      .filter(({ d }) => d < TALK_RANGE)
+      .sort((a, b) => a.d - b.d)[0];
+    if (!near) return [];
+    const cam = scene.cameras.main;
+    const rect = scene.game.canvas.getBoundingClientRect();
+    const px = rect.width / scene.scale.width;
+    const k = cam.zoom * px;
+    return [{
+      id: 'npc-talk',
+      text: 'Talk',
+      suffix: ' [Space]',
+      x: rect.left + (near.npc.sprite.x - cam.worldView.x) * k,
+      y: rect.top + (near.npc.sprite.y - 24 - cam.worldView.y) * k,
+      ox: 0.5,
+      oy: 1,
+      px,
+      color: '#ffe066',
+    }];
+  };
+  setLabelSource(prompt);
+
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
     keyboard?.off('keydown-SPACE', onSpace);
+    if (getLabelSource() === prompt) setLabelSource(null);
     liveNpcs.delete(scene);
   });
   return list;

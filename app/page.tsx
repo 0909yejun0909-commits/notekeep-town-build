@@ -15,6 +15,7 @@ import PlayerTags from '@/components/PlayerTags';
 import SceneLabels from '@/components/SceneLabels';
 import Tutorial from '@/components/Tutorial';
 import TownEditor from '@/components/TownEditor';
+import NpcDialogue from '@/components/NpcDialogue';
 import CoinPurse from '@/components/CoinPurse';
 import Wardrobe from '@/components/Wardrobe';
 import BedMenu from '@/components/BedMenu';
@@ -30,7 +31,6 @@ const PhaserCanvas = dynamic(() => import('@/components/PhaserCanvas'), { ssr: f
 function Game() {
   const { vault, setVault } = useVault();
   const [openNote, setOpenNote] = useState<NoteRef | null>(null);
-  const [npcLine, setNpcLine] = useState<string | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
 
   useEffect(() => {
@@ -40,16 +40,13 @@ function Game() {
   useEffect(() => {
     const onOpenNote = ({ note }: { note: NoteRef }) => setOpenNote(note);
     const onCloseNote = () => setOpenNote(null);
-    const onTalkNpc = ({ line }: { npcId: string; line: string }) => setNpcLine(line);
 
     bus.on('open-note', onOpenNote);
     bus.on('close-note', onCloseNote);
-    bus.on('talk-npc', onTalkNpc);
 
     return () => {
       bus.off('open-note', onOpenNote);
       bus.off('close-note', onCloseNote);
-      bus.off('talk-npc', onTalkNpc);
     };
   }, []);
 
@@ -76,11 +73,7 @@ function Game() {
       <MissingArtBanner />
       <Tutorial />
 
-      {npcLine && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 rounded bg-black/90 px-6 py-4 text-white">
-          {npcLine}
-        </div>
-      )}
+      <NpcDialogue />
     </div>
   );
 }
