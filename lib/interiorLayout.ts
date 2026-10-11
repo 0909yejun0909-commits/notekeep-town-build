@@ -235,7 +235,8 @@ const NUDGE = 2;
 // Where a click at (gx, gy) puts `item`: that cell as its top-left corner, or — for a wall
 // piece too tall to start there — hung so its bottom row is the clicked one. Failing both, the
 // nearest spot within NUDGE tiles, covering the clicked cell if any does, so a big piece by a
-// wall or another piece still goes in instead of greying out. Null if nothing near fits.
+// wall or another piece still goes in instead of greying out. A wall piece that still has no
+// spot goes anywhere on the wall, nearest the clicked column. Null if nothing fits.
 export function placementSpot(
   layout: InteriorLayout,
   catalogById: Lookup,
@@ -265,6 +266,18 @@ export function placementSpot(
       if (d >= bestD || !canPlace(layout, catalogById, structural, w, h, item, x, y, skip)) continue;
       best = [x, y];
       bestD = d;
+    }
+  }
+  if (best || entry.layer !== 'wall') return best;
+  // A wall piece asked for out on the floor hangs on the wall above, as close to that column
+  // as there's room, lower rows first.
+  let wallD = Infinity;
+  for (let y = 0; y + fh <= 2; y++) {
+    for (let x = 1; x + fw <= w - 1; x++) {
+      const d = Math.abs(x + (fw - 1) / 2 - gx) * 10 + (2 - fh - y);
+      if (d >= wallD || !canPlace(layout, catalogById, structural, w, h, item, x, y, skip)) continue;
+      best = [x, y];
+      wallD = d;
     }
   }
   return best;

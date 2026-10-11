@@ -271,6 +271,17 @@ test('a piece that does not fit at the clicked cell slides to the nearest spot c
   assert.equal(fits(layout, 'rug', x, y), true);
 });
 
+test('a wall piece picked out on the floor hangs on the wall above it', () => {
+  const walls = structuralOccupied(13, 10);
+  assert.deepEqual(placementSpot(empty('small'), CATALOG_BY_ID, walls, 13, 10, 'window_cross', 10, 7), [10, 0]);
+  // That column taken: the nearest free one along the wall.
+  const taken = { ...empty('small'), placements: [at('window_cross', 10, 0)] };
+  const [x, y] = placementSpot(taken, CATALOG_BY_ID, walls, 13, 10, 'window_cross', 10, 7)!;
+  assert.equal(y, 0);
+  assert.equal(Math.abs(x - 10), 1);
+  assert.equal(fits(taken, 'window_cross', x, y), true);
+});
+
 test("tabletop pieces stand on a surface's back row, or on the floor", () => {
   const layout = { ...empty('small'), placements: [at('desk', 9, 5), at('candle_red', 9, 5)] };
   assert.equal(fits(layout, 'candle_blue', 10, 5), true);

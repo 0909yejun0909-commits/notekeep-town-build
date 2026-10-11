@@ -94,7 +94,7 @@ function ShopTile({ entry, owned, balance, disabled, onClick, onHover }: {
   const forSale = owned !== null && owned <= 0;
   const short = forSale && price !== null && price > balance;
   const title = disabled
-    ? `${entry.name} - doesn't fit here`
+    ? entry.layer === 'wall' ? `${entry.name} - no room left on the wall` : `${entry.name} - doesn't fit here`
     : forSale
       ? `${entry.name} (${entry.tier}) - buy for ${price} coins`
       : owned !== null
@@ -422,7 +422,8 @@ export default function InteriorEditor() {
     if (!acquire(item)) return;
     const placement: FurniturePlacement = { item, gx: spot[0], gy: spot[1], rotation: 0 };
     setDraft({ ...draft, placements: [...draft.placements, placement] });
-    setSelected(null);
+    // Selected, so it's easy to find (a wall piece may have gone up the wall) and drag about.
+    setSelected(draft.placements.length);
     setPicking(null);
     setHovered(null);
   }
@@ -805,6 +806,11 @@ export default function InteriorEditor() {
                     {wallet.active ? 'Put away' : 'Remove'}
                   </button>
                 </div>
+                <span className={styles.small}>
+                  {CATALOG_BY_ID[selectedPlacement.item]?.layer === 'wall'
+                    ? 'Drag it along the wall to move it.'
+                    : 'Drag it in the room to move it.'}
+                </span>
                 {swaps.length > 0 && (
                   <>
                     <span className={styles.small}>Swap for</span>
