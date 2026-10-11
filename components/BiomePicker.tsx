@@ -39,10 +39,23 @@ function PixelIcon({ biome }: { biome: TownBiome }) {
 
 // The town's look is standing state, so it goes through the registry (which BootScene seeds)
 // rather than the bus — Overworld and Title rebuild on its changedata event.
+const BUILT_KEY = 'notekeep-town:built-once';
+// An 8x8 hammer: H the iron head, W the handle.
+const HAMMER = ['.HHHH...', 'HHHHH...', '.HHHH...', '...WW...', '...WW...', '...WW...', '...WW...', '...WW...'];
+
 export default function BiomePicker() {
   const [biome, setBiome] = useState<TownBiome | null>(null);
   const [indoors, setIndoors] = useState(false);
   const [building, setBuilding] = useState(false);
+  // Build glows until it's first opened, so it's found.
+  const [builtOnce, setBuiltOnce] = useState(true);
+  useEffect(() => {
+    try {
+      setBuiltOnce(localStorage.getItem(BUILT_KEY) === '1');
+    } catch {
+      setBuiltOnce(false);
+    }
+  }, []);
   // A biome still to buy takes two clicks: the first asks, the second pays.
   const [asking, setAsking] = useState<TownBiome | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -146,15 +159,28 @@ export default function BiomePicker() {
         {/* Village building: only for the town's owner, who has the coins to spend. */}
         {wallet.active && (
           <button
-            className={`${styles.option} ${styles.build}`}
+            className={`${styles.build} ${builtOnce ? '' : styles.buildNew}`}
             data-tour="build"
-            title="Decorate the town, paint paths and cut down trees"
+            title="Add houses, buy land, decorate the town and paint paths"
             onClick={(e) => {
               e.currentTarget.blur();
+              if (!builtOnce) {
+                setBuiltOnce(true);
+                try {
+                  localStorage.setItem(BUILT_KEY, '1');
+                } catch {
+                  // Storage unavailable: it just keeps glowing next time.
+                }
+              }
               bus.emit('open-town-editor', undefined);
             }}
           >
-            <span className={styles.name}>Build</span>
+            <svg width={24} height={24} viewBox="0 0 8 8" shapeRendering="crispEdges" aria-hidden>
+              {HAMMER.flatMap((row, y) =>
+                [...row].map((c, x) => (c === '.' ? null : <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} fill={c === 'H' ? '#3f2832' : '#91533b'} />)),
+              )}
+            </svg>
+            <span>Build</span>
           </button>
         )}
       </div>

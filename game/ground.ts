@@ -89,7 +89,8 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
     for (let x = -1; x <= g.w; x++) {
       if (nearWet(x, y)) continue;
       // The forest floor spills a ragged few tiles past the ring so the edge isn't a ruler line.
-      if (ringDistance(g, x, y) < fbm(g.seed ^ 0x13, x, y, 5) * 5 - 1.5) {
+      // It covers the plots for sale too, which turn to meadow once bought.
+      if (!g.open.has(key(x, y)) && ringDistance(g, x, y) < fbm(g.seed ^ 0x13, x, y, 5) * 5 - 1.5) {
         if (toneLoaded(4)) masks[4].add(key(x, y));
         continue;
       }

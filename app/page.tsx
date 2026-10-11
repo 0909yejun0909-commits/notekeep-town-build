@@ -18,6 +18,7 @@ import Minimap from '@/components/Minimap';
 import Tutorial from '@/components/Tutorial';
 import TownEditor from '@/components/TownEditor';
 import NpcDialogue from '@/components/NpcDialogue';
+import PlotTooltip from '@/components/PlotTooltip';
 import CoinPurse from '@/components/CoinPurse';
 import AchievementTracker from '@/components/AchievementTracker';
 import AchievementToast from '@/components/AchievementToast';
@@ -100,6 +101,7 @@ function Game() {
       <Tutorial />
 
       <NpcDialogue />
+      <PlotTooltip />
     </div>
   );
 }

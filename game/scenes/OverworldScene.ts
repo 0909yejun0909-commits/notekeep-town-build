@@ -31,14 +31,15 @@ import { getLabelSource, setLabelSource, type SceneLabel } from '@/game/sceneLab
 import { MINIMAP_TILE, getMinimapSource, setMinimapSource, type MinimapSource } from '@/game/minimap';
 import { currentPresences, setSelfPresence } from '@/lib/multiplayer/session';
 import {
-  BRUSH, GROUND_PRICE, TOWN_PROP_BY_ID, TREE_CUT_PRICE, emptyTownEdits, loadTownEdits, parseTownEdits, saveTownEdits,
+  BRUSH, GROUND_PRICE, PLOT, PLOT_MARGIN, PLOT_PRICE, TOWN_PROP_BY_ID, emptyTownEdits, loadTownEdits, parseTownEdits, saveTownEdits,
   type TownEdits, type TownProp, type TownTool,
 } from '@/lib/townEdits';
 import {
-  buildable, claimProp, cutTree, cutTrees, drawProp, drawTallGrass, paintable, paintRoads, placeProps, propCells,
-  releaseProp, renderTallGrass, treeAt,
+  buildable, claimProp, cutTrees, drawProp, drawTallGrass, paintable, paintRoads, placeProps, propCells,
+  releaseProp, renderTallGrass,
 } from '@/game/townEdits';
-import { spend } from '@/lib/walletStore';
+import { spend, walletNow } from '@/lib/walletStore';
+import { drawLockedPlot, openPlot, plotAt, plotCells, plotReachable, plotsAround, type Plot } from '@/game/plots';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -62,6 +63,12 @@ export default class OverworldScene extends Phaser.Scene {
   private building = false;
   private tool: TownTool | null = null;
   private hover: Phaser.GameObjects.Graphics | null = null;
+  // Land for sale around the town (game/plots.ts), the shade over each locked one, and the
+  // town's size in plots.
+  private plots: Plot[] = [];
+  private plotShades = new Map<string, Phaser.GameObjects.Graphics>();
+  private plotSize: [number, number] = [0, 0];
+  private plotHover: Phaser.GameObjects.Graphics | null = null;
   private ground: GroundTiles | null = null;
 
   private onCommitExterior = ({
@@ -157,8 +164,12 @@ export default class OverworldScene extends Phaser.Scene {
     const maxH = Math.max(...sizes.map(([, h]) => h));
     const cellW = maxW + REGION_PAD;
     const cellH = maxH + REGION_PAD;
-    const worldW = cols * cellW + BORDER * 2;
-    const worldH = rows * cellH + BORDER * 2;
+    // The town, rounded up to whole plots, inside the band of plots for sale, inside the forest.
+    const plotCols = Math.ceil((cols * cellW) / PLOT);
+    const plotRows = Math.ceil((rows * cellH) / PLOT);
+    const inset = BORDER + PLOT_MARGIN;
+    const worldW = plotCols * PLOT + inset * 2;
+    const worldH = plotRows * PLOT + inset * 2;
 
     this.add
       .tileSprite(0, 0, worldW * TILE, worldH * TILE, skin(this, biome, 'terrain-grass'))
@@ -173,7 +184,9 @@ export default class OverworldScene extends Phaser.Scene {
       w: worldW,
       h: worldH,
       seed: hash(world.name),
-      border: BORDER,
+      border: inset,
+      forest: BORDER,
+      open: new Set(),
       blocked,
       road: new Set(),
       water: new Set(),
@@ -192,8 +205,8 @@ export default class OverworldScene extends Phaser.Scene {
 
     world.regions.forEach((region, i) => {
       const [w, h] = sizes[i];
-      const originGx = BORDER + (i % cols) * cellW + Math.floor(REGION_PAD / 2);
-      const originGy = BORDER + Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
+      const originGx = inset + (i % cols) * cellW + Math.floor(REGION_PAD / 2);
+      const originGy = inset + Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
       areas.push({ originGx, originGy, width: w, height: h });
       grid.areas.push({ region, originGx, originGy, width: w, height: h });
       const result = buildHouses(this, region, originGx, originGy, biome);
@@ -242,6 +255,11 @@ export default class OverworldScene extends Phaser.Scene {
     grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
     // The player's own village edits, each slotted in where it can't move anything else
     // (game/townEdits.ts).
+    // Land bought opens before the player's edits go down, so they can be built on it.
+    this.plots = plotsAround(inset, inset, plotCols, plotRows);
+    this.plotSize = [plotCols, plotRows];
+    const owned = new Set(this.town.plots);
+    for (const p of this.plots) if (owned.has(p.id)) openPlot(grid, p);
     const cut = new Set(this.town.cut);
     cutTrees(grid, cut, true);
     paintRoads(grid, this.town);
@@ -258,6 +276,8 @@ export default class OverworldScene extends Phaser.Scene {
     buildGroundCover(this, grid);
     cutTrees(grid, cut, false);
     for (const k of houseGaps) if (!grid.used.has(k)) blocked.delete(k);
+    this.plotShades = new Map(this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawLockedPlot(this, p)]));
+    this.plotHover = this.add.graphics().setDepth(1e6 - 1);
     this.grid = grid;
 
     // Coming back out of a house puts the player on the road in front of that door.
@@ -336,7 +356,11 @@ export default class OverworldScene extends Phaser.Scene {
     bus.on('town-tool', this.onTownTool);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onBuildPointer);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onBuildPointer);
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPlotPointer);
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPlotPointer);
+    this.input.on(Phaser.Input.Events.GAME_OUT, this.clearPlotHover);
     this.events.once('shutdown', () => {
+      this.clearPlotHover();
       if (getLabelSource() === this.projectLabels) setLabelSource(null);
       if (getMinimapSource() === minimap) setMinimapSource(null);
       bus.off('commit-exterior-variant', this.onCommitExterior);
@@ -446,6 +470,64 @@ export default class OverworldScene extends Phaser.Scene {
     bus.emit('town-message', { text });
   }
 
+  // ------------------------------------------------------------ land for sale
+
+  private hoveredPlot: Plot | null = null;
+
+  private clearPlotHover = () => {
+    if (!this.hoveredPlot) return;
+    this.hoveredPlot = null;
+    this.plotHover?.clear();
+    bus.emit('plot-hover', null);
+  };
+
+  // Pointing at a locked plot outlines it and shows its price (components/PlotTooltip.tsx);
+  // clicking buys it. Not while a build tool is in hand, so a brush stroke never buys land.
+  private onPlotPointer = (p: Phaser.Input.Pointer) => {
+    const guest = this.game.registry.get('role') === 'guest';
+    if (!this.grid || !this.plotHover || guest || !this.fingerprint || (this.building && this.tool)) return this.clearPlotHover();
+    const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    const plot = plotAt(this.plots, Math.floor(w.x / TILE), Math.floor(w.y / TILE));
+    if (!plot || !this.plotShades.has(plot.id)) return this.clearPlotHover();
+    const owned = new Set(this.town.plots);
+    const reachable = plotReachable(plot, ...this.plotSize, owned);
+    if (p.isDown && p.event.type !== 'pointermove' && p.event.type !== 'mousemove') {
+      if (!reachable) return this.message('Buy the land next to it first.');
+      if (!spend(PLOT_PRICE)) return this.message(`This land costs ${PLOT_PRICE} coins. Write notes to earn more!`);
+      this.buyPlot(plot);
+      return this.clearPlotHover();
+    }
+    if (this.hoveredPlot === plot) return;
+    this.hoveredPlot = plot;
+    const color = reachable ? 0xffe066 : 0xb0a090;
+    this.plotHover.clear().lineStyle(2, color, 1).strokeRect(plot.x * TILE + 1, plot.y * TILE + 1, PLOT * TILE - 2, PLOT * TILE - 2);
+    const cam = this.cameras.main;
+    const rect = this.game.canvas.getBoundingClientRect();
+    const k = cam.zoom * (rect.width / this.scale.width);
+    const mid = (plot.x + PLOT / 2) * TILE;
+    bus.emit('plot-hover', {
+      x: rect.left + (mid - cam.worldView.x) * k,
+      y: rect.top + ((plot.y + PLOT / 2) * TILE - cam.worldView.y) * k,
+      price: PLOT_PRICE,
+      state: !reachable ? 'far' : walletNow().balance < PLOT_PRICE ? 'poor' : 'buy',
+    });
+  };
+
+  private buyPlot(plot: Plot) {
+    openPlot(this.grid!, plot);
+    this.plotShades.get(plot.id)?.destroy();
+    this.plotShades.delete(plot.id);
+    // The forest floor goes; the town's meadow grass underneath shows through.
+    const patches = this.ground?.map.getLayer('patches')?.tilemapLayer;
+    for (const c of plotCells(plot)) {
+      const [x, y] = c.split(',').map(Number);
+      patches?.removeTileAt(x, y);
+    }
+    this.town.plots.push(plot.id);
+    this.saveTown();
+    this.message('The land is yours! Walk on it, or build on it from the Build bar.');
+  }
+
   private saveTown() {
     if (this.fingerprint) saveTownEdits(this.fingerprint, this.town);
     bus.emit('town-edited', { bag: this.town.bag });
@@ -473,10 +555,6 @@ export default class OverworldScene extends Phaser.Scene {
       const cells: string[] = [];
       for (let dy = 0; dy < BRUSH; dy++) for (let dx = 0; dx < BRUSH; dx++) cells.push(key(gx + dx, gy + dy));
       return { cells, ok: cells.some((k) => paintable(g, k)) };
-    }
-    if (tool.kind === 'cut') {
-      const tree = treeAt(g, key(gx, gy));
-      return { cells: tree ? tree.cells : [key(gx, gy)], ok: !!tree };
     }
     const prop = this.propAt(key(gx, gy));
     return { cells: prop ? propCells(prop) : [key(gx, gy)], ok: !!prop };
@@ -536,15 +614,6 @@ export default class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    if (tool.kind === 'cut') {
-      const tree = treeAt(g, k);
-      if (!tree) return this.message('Click a tree to cut it down.');
-      if (!spend(TREE_CUT_PRICE)) return this.message(`Cutting down a tree costs ${TREE_CUT_PRICE} coins. Write notes to earn more!`);
-      cutTree(g, tree);
-      this.town.cut.push(tree.id);
-      this.saveTown();
-      return;
-    }
 
     // Ground: only tiles that would change, and only what's paintable, are paid for.
     const paint = tool.paint;

@@ -1,21 +1,40 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { bus } from '@/game/bus';
 import Coin from './Coin';
 import styles from './TownEditor.module.css';
 import { useWallet } from '@/lib/walletStore';
+import { replaceWorld, useVault } from '@/lib/vault/open';
 import {
-  BRUSH, GROUND_KINDS, TOWN_PROPS, TREE_CUT_PRICE, type TownPropId, type TownPropSpec, type TownTool,
+  BRUSH, GROUND_KINDS, PLOT_PRICE, TOWN_PROPS, type TownPropId, type TownPropSpec, type TownTool,
 } from '@/lib/townEdits';
 
-type Tab = 'decorate' | 'ground' | 'trees' | 'remove';
+type Tab = 'decorate' | 'ground' | 'land' | 'houses' | 'remove';
 const TABS: Array<[Tab, string]> = [
   ['decorate', 'Decorate'],
   ['ground', 'Ground'],
-  ['trees', 'Trees'],
+  ['land', 'Land'],
+  ['houses', 'Houses'],
   ['remove', 'Pick up'],
 ];
+
+// The region the player is standing in (or nearest), where a new house goes.
+function regionHere(): string {
+  const game = (window as any).__game;
+  const grid = game?.scene.getScene('OverworldScene')?.grid;
+  const player = game?.registry.get('player');
+  if (!grid || !player) return '';
+  const tx = player.x / 16, ty = player.y / 16;
+  let best = '';
+  let bestD = Infinity;
+  for (const a of grid.areas) {
+    const dx = Math.max(a.originGx - tx, 0, tx - (a.originGx + a.width));
+    const dy = Math.max(a.originGy - ty, 0, ty - (a.originGy + a.height));
+    if (dx + dy < bestD) [best, bestD] = [a.region.id, dx + dy];
+  }
+  return best;
+}
 
 const GROUND_SWATCH: Record<string, string> = { path: '#e4a672', tall: '#265c42', grass: '#3e8948' };
 
@@ -30,6 +49,18 @@ const ICONS = {
   bag: {
     rows: ['...OOO...', '..O...O..', '.OOOOOOO.', '.OYYYYYO.', '.OYYYYYO.', '.OYYYYYO.', '.OYYYYYO.', '..OOOOO..', '.........'],
     palette: { O: '#1f1418', Y: '#c8964f' } as Record<string, string>,
+  },
+  lock: {
+    rows: ['..OOOOO..', '.OO...OO.', '.O.....O.', '.O.....O.', 'OOOOOOOOO', 'OYYYYYYYO', 'OYYYOYYYO', 'OYYYYYYYO', 'OOOOOOOOO'],
+    palette: { O: '#1f1418', Y: '#f7c948' } as Record<string, string>,
+  },
+  house: {
+    rows: ['....R....', '...RRR...', '..RRRRR..', '.RRRRRRR.', 'RRRRRRRRR', '.WWWWWWW.', '.WDDWWNW.', '.WDDWWWW.', '.WDDWWWW.'],
+    palette: { R: '#b13e53', W: '#c8964f', D: '#6d483b', N: '#73eff7' } as Record<string, string>,
+  },
+  folder: {
+    rows: ['.........', 'OOOO.....', 'OYYYOOOOO', 'OYYYYYYYO', 'OYYYYYYYO', 'OYYYYYYYO', 'OYYYYYYYO', 'OOOOOOOOO', '.........'],
+    palette: { O: '#1f1418', Y: '#f7c948' } as Record<string, string>,
   },
 };
 
@@ -70,6 +101,10 @@ export default function TownEditor() {
   const [bag, setBag] = useState<Partial<Record<TownPropId, number>>>({});
   const [note, setNote] = useState<string | null>(null);
   const wallet = useWallet();
+  const { vault } = useVault();
+  const [houseName, setHouseName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const folderInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const onOpen = () => {
@@ -126,11 +161,34 @@ export default function TownEditor() {
 
   const keep = (e: React.MouseEvent) => e.preventDefault();
   const hint =
-    !tool ? 'Pick something below, then click the town. Walk with the arrow keys to reach other spots.'
+    tab === 'land' ? `Click the dark land around your town to buy a plot for ${PLOT_PRICE} coins. Plots touching your town or your land can be bought.`
+    : tab === 'houses' ? 'Houses are free. Start an empty one to write in, or bring in a folder of notes from your computer.'
+    : !tool ? 'Pick something below, then click the town. Walk with the arrow keys to reach other spots.'
     : tool.kind === 'prop' ? 'Click the town to place it. Green tiles are free.'
     : tool.kind === 'ground' ? `Click or drag to paint ${BRUSH}x${BRUSH} tiles at a time.`
-    : tool.kind === 'cut' ? 'Click a tree to cut it down. Trees in the forest edge open up more room.'
     : 'Click a decoration you placed to put it back in your bag. Placing it again is free.';
+
+  // A new house is a new folder: the town is rebuilt around it, which ends building.
+  async function addHouse(files?: FileList | null) {
+    if (!vault?.createHouse || adding) return;
+    const picked = files ? [...files] : [];
+    const folderName = picked[0]?.webkitRelativePath.split('/')[0] ?? '';
+    const name = houseName.trim() || folderName;
+    if (!name) return setNote('Give the house a name first.');
+    setAdding(true);
+    try {
+      const { world } = files && vault.importHouse
+        ? await vault.importHouse(regionHere(), name, picked.map((f) => ({ path: f.webkitRelativePath.split('/').slice(1).join('/'), file: f })))
+        : await vault.createHouse(regionHere(), name);
+      setHouseName('');
+      replaceWorld(world);
+      done();
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "Couldn't build that house.");
+    } finally {
+      setAdding(false);
+    }
+  }
 
   return (
     <div className={styles.bar} data-panel="town-editor">
@@ -143,7 +201,7 @@ export default function TownEditor() {
           </span>
         )}
         <span className={note ? `${styles.hint} ${styles.note}` : styles.hint}>{note ?? hint}</span>
-        <button className={`${styles.btn} ${styles.done}`} onMouseDown={keep} onClick={done}>
+        <button className={`${styles.btn} ${styles.done}`} data-tour="build-done" onMouseDown={keep} onClick={done}>
           Done
         </button>
       </div>
@@ -152,13 +210,16 @@ export default function TownEditor() {
         {TABS.map(([id, label]) => (
           <button
             key={id}
+            data-tour={`build-tab-${id}`}
             className={`${styles.btn} ${tab === id ? styles.on : ''}`}
             onMouseDown={keep}
             onClick={() => {
               setTab(id);
-              if (id === 'trees') pick({ kind: 'cut' });
-              else if (id === 'remove') pick({ kind: 'remove' });
-              else if (tool && (tool.kind === 'cut' || tool.kind === 'remove')) pick(tool);
+              if (id === 'remove') pick({ kind: 'remove' });
+              // Land is bought by clicking it with nothing in hand; houses aren't placed.
+              else if (id === 'land' || id === 'houses') {
+                if (tool) pick(tool);
+              } else if (tool && tool.kind === 'remove') pick(tool);
             }}
           >
             {label}
@@ -211,21 +272,76 @@ export default function TownEditor() {
             );
           })}
 
-        {tab === 'trees' && (
-          <button
-            className={`${styles.item} ${tool?.kind === 'cut' ? styles.picked : ''}`}
-            onMouseDown={keep}
-            onClick={() => pick({ kind: 'cut' })}
-          >
+        {tab === 'land' && (
+          <div className={styles.item} data-tour="build-land">
             <span className={styles.art}>
-              <PixelIcon name="axe" />
+              <PixelIcon name="lock" />
             </span>
-            <span className={styles.name}>Cut down</span>
+            <span className={styles.name}>A plot</span>
             <span className={styles.price}>
               <Coin size={12} />
-              {TREE_CUT_PRICE} a tree
+              {PLOT_PRICE}
             </span>
-          </button>
+          </div>
+        )}
+
+        {tab === 'houses' && (
+          <div className={styles.houses}>
+            {vault?.createHouse ? (
+              <>
+                <input
+                  className={styles.field}
+                  value={houseName}
+                  maxLength={60}
+                  placeholder="House name"
+                  spellCheck={false}
+                  data-tour="house-name"
+                  onChange={(e) => setHouseName(e.target.value)}
+                  // Typed letters must not walk the player.
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') void addHouse();
+                  }}
+                  onKeyUp={(e) => e.stopPropagation()}
+                />
+                <button className={styles.item} data-tour="new-house" disabled={adding} onMouseDown={keep} onClick={() => void addHouse()}>
+                  <span className={styles.art}>
+                    <PixelIcon name="house" />
+                  </span>
+                  <span className={styles.name}>Empty house</span>
+                  <span className={styles.price}>Free</span>
+                </button>
+                {vault.importHouse && (
+                  <button
+                    className={styles.item}
+                    data-tour="house-from-folder"
+                    disabled={adding}
+                    onMouseDown={keep}
+                    onClick={() => folderInput.current?.click()}
+                  >
+                    <span className={styles.art}>
+                      <PixelIcon name="folder" />
+                    </span>
+                    <span className={styles.name}>From a folder</span>
+                    <span className={styles.price}>Free</span>
+                  </button>
+                )}
+                <input
+                  ref={folderInput}
+                  type="file"
+                  hidden
+                  multiple
+                  {...{ webkitdirectory: '', directory: '' }}
+                  onChange={(e) => {
+                    void addHouse(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </>
+            ) : (
+              <span className={styles.hint}>Houses can't be added in this town.</span>
+            )}
+          </div>
         )}
 
         {tab === 'remove' && (

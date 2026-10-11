@@ -1,5 +1,5 @@
 // The player's own changes to the town outside: decorations they placed, ground they painted
-// and trees they cut down. The town itself is generated from the vault every time it loads
+// and land they bought. The town itself is generated from the vault every time it loads
 // (game/scenes/OverworldScene.ts); these are laid over it, keyed by world tile, and saved per
 // vault like the house exteriors (lib/exteriorStore.ts).
 
@@ -12,17 +12,20 @@ export type TownProp = { item: TownPropId; gx: number; gy: number };
 export type TownTool =
   | { kind: 'prop'; item: TownPropId }
   | { kind: 'ground'; paint: GroundPaint }
-  | { kind: 'cut' }
   | { kind: 'remove' };
 
 export type TownEdits = {
-  // Anchor tiles ("x,y") of the trees cut down.
+  // Anchor tiles ("x,y") of trees cut down, from when trees could be cut. Still honoured.
   cut: string[];
+  // Plots of land bought, by plot ("i,j": PLOT-tile squares counted from the town's corner).
+  plots: string[];
   // Painted tiles; 'grass' undoes a path (generated or painted) or tall grass.
   ground: Record<string, GroundPaint>;
   props: TownProp[];
   // Decorations picked back up: placed again for free.
   bag: Partial<Record<TownPropId, number>>;
+  // Tile positions count the band of plots around the town (older saves get moved on load).
+  v: 2;
 };
 
 export type TownPropSpec = {
@@ -58,13 +61,18 @@ export const GROUND_KINDS: GroundSpec[] = [
 ];
 export const GROUND_PRICE = Object.fromEntries(GROUND_KINDS.map((k) => [k.id, k.price])) as Record<GroundPaint, number>;
 
-export const TREE_CUT_PRICE = 15;
+// Around the town is a band of locked land, PLOT_RINGS square plots deep, each PLOT tiles a
+// side; buying one opens it to walk and build on.
+export const PLOT = 8;
+export const PLOT_RINGS = 2;
+export const PLOT_MARGIN = PLOT * PLOT_RINGS;
+export const PLOT_PRICE = 15;
 
 // Ground is painted 2x2 tiles at a time: paths are drawn with the same edge tiles as the
 // town's roads, which need at least two tiles across to look right.
 export const BRUSH = 2;
 
-export const emptyTownEdits = (): TownEdits => ({ cut: [], ground: {}, props: [], bag: {} });
+export const emptyTownEdits = (): TownEdits => ({ cut: [], plots: [], ground: {}, props: [], bag: {}, v: 2 });
 
 const PAINTS = new Set<string>(GROUND_KINDS.map((k) => k.id));
 const TILE_KEY = /^-?\d+,-?\d+$/;
@@ -75,6 +83,7 @@ export function parseTownEdits(raw: unknown): TownEdits {
   if (typeof raw !== 'object' || raw === null) return out;
   const r = raw as Record<string, unknown>;
   if (Array.isArray(r.cut)) out.cut = r.cut.filter((k): k is string => typeof k === 'string' && TILE_KEY.test(k));
+  if (Array.isArray(r.plots)) out.plots = r.plots.filter((k): k is string => typeof k === 'string' && TILE_KEY.test(k));
   if (typeof r.ground === 'object' && r.ground !== null) {
     for (const [k, v] of Object.entries(r.ground)) if (TILE_KEY.test(k) && typeof v === 'string' && PAINTS.has(v)) out.ground[k] = v as GroundPaint;
   }
@@ -90,7 +99,21 @@ export function parseTownEdits(raw: unknown): TownEdits {
       if (k in TOWN_PROP_BY_ID && Number.isInteger(v) && (v as number) > 0) out.bag[k as TownPropId] = v as number;
     }
   }
-  return out;
+  // Saved before the band of plots pushed the whole town PLOT_MARGIN tiles in: move it too.
+  return r.v === 2 ? out : shifted(out, PLOT_MARGIN);
+}
+
+function shifted(e: TownEdits, d: number): TownEdits {
+  const move = (k: string) => {
+    const [x, y] = k.split(',').map(Number);
+    return `${x + d},${y + d}`;
+  };
+  return {
+    ...e,
+    cut: e.cut.map(move),
+    ground: Object.fromEntries(Object.entries(e.ground).map(([k, v]) => [move(k), v])),
+    props: e.props.map((p) => ({ ...p, gx: p.gx + d, gy: p.gy + d })),
+  };
 }
 
 const storageKey = (fingerprint: string) => `town:${fingerprint}`;

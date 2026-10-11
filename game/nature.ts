@@ -65,6 +65,11 @@ export function inRing(g: WorldGrid, x: number, y: number) {
   return x < g.border || y < g.border || x >= g.w - g.border || y >= g.h - g.border;
 }
 
+// The forest at the map's edge, outside the band of plots.
+function inForest(g: WorldGrid, x: number, y: number) {
+  return x < g.forest || y < g.forest || x >= g.w - g.forest || y >= g.h - g.forest;
+}
+
 // A wall of overlapping trees around the whole town, so the map ends in forest instead of
 // flat grass. The ring is solid; only its inner edge gets bushes.
 export function buildForestBorder(scene: Phaser.Scene, g: WorldGrid) {
@@ -79,11 +84,11 @@ export function buildForestBorder(scene: Phaser.Scene, g: WorldGrid) {
     for (let i = -1; i * 3 < g.w + 2; i++) {
       const x = i * 3 + (j % 2 === 0 ? 0 : 1) + (mix(seed, i, j) % 2);
       const y = j * 2 + (mix(seed ^ 1, i, j) % 2);
-      if (x < 0 || y < 0 || x >= g.w - 1 || y >= g.h || !inRing(g, x, y) || !inRing(g, x + 1, y)) continue;
+      if (x < 0 || y < 0 || x >= g.w - 1 || y >= g.h || !inForest(g, x, y) || !inForest(g, x + 1, y)) continue;
       const tree = addTree(scene, g, choose(BORDER_MIX, rand01(seed ^ 2, i, j)), x, y, true);
       // The ring is solid everywhere; cutting one of its trees opens the 2x2 tiles at its trunk.
       const cells = [[x, y - 1], [x + 1, y - 1], [x, y], [x + 1, y]]
-        .filter(([cx, cy]) => cy >= 0 && inRing(g, cx, cy))
+        .filter(([cx, cy]) => cy >= 0 && inForest(g, cx, cy))
         .map(([cx, cy]) => key(cx, cy));
       g.trees.push({ id: key(x, y), cells, objects: [tree], border: true });
     }

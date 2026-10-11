@@ -18,8 +18,12 @@ export type WorldGrid = {
   w: number;
   h: number;
   seed: number;
-  // Width of the solid forest ring around the town, in tiles.
+  // Tiles from the map's edge to the town: the forest ring, then the band of plots for sale.
   border: number;
+  // Width of the forest ring alone, at the map's edge.
+  forest: number;
+  // Tiles of plots the player owns: the town's own ground now, though outside its border.
+  open: Set<string>;
   blocked: Set<string>;
   road: Set<string>;
   water: Set<string>;

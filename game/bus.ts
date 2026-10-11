@@ -63,6 +63,9 @@ type BusEvents = {
   'town-tool': { tool: TownTool | null };
   'town-message': { text: string };
   'town-edited': { bag: Partial<Record<TownPropId, number>> };
+  // The land plot under the pointer (screen px of its middle), or null. `state`: 'buy' it can
+  // be bought now, 'poor' not enough coins, 'far' land next to it must be bought first.
+  'plot-hover': { x: number; y: number; price: number; state: 'buy' | 'poor' | 'far' } | null;
   'commit-exterior-variant': {
     houseId: string;
     variant: number;

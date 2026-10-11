@@ -6,9 +6,10 @@ import styles from './Spotlight.module.css';
 import { bus } from '@/game/bus';
 import { endTutorial, markTutorialOffered, setTutorialStep, useTutorialStep } from '@/lib/tutorial';
 import { topUpTutorial, useWallet } from '@/lib/walletStore';
-import { MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
+import { MORE_WORDS, MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { SHELF_W } from '@/lib/interiorLayout';
 import type { WorldModel } from '@/lib/types';
+import { PLOT_PRICE } from '@/lib/townEdits';
 
 const TILE = 16;
 
@@ -150,6 +151,7 @@ const shelfOpen = () => !!el('[data-tour="new-note"]');
 const noteOpen = () => !!el('.note-book');
 const roomEditorOpen = () => !!el('[data-tour="room-grid"]');
 const houseEditorOpen = () => !!el('[data-tour="house-editor"]');
+const buildOpen = () => !!el('[data-panel="town-editor"]');
 const closeButton = () =>
   el('[data-tour="note-close"]') ? '[data-tour="note-close"]'
   : el('[data-tour="note-cancel"]') ? '[data-tour="note-cancel"]'
@@ -207,10 +209,13 @@ const STEPS: Step[] = [
   {
     id: 'type',
     text: (
-      <p>
-        Now write anything you like. At {MIN_WORDS} words the note is worth {NOTE_REWARD} coins: the counter under the
-        left page shows how close you are.
-      </p>
+      <>
+        <p>
+          Now write anything you like. At {MIN_WORDS} words the note is worth {NOTE_REWARD} coins: the counter under the
+          left page shows how close you are.
+        </p>
+        <p>Tip: type / for headings, bullet points, to-dos and more.</p>
+      </>
     ),
     target: () => rectOf('[data-tour="note-text"]'),
     also: () => rectOf('[data-tour="note-progress"]'),
@@ -235,7 +240,7 @@ const STEPS: Step[] = [
     id: 'paid',
     text: (
       <p>
-        +{NOTE_REWARD} coins! Every new note of {MIN_WORDS}+ words pays, even ones you write in Obsidian. Your coins are
+        +{NOTE_REWARD} coins! Every new note of {MIN_WORDS}+ words pays, and every {MORE_WORDS} words more pays again, even ones you write in Obsidian. Your coins are
         up here.
       </p>
     ),
@@ -329,18 +334,74 @@ const STEPS: Step[] = [
     auto: () => click('[data-tour="house-save"]'),
   },
   {
-    id: 'more',
+    id: 'build',
+    text: <p>Your house has its new roof! Now click Build: it&apos;s where your town grows.</p>,
+    target: () => rectOf('[data-tour="build"]'),
+    done: buildOpen,
+    auto: () => click('[data-tour="build"]'),
+  },
+  {
+    id: 'houses-tab',
+    text: <p>Open the Houses tab.</p>,
+    target: () => rectOf('[data-tour="build-tab-houses"]'),
+    done: () => !!el('[data-tour="new-house"]'),
+    auto: () => click('[data-tour="build-tab-houses"]'),
+    lost: () => (buildOpen() ? null : 'build'),
+  },
+  {
+    id: 'add-house',
+    text: (
+      <>
+        <p>Houses are free. Type a name and press Empty house for a new house to write in.</p>
+        <p>
+          Already have notes on your computer? From a folder brings a whole folder in as a house: its notes become books
+          on the shelf and its folders become rooms.
+        </p>
+      </>
+    ),
+    target: () => rectOf('[data-tour="house-from-folder"]') ?? rectOf('[data-tour="new-house"]'),
+    also: () => union(rectOf('[data-tour="new-house"]'), rectOf('[data-tour="house-name"]')),
+    lost: () => (buildOpen() ? null : 'build'),
+  },
+  {
+    id: 'land-tab',
+    text: <p>Your town can grow outwards too. Open the Land tab.</p>,
+    target: () => rectOf('[data-tour="build-tab-land"]'),
+    done: () => !!el('[data-tour="build-land"]'),
+    auto: () => click('[data-tour="build-tab-land"]'),
+    lost: () => (buildOpen() ? null : 'build'),
+  },
+  {
+    id: 'land',
     text: (
       <p>
-        Your house has its new roof! Down here, coins also unlock new town biomes, and Build lets you decorate the
-        village, paint paths and cut down trees. New outfits are at the wardrobe inside houses.
+        The dark grass around your town is land for sale, {PLOT_PRICE} coins a square plot. Point at it to see the lock,
+        and click to buy: then you can walk and build on it.
       </p>
     ),
+    target: () => rectOf('[data-tour="build-land"]'),
+    lost: () => (buildOpen() ? null : 'build'),
+  },
+  {
+    id: 'build-done',
+    text: <p>Click Done to stop building.</p>,
+    target: () => rectOf('[data-tour="build-done"]'),
+    done: () => !buildOpen(),
+    auto: () => click('[data-tour="build-done"]'),
+  },
+  {
+    id: 'more',
+    text: <p>Down here, coins also unlock new town biomes. New outfits are at the wardrobe inside houses.</p>,
     target: () => rectOf('[aria-label="Town biome"]'),
   },
   {
     id: 'home',
-    text: <p>That&apos;s everything! Home takes you back to the title screen, where you can open your own notes folder.</p>,
+    text: (
+      <p>
+        That&apos;s everything! Home takes you back to the title screen. Your town is there, ready for your first notes,
+        and you can open a folder of notes from there too.
+      </p>
+    ),
     target: () => rectOf('[data-tour="home"]'),
   },
 ];
