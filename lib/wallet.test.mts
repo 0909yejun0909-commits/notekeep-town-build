@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  nextMilestone, rewardUnits, unitsFor,
   MIN_WORDS, NOTE_REWARD, STARTER_GRANT, STREAK_BONUS_CAP, STUDY_REWARD, TIER_PRICE, applyLayoutChange, available,
   currentStreak, dayBefore, localDay, priceOf, qualifies, settle, settleStudy, unlockId, unlockPrice, withStreak, wordCount,
 } from './wallet.ts';
@@ -28,14 +29,14 @@ test('first open grants the starter coins and counts every existing note as seen
   const { data, earned, fresh } = settle(null, 12);
   assert.equal(fresh, true);
   assert.equal(earned, 0);
-  assert.deepEqual(data, { balance: STARTER_GRANT, record: 12, inventory: {}, streak: { days: 0, lastDay: null } });
+  assert.deepEqual(data, { balance: STARTER_GRANT, record: 12, inventory: {}, streak: { days: 0, lastDay: null }, v: 2 });
 });
 
 test('new qualifying notes pay once, and only above the record', () => {
-  const start = withStreak({ balance: 5, record: 12, inventory: {} });
+  const start = withStreak({ balance: 5, record: 12, inventory: {}, v: 2 });
   const up = settle(start, 15);
   assert.equal(up.earned, 3 * NOTE_REWARD);
-  assert.deepEqual(up.data, withStreak({ balance: 5 + 3 * NOTE_REWARD, record: 15, inventory: {} }));
+  assert.deepEqual(up.data, withStreak({ balance: 5 + 3 * NOTE_REWARD, record: 15, inventory: {}, v: 2 }));
 
   const again = settle(up.data, 15);
   assert.equal(again.earned, 0);
@@ -45,6 +46,32 @@ test('new qualifying notes pay once, and only above the record', () => {
   assert.equal(dipped.earned, 0);
   assert.equal(dipped.data.record, 15);
   assert.equal(settle(dipped.data, 16).earned, NOTE_REWARD);
+});
+
+test('a note pays at 30 words, then again every 100 words after', () => {
+  assert.equal(unitsFor(29), 0);
+  assert.equal(unitsFor(30), 1);
+  assert.equal(unitsFor(129), 1);
+  assert.equal(unitsFor(130), 2);
+  assert.equal(unitsFor(230), 3);
+  assert.equal(nextMilestone(10), 30);
+  assert.equal(nextMilestone(30), 130);
+  assert.equal(nextMilestone(150), 230);
+  assert.equal(rewardUnits(words(135)), 2);
+});
+
+test('Your town can start with its own grant', () => {
+  assert.equal(settle(null, 0, 0, 300).data.balance, 300);
+});
+
+test("a wallet from before word milestones keeps paying for new notes, not old notes' words", () => {
+  // It had paid for 4 notes; there are now 5, worth 12 units between them.
+  const old = withStreak({ balance: 0, record: 4, inventory: {} });
+  const { data, earned } = settle(old, 12, 5);
+  assert.equal(earned, NOTE_REWARD);
+  assert.equal(data.record, 12);
+  assert.equal(data.v, 2);
+  assert.equal(settle(data, 13, 5).earned, NOTE_REWARD);
 });
 
 test('priceOf prices by tier and is unknown for items not in the catalog', () => {

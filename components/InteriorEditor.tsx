@@ -6,7 +6,7 @@ import { CATALOG, CATALOG_BY_GROUP, CATALOG_BY_ID, CATALOG_GROUPS, NOTE_STORE_IT
 import type { CatalogGroupId } from '@/lib/catalog';
 import { canPlace, canPlaceShelf, canResize, resizeLayout, doorCells, doorSlots, placementSpot, restyleShelf, ridersOf, structuralOccupied, shelfSize, surfaceUnder, ROOM_SIZES, doorPositionFor, SHELF_SEGMENTS, FLOOR_FRAMES, WALL_TRIPLES } from '@/lib/interiorLayout';
 import type { CatalogEntry, CatalogItemId, CatalogLayer, CatalogTier, FurniturePlacement, InteriorLayout, RoomSize } from '@/lib/types';
-import { MIN_WORDS, NOTE_REWARD, available, priceOf, unlockId } from '@/lib/wallet';
+import { MORE_WORDS, MIN_WORDS, NOTE_REWARD, available, priceOf, unlockId } from '@/lib/wallet';
 import { buy, commitLayoutChange, unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
 import { sfx } from '@/game/audio/sfx';
 import { useSession } from '@/lib/multiplayer/session';
@@ -924,7 +924,7 @@ export default function InteriorEditor() {
             )}
             {wallet.active && (
               <p className={styles.coinNote}>
-                <Coin size={10} /> Every new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins.
+                <Coin size={10} /> A new note of {MIN_WORDS}+ words earns {NOTE_REWARD} coins, and {NOTE_REWARD} more every {MORE_WORDS} words after.
               </p>
             )}
           </div>

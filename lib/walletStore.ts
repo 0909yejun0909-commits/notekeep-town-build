@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { track } from './achievementStore';
 import type { CatalogItemId } from './types';
 import {
-  MIN_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, currentStreak, localDay, priceOf, qualifies, settle,
+  HEAD_BYTES, MIN_WORDS, MORE_WORDS, NOTE_REWARD, STARTER_GRANT, applyLayoutChange, currentStreak, localDay, nextMilestone, priceOf, rewardUnits, settle,
   settleStudy, unlockPrice, withStreak, wordCount, type Inventory, type WalletData,
 } from './wallet';
 import { DEFAULT_APPEARANCE } from './characterCatalog';
@@ -19,7 +19,16 @@ export type WalletView = {
 };
 
 // key null = the demo town, whose notes reset on reload, so its wallet does too.
-type Session = { key: string | null; qualifying: Set<string>; data: WalletData };
+// `units` is each note's reward units (wallet.ts rewardUnits). A note in `unsure` was only
+// read as far as its head when the town opened, so its count may be short: its first save
+// sets its real count without paying for words that were already there.
+type Session = { key: string | null; units: Map<string, number>; unsure: Set<string>; data: WalletData };
+
+const total = (s: Session) => {
+  let n = 0;
+  for (const u of s.units.values()) n += u;
+  return n;
+};
 
 const INACTIVE: WalletView = { active: false, balance: 0, inventory: {}, unlocks: [], notice: null, streak: 0, studiedToday: false };
 const NO_UNLOCKS: readonly string[] = [];
@@ -81,21 +90,46 @@ function notice(amount: number, text: string): Notice {
   return { id: nextNoticeId++, amount, text };
 }
 
-export function startWallet(vaultName: string, persist: boolean, heads: Map<string, string>) {
+// `heads` holds each note's text, or only its first HEAD_BYTES for a big vault.
+export function startWallet(vaultName: string, persist: boolean, heads: Map<string, string>, grant = STARTER_GRANT) {
   const key = persist ? `wallet:${vaultName}` : null;
-  const qualifying = new Set<string>();
-  for (const [id, head] of heads) if (qualifies(head)) qualifying.add(id);
-  const { data, earned, fresh } = settle(key ? load(key) : null, qualifying.size);
-  session = { key, qualifying, data };
-  const n = earned / NOTE_REWARD;
+  const units = new Map<string, number>();
+  const unsure = new Set<string>();
+  const encoder = new TextEncoder();
+  for (const [id, head] of heads) {
+    units.set(id, rewardUnits(head));
+    if (encoder.encode(head).length >= HEAD_BYTES - 4) unsure.add(id);
+  }
+  const notes = [...units.values()].filter((u) => u > 0).length;
+  session = { key, units, unsure, data: null as unknown as WalletData };
+  const { data, earned, fresh } = settle(key ? load(key) : null, total(session), notes, grant);
+  session.data = data;
   if (earned > 0) track('coinsEarned', earned);
   publish(
     fresh
-      ? notice(STARTER_GRANT, `Welcome to town! Every new note of ${MIN_WORDS}+ words earns ${NOTE_REWARD} coins.`)
+      ? notice(grant, `Welcome to town! A new note of ${MIN_WORDS}+ words earns ${NOTE_REWARD} coins, and every ${MORE_WORDS} words more another ${NOTE_REWARD}.`)
       : earned > 0
-        ? notice(earned, `You wrote ${n} new ${n === 1 ? 'note' : 'notes'} since your last visit!`)
+        ? notice(earned, 'You wrote more since your last visit!')
         : null,
   );
+}
+
+// Notes brought into town from a folder: they count as already paid for, so only words
+// written after this pay.
+export function notesAdded(heads: Map<string, string>) {
+  if (!session) return;
+  const encoder = new TextEncoder();
+  let extra = 0;
+  for (const [id, head] of heads) {
+    const u = rewardUnits(head);
+    extra += u - (session.units.get(id) ?? 0);
+    session.units.set(id, u);
+    if (encoder.encode(head).length >= HEAD_BYTES - 4) session.unsure.add(id);
+  }
+  if (extra > 0) {
+    session.data = { ...session.data, record: session.data.record + extra };
+    publish();
+  }
 }
 
 export function stopWallet() {
@@ -105,20 +139,30 @@ export function stopWallet() {
 
 export function noteSaved(id: string, content: string, title: string) {
   if (!session) return;
-  if (qualifies(content)) session.qualifying.add(id);
-  else session.qualifying.delete(id);
-  const { data, earned } = settle(session.data, session.qualifying.size);
+  const next = rewardUnits(content);
+  if (session.unsure.delete(id)) {
+    // Its real count, now known: anything above the guess was already written.
+    const extra = next - (session.units.get(id) ?? 0);
+    if (extra > 0) session.data = { ...session.data, record: session.data.record + extra };
+  }
+  session.units.set(id, next);
+  const { data, earned } = settle(session.data, total(session));
   session.data = data;
   if (earned > 0) track('coinsEarned', earned);
   publish(earned > 0 ? notice(earned, `You wrote "${title}"!`) : undefined);
 }
 
-// Null when saving this note can't pay: no wallet, it already counts, or deleted notes left
-// the count below the record.
+// What saving this draft would pay, or the word count it next pays at. Null when it can't pay:
+// no wallet, a note not fully read yet, or deleted notes left the count below the record.
 export function noteProgress(id: string, draft: string): { words: number; needed: number; reward: number } | null {
-  if (!session || session.qualifying.has(id)) return null;
-  if (session.qualifying.size + 1 <= session.data.record) return null;
-  return { words: wordCount(draft), needed: MIN_WORDS, reward: NOTE_REWARD };
+  if (!session || session.unsure.has(id)) return null;
+  const words = wordCount(draft);
+  const others = total(session) - (session.units.get(id) ?? 0);
+  const pay = Math.max(0, others + rewardUnits(draft) - session.data.record) * NOTE_REWARD;
+  if (pay > 0) return { words, needed: words, reward: pay };
+  const needed = nextMilestone(words);
+  if (others + rewardUnits(draft) + 1 <= session.data.record) return null;
+  return { words, needed, reward: NOTE_REWARD };
 }
 
 // Passing a quiz at a desk. Returns the coins paid: 0 when today's reward is already taken.
@@ -206,6 +250,11 @@ export function commitLayoutChange(saved: { item: CatalogItemId }[], draft: { it
 function subscribe(cb: () => void) {
   listeners.add(cb);
   return () => listeners.delete(cb);
+}
+
+// The wallet as it is right now, for code outside React (the game scenes).
+export function walletNow(): WalletView {
+  return view;
 }
 
 export function useWallet(): WalletView {

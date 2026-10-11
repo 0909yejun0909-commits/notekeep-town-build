@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
+import { MORE_WORDS, MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { useWallet, type Notice } from '@/lib/walletStore';
 import { sfx } from '@/game/audio/sfx';
 import Coin from './Coin';
@@ -47,7 +47,7 @@ export default function CoinPurse() {
         <div
           className={styles.purse}
           data-tour="coins"
-          title={`Every new note of ${MIN_WORDS}+ words earns ${NOTE_REWARD} coins. Spend them on furniture, house upgrades, outfits and town biomes.`}
+          title={`A new note of ${MIN_WORDS}+ words earns ${NOTE_REWARD} coins, and ${NOTE_REWARD} more every ${MORE_WORDS} words after. Spend them on furniture, house upgrades, outfits and town biomes.`}
         >
           <Coin size={24} />
           <span key={wallet.balance} className={styles.amount}>{wallet.balance}</span>

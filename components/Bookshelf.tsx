@@ -6,7 +6,7 @@ import { hash } from '@/lib/types';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
 import type { ShelfLook } from '@/lib/catalog';
-import { MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
+import { MORE_WORDS, MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { useWallet } from '@/lib/walletStore';
 import Coin from './Coin';
 import styles from './Bookshelf.module.css';
@@ -386,7 +386,7 @@ export default function Bookshelf() {
               {createError && <div className={styles.namerError}>{createError}</div>}
               {wallet.active && (
                 <div className={styles.namerReward}>
-                  <Coin size={18} /> Write {MIN_WORDS}+ words in it to earn {NOTE_REWARD} coins.
+                  <Coin size={18} /> Write {MIN_WORDS}+ words in it to earn {NOTE_REWARD} coins, and {NOTE_REWARD} more every {MORE_WORDS} words after.
                 </div>
               )}
               <div className={styles.namerActions}>

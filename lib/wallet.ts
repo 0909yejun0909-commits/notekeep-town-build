@@ -3,7 +3,14 @@ import type { CatalogItemId, CatalogTier, TownBiome } from './types';
 
 export const NOTE_REWARD = 10;
 export const MIN_WORDS = 30;
+// Past the first MIN_WORDS, every this many more words in a note pays NOTE_REWARD again.
+export const MORE_WORDS = 100;
 export const STARTER_GRANT = 50;
+// How much of each note is read when a town opens (lib/vault/open.ts); word counts past it
+// are only known once the note is opened.
+export const HEAD_BYTES = 2048;
+// "Your town", the one kept in the browser, starts richer: it's where new players begin.
+export const TOWN_GRANT = 300;
 
 // Passing a quiz at a desk pays once a day, a coin more for each day in a row.
 export const STUDY_REWARD = 5;
@@ -20,11 +27,12 @@ export const TIER_PRICE: Record<CatalogTier, number> = {
 
 export type Inventory = Record<CatalogItemId, number>;
 
-// `record` is the most qualifying notes ever paid for. Counting instead of remembering paths
-// means a note renamed or moved in Obsidian never pays twice.
+// `record` is the most reward units ever paid for (see rewardUnits). Counting instead of
+// remembering paths means a note renamed or moved in Obsidian never pays twice. Wallets saved
+// before word milestones counted notes instead; `v: 2` marks one that counts units.
 // `unlocks` are bought once and kept: house upgrades, outfit pieces and town biomes, by
 // unlockId(). Wallets saved before unlocks existed have none.
-export type WalletData = { balance: number; record: number; inventory: Inventory; unlocks?: string[]; streak: Streak };
+export type WalletData = { balance: number; record: number; inventory: Inventory; unlocks?: string[]; streak: Streak; v?: 2 };
 
 // Prices of what can be unlocked. Anything not listed is free: wood houses with base walls, the
 // starting outfit, the forest town. A house's or outfit's current look never needs unlocking.
@@ -74,17 +82,37 @@ export function qualifies(md: string): boolean {
   return wordCount(md) >= MIN_WORDS;
 }
 
+// What a note is worth, in NOTE_REWARDs: one at MIN_WORDS, one more per MORE_WORDS after.
+export function unitsFor(words: number): number {
+  return words < MIN_WORDS ? 0 : 1 + Math.floor((words - MIN_WORDS) / MORE_WORDS);
+}
+
+export function rewardUnits(md: string): number {
+  return unitsFor(wordCount(md));
+}
+
+// The word count at which a note is next worth more.
+export function nextMilestone(words: number): number {
+  return words < MIN_WORDS ? MIN_WORDS : MIN_WORDS + unitsFor(words) * MORE_WORDS;
+}
+
+// `units` is the town's notes' reward units now; `notes` how many notes have any (what a
+// wallet from before word milestones counted), so one of those is converted without paying
+// for words that were already there.
 export function settle(
   saved: WalletData | null,
-  qualifyingCount: number,
+  units: number,
+  notes = units,
+  grant = STARTER_GRANT,
 ): { data: WalletData; earned: number; fresh: boolean } {
   if (!saved) {
-    return { data: { balance: STARTER_GRANT, record: qualifyingCount, inventory: {}, streak: NO_STREAK }, earned: 0, fresh: true };
+    return { data: { balance: grant, record: units, inventory: {}, streak: NO_STREAK, v: 2 }, earned: 0, fresh: true };
   }
-  const earned = Math.max(0, qualifyingCount - saved.record) * NOTE_REWARD;
+  if (saved.v !== 2) saved = { ...saved, v: 2, record: units - Math.max(0, notes - saved.record) };
+  const earned = Math.max(0, units - saved.record) * NOTE_REWARD;
   if (earned === 0) return { data: saved, earned, fresh: false };
   return {
-    data: { ...saved, balance: saved.balance + earned, record: qualifyingCount },
+    data: { ...saved, balance: saved.balance + earned, record: units },
     earned,
     fresh: false,
   };
