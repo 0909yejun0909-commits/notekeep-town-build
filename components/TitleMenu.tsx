@@ -13,18 +13,21 @@ import { sfx } from '@/game/audio/sfx';
 import type { VaultHandle } from '@/lib/types';
 import { endTutorial, markTutorialOffered, startTutorial, tutorialOffered } from '@/lib/tutorial';
 
-type Choice = 'town' | 'demo' | 'hero' | 'vault';
+type Choice = 'town' | 'demo' | 'hero' | 'credits' | 'vault';
 
 // The last, smaller entry is for people who already keep notes in an Obsidian vault folder.
 const ITEMS: Array<[Choice, string]> = [
   ['town', 'Your town'],
   ['demo', 'Tutorial'],
   ['hero', 'Your hero'],
+  ['credits', 'Credits'],
   ['vault', 'Open a notes folder instead'],
 ];
 
+const DEVELOPERS = ['Jayden Yang', 'Jason Kim', 'Roy Park', 'Ian Hsu'];
+
 export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) => void }) {
-  const [view, setView] = useState<'menu' | 'hero'>('menu');
+  const [view, setView] = useState<'menu' | 'hero' | 'credits'>('menu');
   const [cursor, setCursor] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -62,7 +65,7 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
   const choose = (choice: Choice) => {
     if (busy) return;
     sfx('select');
-    if (choice !== 'hero') {
+    if (choice !== 'hero' && choice !== 'credits') {
       markTutorialOffered();
       setFirstVisit(false);
     }
@@ -71,7 +74,7 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
     else if (choice === 'demo') {
       startTutorial();
       load(openDemoVault, 'Starting the tutorial...');
-    } else setView('hero');
+    } else setView(choice);
   };
 
   const dismissPointer = () => {
@@ -83,6 +86,18 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
     bus.emit('appearance-changed', undefined);
     setView('menu');
   };
+
+  // Any of Escape, Enter or Space leaves the credits.
+  useEffect(() => {
+    if (view !== 'credits') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' && e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      setView('menu');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [view]);
 
   useEffect(() => {
     if (view !== 'menu') return;
@@ -105,7 +120,9 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
       hint={
         view === 'menu'
           ? 'Arrow keys to choose, Enter to select'
-          : 'Up/Down picks a row, Left/Right changes it, Enter when done'
+          : view === 'credits'
+            ? 'Enter or Esc to go back'
+            : 'Up/Down picks a row, Left/Right changes it, Enter when done'
       }
     >
       {view === 'menu' ? (
@@ -130,6 +147,30 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
             ))}
           </ul>
           {status && <p className={styles.status}>{status}</p>}
+        </div>
+      ) : view === 'credits' ? (
+        <div className={`${pixel.parchment} ${styles.credits}`}>
+          <h2 className={styles.creditsTitle}>Credits</h2>
+          <p className={styles.creditsRole}>Art</p>
+          <p>
+            <a href="https://kenmi-art.itch.io/" target="_blank" rel="noreferrer" className={styles.creditsLink}>
+              Kenmi (kenmi-art.itch.io)
+            </a>
+          </p>
+          <p className={styles.creditsRole}>Developers</p>
+          <ul className={styles.creditsNames}>
+            {DEVELOPERS.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+          <button
+            className={`${pixel.item} ${pixel.current} ${styles.creditsBack}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setView('menu')}
+          >
+            <span className={pixel.cursor} />
+            Back
+          </button>
         </div>
       ) : (
         <CharacterCreator onDone={closeHero} />

@@ -22,3 +22,49 @@
   line-height: 27px;
   text-align: center;
 }
+
+/* The credits: the menu's parchment, centred. */
+.credits {
+  min-width: 360px;
+  text-align: center;
+  font-size: 21px;
+  line-height: 27px;
+}
+
+.credits p {
+  margin: 0;
+}
+
+.creditsTitle {
+  margin: 0 0 12px;
+  font-size: 36px;
+  line-height: 45px;
+  font-weight: normal;
+}
+
+.creditsRole {
+  margin-top: 12px !important;
+  color: #9a6149;
+  font-size: 18px;
+}
+
+.creditsLink {
+  color: #3f2832;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.creditsLink:hover {
+  color: #91533b;
+}
+
+.creditsNames {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credits .creditsBack {
+  justify-content: center;
+  margin-top: 18px;
+}
