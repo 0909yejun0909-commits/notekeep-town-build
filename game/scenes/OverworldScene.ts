@@ -784,6 +784,8 @@ export default class OverworldScene extends Phaser.Scene {
   update() {
     if (!this.movement || !this.player) return;
     if (this.editingExterior) return;
+    // Talking an NPC through a recap or a quiz (components/NpcDialogue.tsx): the arrow keys are the menu's.
+    if (this.game.registry.get('npcConversation')) return;
     this.movement.update();
 
     const player = this.player;

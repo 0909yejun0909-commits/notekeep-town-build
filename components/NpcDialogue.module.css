@@ -56,3 +56,18 @@
 .next {
   transform: rotate(90deg);
 }
+
+/* Choices under the line: a recap, a quiz, an answer. */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.options button {
+  font-size: 21px;
+  line-height: 30px;
+}

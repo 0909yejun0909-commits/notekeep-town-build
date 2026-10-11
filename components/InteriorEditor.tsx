@@ -56,6 +56,8 @@ function useViewport() {
 // settings rows above it.
 const CHROME_W = 110;
 const CHROME_H = 300;
+// The room's share of the width (InteriorEditor.module.css .body: 3fr 2fr).
+const MAIN_SHARE = 0.6;
 
 function nameOf(item: CatalogItemId): string {
   return CATALOG_BY_ID[item]?.name ?? item;
@@ -223,10 +225,10 @@ export default function InteriorEditor() {
   if (!session || !draft) return null;
 
   const [w, h] = ROOM_SIZES[draft.roomSize];
-  // The room drawn as big as fits in the left half, in whole steps so the pixels stay square;
+  // The room drawn as big as fits on its side, in whole steps so the pixels stay square;
   // at least 2x (the panel scrolls on a short screen), at most 4x.
   const zoom = Math.max(2, Math.min(4, Math.floor(Math.min(
-    (viewport.w - CHROME_W) / 2 / (w * 16 + 6),
+    (viewport.w - CHROME_W) * MAIN_SHARE / (w * 16 + 6),
     (viewport.h - CHROME_H) / (h * 16 + 6),
   ))));
   const [doorGx, doorGy] = doorPositionFor(w, h);

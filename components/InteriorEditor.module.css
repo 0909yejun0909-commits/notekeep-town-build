@@ -168,13 +168,13 @@
   border: 1px solid rgba(31, 20, 24, 0.6);
 }
 
-/* Half and half: settings and the room on the left, the catalogue on the right, running to
-   the bottom of the screen and scrolling. */
+/* Settings and the room on the left, a little over half (MAIN_SHARE in InteriorEditor.tsx);
+   the catalogue on the right, running to the bottom of the screen and scrolling. */
 .body {
   display: grid;
   flex: 1;
   min-height: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 24px;
 }
 .main {

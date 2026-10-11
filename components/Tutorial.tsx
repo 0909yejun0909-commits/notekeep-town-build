@@ -74,6 +74,24 @@ function nearestLand(): Rect | null {
   return best ? worldRect('OverworldScene', best.x * TILE, best.y * TILE, PLOT * TILE, PLOT * TILE) : null;
 }
 
+// The NPC nearest the player (game/npc.ts), by its texture: "farmer_bob", or a biome outfit of it.
+function nearestNpc(): Rect | null {
+  const player = game()?.registry.get('player');
+  if (!player || !sceneOn('OverworldScene')) return null;
+  const npcs = scene('OverworldScene').children.list.filter(
+    (o: any) => o.type === 'Sprite' && /^(farmer_bob|bartender_katy)/.test(o.texture?.key ?? ''),
+  );
+  let best: any = null;
+  let bestD = Infinity;
+  for (const n of npcs) {
+    const d = Math.hypot(n.x - player.x, n.y - player.y);
+    if (d < bestD) [best, bestD] = [n, d];
+  }
+  if (!best) return null;
+  const b = best.getBounds();
+  return worldRect('OverworldScene', b.centerX - 12, b.centerY - 14, 24, 28);
+}
+
 function nearestHouse(): Rect | null {
   const h = nearestHouseSprite();
   if (!h) return null;
@@ -394,6 +412,16 @@ const STEPS: Step[] = [
       </p>
     ),
     target: nearestLand,
+  },
+  {
+    id: 'npc',
+    text: (
+      <p>
+        Farmer Bob and Katy have read your notes. Walk up to one and press Space: they can sum up your notes, or quiz you
+        on them.
+      </p>
+    ),
+    target: nearestNpc,
   },
   {
     id: 'more',
