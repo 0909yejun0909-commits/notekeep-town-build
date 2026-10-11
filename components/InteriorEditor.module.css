@@ -2,7 +2,8 @@
 .screen {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  /* Over the corner buttons (coins, Home, trophies, at 55): it shows the coins itself. */
+  z-index: 58;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -167,14 +168,14 @@
   border: 1px solid rgba(31, 20, 24, 0.6);
 }
 
-/* The room on the left, the catalogue in a narrow column beside it that runs to the bottom
-   of the screen and scrolls. */
+/* Half and half: settings and the room on the left, the catalogue on the right, running to
+   the bottom of the screen and scrolling. */
 .body {
-  display: flex;
+  display: grid;
   flex: 1;
   min-height: 0;
-  align-items: stretch;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
 }
 .main {
   display: flex;
@@ -184,7 +185,7 @@
 }
 .side {
   display: flex;
-  flex: none;
+  min-width: 0;
   min-height: 0;
   flex-direction: column;
   gap: 12px;
@@ -314,17 +315,6 @@
   max-height: 22vh;
 }
 
-/* The catalogue column is narrow: smaller tabs and labels so the pieces get the height. */
-.side .tab {
-  padding: 0 5px;
-  font-size: 15px;
-  line-height: 20px;
-}
-.side .info,
-.side .catalogueHead {
-  font-size: 16px;
-  line-height: 20px;
-}
 .side .coinNote {
   font-size: 16px;
   line-height: 20px;

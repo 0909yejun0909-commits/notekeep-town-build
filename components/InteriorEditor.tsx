@@ -52,8 +52,8 @@ function useViewport() {
   return size;
 }
 
-// The catalogue column's width (four pieces a row) and the screen space around the room.
-const SIDE_W = 262;
+// The screen space around the room: the panel's padding and border across, and the header and
+// settings rows above it.
 const CHROME_W = 110;
 const CHROME_H = 300;
 
@@ -223,10 +223,10 @@ export default function InteriorEditor() {
   if (!session || !draft) return null;
 
   const [w, h] = ROOM_SIZES[draft.roomSize];
-  // The room drawn as big as fits beside the catalogue, in whole steps so the pixels stay
-  // square; at least 2x (the panel scrolls on a short screen), at most 4x.
+  // The room drawn as big as fits in the left half, in whole steps so the pixels stay square;
+  // at least 2x (the panel scrolls on a short screen), at most 4x.
   const zoom = Math.max(2, Math.min(4, Math.floor(Math.min(
-    (viewport.w - SIDE_W - CHROME_W) / (w * 16 + 6),
+    (viewport.w - CHROME_W) / 2 / (w * 16 + 6),
     (viewport.h - CHROME_H) / (h * 16 + 6),
   ))));
   const [doorGx, doorGy] = doorPositionFor(w, h);
@@ -787,7 +787,7 @@ export default function InteriorEditor() {
           </div>
         </div>
 
-          <div className={styles.side} style={{ width: SIDE_W }} data-panel-part>
+          <div className={styles.side} data-panel-part>
             {selectedPlacement && (
               <>
                 <div className={styles.row}>
