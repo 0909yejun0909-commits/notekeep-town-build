@@ -7,7 +7,7 @@ import CharacterCreator from './CharacterCreator';
 import TitleFrame from './TitleFrame';
 import Spotlight from './Spotlight';
 import spot from './Spotlight.module.css';
-import { openDemoVault, openVault } from '@/lib/vault/open';
+import { openDemoVault, openVault, VaultError } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
 import { sfx } from '@/game/audio/sfx';
 import type { VaultHandle } from '@/lib/types';
@@ -44,8 +44,8 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
       const vault = await open();
       if (vault) return onVault(vault);
       setStatus(null);
-    } catch {
-      setStatus("Couldn't read that folder.");
+    } catch (err) {
+      setStatus(err instanceof VaultError ? err.message : "Couldn't read that folder.");
     }
     endTutorial();
     setBusy(false);

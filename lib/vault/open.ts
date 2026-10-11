@@ -92,19 +92,45 @@ export async function walk(
   prefix: string,
   out: Map<string, FileSystemFileHandle>,
   folders?: string[],
+  unreadable?: string[],
+  hidden?: string[],
 ) {
   try {
     for await (const [name, handle] of (dir as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
-      if (name.startsWith('.')) continue;
+      if (name.startsWith('.')) {
+        hidden?.push(name);
+        continue;
+      }
       const path = prefix ? `${prefix}/${name}` : name;
       if (handle.kind === 'directory') {
         folders?.push(path);
-        await walk(handle as FileSystemDirectoryHandle, path, out, folders);
+        await walk(handle as FileSystemDirectoryHandle, path, out, folders, unreadable, hidden);
       } else out.set(path, handle as FileSystemFileHandle);
     }
   } catch {
     // A folder the browser cannot list (cloud placeholder, permission) is skipped, not fatal.
+    unreadable?.push(prefix || dir.name);
   }
+}
+
+// Thrown when the picked folder gives the town nothing to build from; the title menu shows
+// the message instead of opening an empty, black town.
+export class VaultError extends Error {}
+
+function noNotesMessage(name: string, files: number, unreadable: number, hidden: number): string {
+  if (unreadable > 0) {
+    return `Couldn't open ${unreadable === 1 ? 'a folder' : `${unreadable} folders`} in "${name}", and found no notes. ` +
+      'If it syncs with OneDrive, iCloud or Google Drive, make the files available offline, then try again.';
+  }
+  if (files === 0 && hidden > 0) {
+    return `"${name}" only has hidden files and folders (names starting with a dot), which the town ` +
+      'leaves out. Pick the folder that holds your Obsidian notes.';
+  }
+  if (files > 0) {
+    return `No notes in "${name}". The town is built from .md files, and this folder has ${files} other ` +
+      `${files === 1 ? 'file' : 'files'}. Pick the folder that holds your Obsidian notes.`;
+  }
+  return `"${name}" is empty. Pick the folder that holds your Obsidian notes (.md files).`;
 }
 
 export async function openVault(): Promise<VaultHandle | null> {
@@ -131,8 +157,13 @@ export async function openVault(): Promise<VaultHandle | null> {
 
   const files = new Map<string, FileSystemFileHandle>();
   const folders: string[] = [];
-  await walk(dir, '', files, folders);
+  const unreadable: string[] = [];
+  const hidden: string[] = [];
+  await walk(dir, '', files, folders, unreadable, hidden);
   const paths = [...files.keys()];
+  if (!paths.some(isNotePath)) {
+    throw new VaultError(noNotesMessage(dir.name, paths.length, unreadable.length, hidden.length));
+  }
   let resolve = makeLinkResolver(paths);
 
   // Accepts a vault path or an Obsidian link target ("Note", "Note#Heading|alias", "img.png").
