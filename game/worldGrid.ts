@@ -61,6 +61,35 @@ export function ringDistance(g: WorldGrid, x: number, y: number) {
   return Math.min(x - g.border, y - g.border, g.w - g.border - 1 - x, g.h - g.border - 1 - y);
 }
 
+// Like ringDistance, but land the player bought counts as town: tiles from the nearest tile
+// that is still forest or land for sale (negative on those). Where nothing has been bought it
+// is exactly ringDistance; it counts no further than `cap`.
+export function edgeDistances(g: WorldGrid, cap = 8): (x: number, y: number) => number {
+  if (g.open.size === 0) return (x, y) => ringDistance(g, x, y);
+  const locked = (x: number, y: number) => ringDistance(g, x, y) < 0 && !g.open.has(key(x, y));
+  const dist = new Map<string, number>();
+  let frontier: [number, number][] = [];
+  const steps = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (let y = 0; y < g.h; y++) {
+    for (let x = 0; x < g.w; x++) {
+      if (locked(x, y) && steps.some(([dx, dy]) => inBounds(g, x + dx, y + dy) && !locked(x + dx, y + dy))) frontier.push([x, y]);
+    }
+  }
+  for (let d = 1; d <= cap && frontier.length; d++) {
+    const next: [number, number][] = [];
+    for (const [x, y] of frontier) {
+      for (const [dx, dy] of steps) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (!inBounds(g, nx, ny) || locked(nx, ny) || dist.has(k)) continue;
+        dist.set(k, d);
+        next.push([nx, ny]);
+      }
+    }
+    frontier = next;
+  }
+  return (x, y) => (locked(x, y) ? ringDistance(g, x, y) : (dist.get(key(x, y)) ?? cap + 1) - 1);
+}
+
 export function areaAt(g: WorldGrid, x: number, y: number): RegionArea | null {
   for (const a of g.areas) {
     if (x >= a.originGx && y >= a.originGy && x < a.originGx + a.width && y < a.originGy + a.height) return a;

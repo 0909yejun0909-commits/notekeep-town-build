@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { BiomeId } from '@/lib/types';
 import { fbm, mix, rand01 } from '@/game/noise';
-import { areaAt, dropSmall, edgeFrame, frames3, key, openMask, ringDistance, type EdgeFrames, type WorldGrid } from '@/game/worldGrid';
+import { areaAt, dropSmall, edgeDistances, edgeFrame, frames3, key, openMask, type EdgeFrames, type WorldGrid } from '@/game/worldGrid';
 
 // Tileset firstgids inside the one ground tilemap.
 const GID_G1 = 0;
@@ -84,13 +84,14 @@ export function buildGround(scene: Phaser.Scene, g: WorldGrid): Ground {
 
   const biomeAt = (x: number, y: number): BiomeId => areaAt(g, x, y)?.region.biome ?? 'meadow';
   const masks: Record<Tone, Set<string>> = { 2: new Set(), 3: new Set(), 4: new Set() };
+  const edge = edgeDistances(g);
   // The ring runs one tile past the map edge so edge tiles autotile as interior.
   for (let y = -1; y <= g.h; y++) {
     for (let x = -1; x <= g.w; x++) {
       if (nearWet(x, y)) continue;
       // The forest floor spills a ragged few tiles past the ring so the edge isn't a ruler line.
-      // It covers the plots for sale too, which turn to meadow once bought.
-      if (!g.open.has(key(x, y)) && ringDistance(g, x, y) < fbm(g.seed ^ 0x13, x, y, 5) * 5 - 1.5) {
+      // It covers the plots for sale too; bought ones are town, so it stops at their far side.
+      if (edge(x, y) < fbm(g.seed ^ 0x13, x, y, 5) * 5 - 1.5) {
         if (toneLoaded(4)) masks[4].add(key(x, y));
         continue;
       }

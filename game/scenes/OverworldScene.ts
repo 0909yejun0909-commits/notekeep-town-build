@@ -39,7 +39,7 @@ import {
   releaseProp, renderTallGrass,
 } from '@/game/townEdits';
 import { spend, walletNow } from '@/lib/walletStore';
-import { drawLockedPlot, openPlot, plotAt, plotCells, plotReachable, plotsAround, type Plot } from '@/game/plots';
+import { drawLockedPlot, openPlot, plotAt, plotReachable, plotsAround, type Plot } from '@/game/plots';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -278,6 +278,9 @@ export default class OverworldScene extends Phaser.Scene {
     for (const k of houseGaps) if (!grid.used.has(k)) blocked.delete(k);
     this.plotShades = new Map(this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawLockedPlot(this, p)]));
     this.plotHover = this.add.graphics().setDepth(1e6 - 1);
+    // Rebuilt after buying land while building: carry on building.
+    if (this.game.registry.get('resumeBuilding')) this.onOpenTownEditor();
+    this.game.registry.remove('resumeBuilding');
     this.grid = grid;
 
     // Coming back out of a house puts the player on the road in front of that door.
@@ -513,19 +516,17 @@ export default class OverworldScene extends Phaser.Scene {
     });
   };
 
+  // Bought land joins the town: rebuilt around the player, it gets the town's grass, tufts and
+  // flowers, and the forest floor draws back to the land still for sale. Building carries on.
   private buyPlot(plot: Plot) {
-    openPlot(this.grid!, plot);
-    this.plotShades.get(plot.id)?.destroy();
-    this.plotShades.delete(plot.id);
-    // The forest floor goes; the town's meadow grass underneath shows through.
-    const patches = this.ground?.map.getLayer('patches')?.tilemapLayer;
-    for (const c of plotCells(plot)) {
-      const [x, y] = c.split(',').map(Number);
-      patches?.removeTileAt(x, y);
-    }
     this.town.plots.push(plot.id);
     this.saveTown();
-    this.message('The land is yours! Walk on it, or build on it from the Build bar.');
+    if (this.player) {
+      const { gx, gy } = worldToTile(this.player.x, this.player.y);
+      this.game.registry.set('returnTile', { gx, gy });
+    }
+    this.game.registry.set('resumeBuilding', this.building);
+    this.scene.restart();
   }
 
   private saveTown() {

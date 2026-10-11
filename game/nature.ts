@@ -197,14 +197,17 @@ export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
     g.used.add(key(x, y));
   };
 
-  for (let y = g.border; y < g.h - g.border; y++) {
-    for (let x = g.border; x < g.w - g.border; x++) {
-      if (!isFree(g, x, y)) continue;
+  for (let y = 0; y < g.h; y++) {
+    for (let x = 0; x < g.w; x++) {
+      // Bought land gets the town's flowers and grass too, but none of the rocks, stumps and
+      // bushes: it stays clear to build on.
+      const bought = g.open.has(key(x, y));
+      if ((!bought && ringDistance(g, x, y) < 0) || !isFree(g, x, y)) continue;
       const roll = rand01(seed, x, y);
       const grove = fbm(g.seed ^ 0xc1, x, y, 8);
       const nearDoor = nearHouse(g, x, y, 1, 0, 2);
 
-      if (!nearDoor && grove > 0.5 && grove < 0.68 && roll < 0.07) {
+      if (!bought && !nearDoor && grove > 0.5 && grove < 0.68 && roll < 0.07) {
         const kind = mix(seed ^ 1, x, y) % 10;
         const swap = g.biome !== 'forest' && mix(seed ^ 17, x, y) % 3 === 0;
         if (kind < 4 && swap) standIn(x, y, g.biome === 'snow' ? SNOWMAN : BARREL_CACTUS);
