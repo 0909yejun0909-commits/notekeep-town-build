@@ -28,6 +28,7 @@ import {
 } from '@/lib/noteMarks';
 import { BOOK_SRC, paperBookUrl } from '@/lib/paperBook';
 import Coin from './Coin';
+import { applyCommand, continueList, matchCommands, slashAt, type SlashCommand } from '@/lib/slashCommands';
 
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'mov'];
 
@@ -175,6 +176,25 @@ const highlightOp =
   (raw, segs, existing) =>
     addMark(raw, segs, { kind: 'hl', color }, existing);
 
+// Where character `pos` of a textarea sits, in its own unscrolled pixels: a hidden copy of
+// the textarea with the text up to `pos` in it, measured.
+function caretXY(t: HTMLTextAreaElement, pos: number): { x: number; y: number } {
+  const cs = getComputedStyle(t);
+  const div = document.createElement('div');
+  for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing', 'tabSize', 'padding', 'border', 'boxSizing'] as const) {
+    (div.style as any)[p] = cs[p];
+  }
+  Object.assign(div.style, { position: 'absolute', visibility: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', width: `${t.clientWidth}px` });
+  div.textContent = t.value.slice(0, pos);
+  const mark = document.createElement('span');
+  mark.textContent = '.';
+  div.appendChild(mark);
+  document.body.appendChild(div);
+  const at = { x: mark.offsetLeft, y: mark.offsetTop - t.scrollTop };
+  div.remove();
+  return at;
+}
+
 function MarkTools({
   onHighlight,
   onUnderline,
@@ -284,6 +304,17 @@ const READER_CSS = `
     caret-color: #8a3b12; padding: 0; margin: 0; overflow-y: auto; tab-size: 2;
   }
   .note-editor::selection { background: rgba(138, 59, 18, 0.25); }
+  .note-editor::placeholder { color: ${INK_SOFT}; font-style: italic; }
+  /* The "/" command menu, a slip of paper under the caret. */
+  .slash-menu {
+    position: absolute; z-index: 5; width: 230px; max-height: 232px; overflow-y: auto; padding: 4px;
+    background: #fffaf0; border: 2px solid ${INK}; box-shadow: 0 4px 0 rgba(59, 42, 32, 0.25);
+    font-family: ${PIXEL_FONT}; font-size: 16px; line-height: 20px; color: ${INK};
+  }
+  .slash-head { padding: 2px 6px 4px; color: ${INK_SOFT}; font-size: 14px; }
+  .slash-item { display: flex; justify-content: space-between; gap: 8px; padding: 3px 6px; cursor: pointer; }
+  .slash-item.on { background: rgba(138, 59, 18, 0.16); }
+  .slash-hint { color: ${INK_SOFT}; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
   .note-scroll { height: 100%; overflow-y: auto; padding-right: 6px; }
   .note-scroll::-webkit-scrollbar, .note-editor::-webkit-scrollbar { width: 6px; }
   .note-scroll::-webkit-scrollbar-thumb, .note-editor::-webkit-scrollbar-thumb { background: ${INK_LINE}; border-radius: 3px; }
@@ -350,6 +381,10 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // The open "/" menu: where its slash is, what's typed after it, the highlighted command.
+  const [slash, setSlash] = useState<{ start: number; query: string; index: number; x: number; y: number } | null>(null);
+  const slashDismissed = useRef<number | null>(null);
+  const slashOpen = useRef(false);
 
   const overlayRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
@@ -627,6 +662,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     if (!note) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        // With the "/" menu open, Escape just closes the menu (the editor handles it).
+        if (editingRef.current && slashOpen.current) return;
         e.stopPropagation();
         if (editingRef.current) cancelEdit();
         else bus.emit('close-note', undefined);
@@ -684,6 +721,44 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const stopKeys = (e: React.KeyboardEvent) => {
     // Keep Phaser's window-level key handlers (WASD, arrows, Space) from eating keystrokes.
     e.stopPropagation();
+  };
+
+  const slashMatches = slash ? matchCommands(slash.query) : [];
+  slashOpen.current = slashMatches.length > 0;
+
+  // Open, follow or close the "/" menu as the text and caret change.
+  const updateSlash = (t: HTMLTextAreaElement) => {
+    const at = t.selectionStart === t.selectionEnd ? slashAt(t.value, t.selectionStart) : null;
+    if (!at || matchCommands(at.query).length === 0 || slashDismissed.current === at.start) {
+      if (!at) slashDismissed.current = null;
+      setSlash(null);
+      return;
+    }
+    const { x, y } = caretXY(t, at.start);
+    setSlash((prev) => ({ ...at, x, y, index: prev && prev.start === at.start && prev.query === at.query ? prev.index : 0 }));
+  };
+
+  // Swap the note's text for `next` through the browser's own editing, so ⌘Z undoes it.
+  const replaceText = (t: HTMLTextAreaElement, next: string, caret: number) => {
+    const cur = t.value;
+    let pre = 0;
+    while (pre < cur.length && pre < next.length && cur[pre] === next[pre]) pre++;
+    let suf = 0;
+    while (suf < cur.length - pre && suf < next.length - pre && cur[cur.length - 1 - suf] === next[next.length - 1 - suf]) suf++;
+    t.setSelectionRange(pre, cur.length - suf);
+    const insert = next.slice(pre, next.length - suf);
+    const ok = insert ? document.execCommand('insertText', false, insert) : document.execCommand('delete');
+    if (!ok || t.value !== next) setDraft(next);
+    t.setSelectionRange(caret, caret);
+  };
+
+  const runSlash = (cmd: SlashCommand) => {
+    const t = textareaRef.current;
+    if (!t || !slash) return;
+    const r = applyCommand(t.value, slash.start, t.selectionStart, cmd);
+    setSlash(null);
+    t.focus({ preventScroll: true });
+    replaceText(t, r.text, r.caret);
   };
 
   const pick = (color: HighlightId) => {
@@ -746,18 +821,56 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   height: '100%',
                 }}
               >
+                <div style={{ position: 'relative', height: '100%', minHeight: 0 }}>
                 <textarea
                   ref={textareaRef}
                   data-tour="note-text"
                   className="note-editor"
                   value={draft}
                   spellCheck={false}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onScroll={syncEditPages}
+                  placeholder="Type / for headings, lists, to-dos and more"
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    updateSlash(e.target);
+                  }}
+                  onSelect={(e) => updateSlash(e.currentTarget)}
+                  onBlur={() => setSlash(null)}
+                  onScroll={(e) => {
+                    syncEditPages();
+                    if (slash) updateSlash(e.currentTarget);
+                  }}
                   onKeyDown={(e) => {
                     stopKeys(e);
                     const mod = e.metaKey || e.ctrlKey;
                     const k = e.key.toLowerCase();
+                    if (slash && slashMatches.length > 0) {
+                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        const n = slashMatches.length;
+                        setSlash({ ...slash, index: (slash.index + (e.key === 'ArrowDown' ? 1 : n - 1)) % n });
+                        return;
+                      }
+                      if ((e.key === 'Enter' || e.key === 'Tab') && !mod && !e.shiftKey) {
+                        e.preventDefault();
+                        runSlash(slashMatches[Math.min(slash.index, slashMatches.length - 1)]);
+                        return;
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        slashDismissed.current = slash.start;
+                        setSlash(null);
+                        return;
+                      }
+                    }
+                    if (e.key === 'Enter' && !mod && !e.shiftKey && !e.altKey) {
+                      const t = e.currentTarget;
+                      const next = t.selectionStart === t.selectionEnd ? continueList(t.value, t.selectionStart) : null;
+                      if (next) {
+                        e.preventDefault();
+                        replaceText(t, next.text, next.caret);
+                        return;
+                      }
+                    }
                     if (e.key === 'Escape') {
                       e.preventDefault();
                       cancelEdit();
@@ -775,6 +888,34 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   onKeyUp={stopKeys}
                   onKeyPress={stopKeys}
                 />
+                {slash && slashMatches.length > 0 && (
+                  <div
+                    className="slash-menu"
+                    data-tour="slash-menu"
+                    style={{
+                      left: Math.max(0, Math.min(slash.x, (PAGES_W - SPINE_GAP) / 2 - 230)),
+                      // Under the caret, or just above it near the bottom of the page.
+                      ...(slash.y + EDIT_LINE + 240 > PAGES_H
+                        ? { bottom: PAGES_H - slash.y + 2 }
+                        : { top: slash.y + EDIT_LINE + 2 }),
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <div className="slash-head">{slash.query ? `Commands for "${slash.query}"` : 'Turn this line into'}</div>
+                    {slashMatches.map((c, i) => (
+                      <div
+                        key={c.id}
+                        className={`slash-item${i === slash.index ? ' on' : ''}`}
+                        onMouseEnter={() => setSlash({ ...slash, index: i })}
+                        onClick={() => runSlash(c)}
+                      >
+                        <span>{c.label}</span>
+                        <span className="slash-hint">{c.hint}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                </div>
                 <div ref={previewRef} className="note-scroll note-prose">
                   <h2 className="note-title">{note.title}</h2>
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkMarks]} urlTransform={safeUrl} components={components}>
