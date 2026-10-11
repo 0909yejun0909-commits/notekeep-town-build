@@ -4,7 +4,7 @@
 // vault like the house exteriors (lib/exteriorStore.ts).
 
 export type TownPropId = 'fountain' | 'bench' | 'lamp' | 'well' | 'barrel' | 'pot' | 'bush' | 'rock' | 'flowers';
-export type GroundPaint = 'path' | 'tall' | 'grass';
+export type GroundPaint = 'path' | 'tall' | 'water' | 'grass';
 
 export type TownProp = { item: TownPropId; gx: number; gy: number };
 
@@ -19,7 +19,10 @@ export type TownEdits = {
   cut: string[];
   // Plots of land bought, by plot ("i,j": PLOT-tile squares counted from the town's corner).
   plots: string[];
-  // Painted tiles; 'grass' undoes a path (generated or painted) or tall grass.
+  // Where houses stand, by house id: the world tile of each one's top-left corner. Set for
+  // every house once the player places one, so a new house never shuffles the others.
+  houses: Record<string, [number, number]>;
+  // Painted tiles; 'grass' undoes a path (generated or painted), tall grass or water.
   ground: Record<string, GroundPaint>;
   props: TownProp[];
   // Decorations picked back up: placed again for free.
@@ -57,6 +60,7 @@ export type GroundSpec = { id: GroundPaint; name: string; price: number };
 export const GROUND_KINDS: GroundSpec[] = [
   { id: 'path', name: 'Path', price: 1 },
   { id: 'tall', name: 'Tall grass', price: 1 },
+  { id: 'water', name: 'Water', price: 2 },
   { id: 'grass', name: 'Grass', price: 0 },
 ];
 export const GROUND_PRICE = Object.fromEntries(GROUND_KINDS.map((k) => [k.id, k.price])) as Record<GroundPaint, number>;
@@ -72,7 +76,7 @@ export const PLOT_PRICE = 15;
 // town's roads, which need at least two tiles across to look right.
 export const BRUSH = 2;
 
-export const emptyTownEdits = (): TownEdits => ({ cut: [], plots: [], ground: {}, props: [], bag: {}, v: 2 });
+export const emptyTownEdits = (): TownEdits => ({ cut: [], plots: [], houses: {}, ground: {}, props: [], bag: {}, v: 2 });
 
 const PAINTS = new Set<string>(GROUND_KINDS.map((k) => k.id));
 const TILE_KEY = /^-?\d+,-?\d+$/;
@@ -84,6 +88,11 @@ export function parseTownEdits(raw: unknown): TownEdits {
   const r = raw as Record<string, unknown>;
   if (Array.isArray(r.cut)) out.cut = r.cut.filter((k): k is string => typeof k === 'string' && TILE_KEY.test(k));
   if (Array.isArray(r.plots)) out.plots = r.plots.filter((k): k is string => typeof k === 'string' && TILE_KEY.test(k));
+  if (typeof r.houses === 'object' && r.houses !== null) {
+    for (const [id, at] of Object.entries(r.houses)) {
+      if (Array.isArray(at) && at.length === 2 && at.every((n) => Number.isInteger(n))) out.houses[id] = [at[0], at[1]];
+    }
+  }
   if (typeof r.ground === 'object' && r.ground !== null) {
     for (const [k, v] of Object.entries(r.ground)) if (TILE_KEY.test(k) && typeof v === 'string' && PAINTS.has(v)) out.ground[k] = v as GroundPaint;
   }

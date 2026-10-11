@@ -37,10 +37,11 @@ export function plotReachable(p: Plot, cols: number, rows: number, owned: Set<st
   });
 }
 
-// Owned land: walkable, buildable, and clear of the hedge that edged the town.
-export function openPlot(g: WorldGrid, p: Plot) {
+// Owned land: walkable, buildable, and clear of the hedge that edged the town. `keep` stays
+// blocked: a house the player built on the land.
+export function openPlot(g: WorldGrid, p: Plot, keep: Set<string> = new Set()) {
   for (const k of plotCells(p)) {
-    g.blocked.delete(k);
+    if (!keep.has(k)) g.blocked.delete(k);
     g.open.add(k);
     g.edgeBushes.get(k)?.destroy();
     g.edgeBushes.delete(k);

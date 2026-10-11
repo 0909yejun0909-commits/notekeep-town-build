@@ -10,7 +10,7 @@ export const STARTER_GRANT = 50;
 // are only known once the note is opened.
 export const HEAD_BYTES = 2048;
 // "Your town", the one kept in the browser, starts richer: it's where new players begin.
-export const TOWN_GRANT = 300;
+export const TOWN_GRANT = 100;
 
 // Passing a quiz at a desk pays once a day, a coin more for each day in a row.
 export const STUDY_REWARD = 5;

@@ -4,6 +4,7 @@ import { TOWN_PROP_BY_ID, type TownEdits, type TownProp } from '@/lib/townEdits'
 
 // Draws the player's village edits (lib/townEdits.ts) into a generated town. The town is
 // built in a fixed order, and each kind of edit slots in where it can't move anything else:
+//   paintWater       right after the ponds, so roads go round painted water like a pond
 //   cutTrees(border)  right after the roads, so the roads never route through a clearing
 //   paintRoads        before the ground is drawn, so painted paths get the roads' edge tiles
 //   placeProps        before trees and ground cover, which then grow around them
@@ -31,16 +32,36 @@ export function buildable(g: WorldGrid, k: string): boolean {
   return !g.water.has(k) && !g.plaza.has(k) && !g.keepClear.has(k) && !g.blocked.has(k);
 }
 
-// Ground can also be painted over a doorstep (it stays walkable) but nothing else blocked.
+// Ground can also be painted over a doorstep (it stays walkable) or water, but nothing else
+// blocked.
 export function paintable(g: WorldGrid, k: string): boolean {
   const [x, y] = xy(k);
   if (!inBounds(g, x, y) || nearHouse(g, x, y, 0, 0, 0)) return false;
-  return !g.water.has(k) && !g.plaza.has(k) && (!g.blocked.has(k) || g.keepClear.has(k));
+  return !g.plaza.has(k) && (!g.blocked.has(k) || g.keepClear.has(k) || g.water.has(k));
+}
+
+// Water can't cover a doorstep or the way to one.
+export function waterable(g: WorldGrid, k: string): boolean {
+  return paintable(g, k) && !g.keepClear.has(k);
+}
+
+export function paintWater(g: WorldGrid, edits: TownEdits) {
+  for (const [k, paint] of Object.entries(edits.ground)) {
+    if (paint === 'water') {
+      if (!g.water.has(k) && waterable(g, k)) {
+        g.water.add(k);
+        g.blocked.add(k);
+      }
+    } else if (g.water.has(k)) {
+      g.water.delete(k);
+      g.blocked.delete(k);
+    }
+  }
 }
 
 export function paintRoads(g: WorldGrid, edits: TownEdits) {
   for (const [k, paint] of Object.entries(edits.ground)) {
-    if (paint === 'grass' || paint === 'tall') {
+    if (paint === 'grass' || paint === 'tall' || paint === 'water') {
       if (!g.plaza.has(k)) g.road.delete(k);
     } else if (paint === 'path' && paintable(g, k)) {
       g.road.add(k);

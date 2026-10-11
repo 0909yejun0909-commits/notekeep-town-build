@@ -66,6 +66,12 @@ type BusEvents = {
   // The land plot under the pointer (screen px of its middle), or null. `state`: 'buy' it can
   // be bought now, 'poor' not enough coins, 'far' land next to it must be bought first.
   'plot-hover': { x: number; y: number; price: number; state: 'buy' | 'poor' | 'far' } | null;
+  // Placing a new house (components/TownEditor.tsx asks, OverworldScene shows where it would
+  // go and says where it was put), then pinning every house where it stands.
+  'place-house': { name: string };
+  'cancel-place-house': undefined;
+  'house-spot': { gx: number; gy: number; regionId: string };
+  'pin-houses': { houseId: string; gx: number; gy: number };
   'commit-exterior-variant': {
     houseId: string;
     variant: number;

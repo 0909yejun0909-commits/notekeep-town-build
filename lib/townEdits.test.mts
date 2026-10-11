@@ -6,6 +6,7 @@ test('saved village edits survive a round trip', () => {
   const edits = {
     cut: ['3,4', '10,2'],
     plots: ['-1,0', '4,-2'],
+    houses: { 'Town/Home': [30, 31] },
     ground: { '5,5': 'path', '6,5': 'tall', '7,5': 'grass' },
     props: [{ item: 'bench', gx: 8, gy: 9 }, { item: 'lamp', gx: 1, gy: 1 }],
     bag: { fountain: 1 },
@@ -22,7 +23,7 @@ test('bad entries are dropped one by one, never the whole save', () => {
     bag: { bench: -1, well: 2, castle: 4 },
     v: 2,
   });
-  assert.deepEqual(parsed, { cut: ['3,4'], plots: [], ground: { '6,5': 'path' }, props: [{ item: 'rock', gx: 2, gy: 3 }], bag: { well: 2 }, v: 2 });
+  assert.deepEqual(parsed, { cut: ['3,4'], plots: [], houses: {}, ground: { '6,5': 'path' }, props: [{ item: 'rock', gx: 2, gy: 3 }], bag: { well: 2 }, v: 2 });
   assert.deepEqual(parseTownEdits(null), emptyTownEdits());
   assert.deepEqual(parseTownEdits('junk'), emptyTownEdits());
 });

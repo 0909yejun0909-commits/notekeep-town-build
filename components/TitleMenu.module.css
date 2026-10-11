@@ -7,15 +7,6 @@
   list-style: none;
 }
 
-/* "Open a notes folder instead": smaller, under a rule, so Your town reads as the way in. */
-.menu .secondary {
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 2px dashed rgba(63, 40, 50, 0.25);
-  font-size: 19px;
-  line-height: 24px;
-}
-
 .status {
   margin: 12px 0 0;
   font-size: 21px;

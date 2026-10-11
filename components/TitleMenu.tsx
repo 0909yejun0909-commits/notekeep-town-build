@@ -7,21 +7,19 @@ import CharacterCreator from './CharacterCreator';
 import TitleFrame from './TitleFrame';
 import Spotlight from './Spotlight';
 import spot from './Spotlight.module.css';
-import { openDemoVault, openTown, openVault, VaultError } from '@/lib/vault/open';
+import { openDemoVault, openTown, VaultError } from '@/lib/vault/open';
 import { bus } from '@/game/bus';
 import { sfx } from '@/game/audio/sfx';
 import type { VaultHandle } from '@/lib/types';
 import { endTutorial, markTutorialOffered, startTutorial, tutorialOffered } from '@/lib/tutorial';
 
-type Choice = 'town' | 'demo' | 'hero' | 'credits' | 'vault';
+type Choice = 'town' | 'demo' | 'hero' | 'credits';
 
-// The last, smaller entry is for people who already keep notes in an Obsidian vault folder.
 const ITEMS: Array<[Choice, string]> = [
   ['town', 'Your town'],
   ['demo', 'Tutorial'],
   ['hero', 'Your hero'],
   ['credits', 'Credits'],
-  ['vault', 'Open a notes folder instead'],
 ];
 
 const DEVELOPERS = ['Jayden Yang', 'Jason Kim', 'Roy Park', 'Ian Hsu'];
@@ -70,7 +68,6 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
       setFirstVisit(false);
     }
     if (choice === 'town') load(openTown, 'Opening your town...');
-    else if (choice === 'vault') load(openVault, 'Reading your folder...');
     else if (choice === 'demo') {
       startTutorial();
       load(openDemoVault, 'Starting the tutorial...');
@@ -133,8 +130,7 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
                 <button
                   role="menuitem"
                   data-tour={choice === 'demo' ? 'tutorial' : choice === 'town' ? 'your-town' : undefined}
-                  title={choice === 'vault' ? 'Build the town from an Obsidian vault or any folder of .md notes on this computer' : undefined}
-                  className={`${pixel.item} ${i === cursor ? pixel.current : ''} ${choice === 'vault' ? styles.secondary : ''}`}
+                  className={`${pixel.item} ${i === cursor ? pixel.current : ''}`}
                   disabled={busy}
                   onMouseEnter={() => moveTo(i)}
                   onMouseDown={(e) => e.preventDefault()}

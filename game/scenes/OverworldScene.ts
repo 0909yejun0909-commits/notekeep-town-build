@@ -13,7 +13,10 @@ import { applyExteriorOverride, getExteriorOverride, saveExteriorOverride } from
 import { bus } from '@/game/bus';
 import { attachRemotePlayers } from '@/game/remotePlayers';
 import { hash } from '@/lib/types';
-import { HOUSE_FOOTPRINT } from '@/lib/houseCatalog';
+import {
+  DEFAULT_MATERIAL, DEFAULT_WALL_COLOR, HOUSE_FOOTPRINT, ROOF_COLORS, STARTER_HOUSE_VARIANT, houseTextureKey,
+} from '@/lib/houseCatalog';
+import { houseFits } from '@/game/housePlacement';
 import { key, type WorldGrid } from '@/game/worldGrid';
 import { buildGround, GID_WATER, retileRoads, type Ground as GroundTiles } from '@/game/ground';
 import { placePonds, renderWater } from '@/game/water';
@@ -35,7 +38,7 @@ import {
   type TownEdits, type TownProp, type TownTool,
 } from '@/lib/townEdits';
 import {
-  buildable, claimProp, cutTrees, drawProp, drawTallGrass, paintable, paintRoads, placeProps, propCells,
+  buildable, claimProp, cutTrees, drawProp, paintWater, waterable, drawTallGrass, paintable, paintRoads, placeProps, propCells,
   releaseProp, renderTallGrass,
 } from '@/game/townEdits';
 import { spend, walletNow } from '@/lib/walletStore';
@@ -63,6 +66,8 @@ export default class OverworldScene extends Phaser.Scene {
   private building = false;
   private tool: TownTool | null = null;
   private hover: Phaser.GameObjects.Graphics | null = null;
+  // Set when a brush stroke added or took away water: the town is redrawn when it ends.
+  private waterChanged = false;
   // Land for sale around the town (game/plots.ts), the shade over each locked one, and the
   // town's size in plots.
   private plots: Plot[] = [];
@@ -178,6 +183,7 @@ export default class OverworldScene extends Phaser.Scene {
 
     const blocked = new Set<string>();
     const houseGaps = new Set<string>();
+    const houseCells = new Set<string>();
     const entries: Entry[] = [];
     const areas: NpcSpawnArea[] = [];
     const grid: WorldGrid = {
@@ -209,13 +215,21 @@ export default class OverworldScene extends Phaser.Scene {
       const originGy = inset + Math.floor(i / cols) * cellH + Math.floor(REGION_PAD / 2);
       areas.push({ originGx, originGy, width: w, height: h });
       grid.areas.push({ region, originGx, originGy, width: w, height: h });
-      const result = buildHouses(this, region, originGx, originGy, biome);
+      // Houses the player placed stand where they put them (a copy: the world's own house
+      // positions size the region, so they're left as laid out).
+      const pins = this.town.houses;
+      const placed: Region = {
+        ...region,
+        houses: region.houses.map((hs) => (pins[hs.id] ? { ...hs, gx: pins[hs.id][0] - originGx, gy: pins[hs.id][1] - originGy } : hs)),
+      };
+      const result = buildHouses(this, placed, originGx, originGy, biome);
       result.blocked.forEach((k) => blocked.add(k));
+      result.blocked.forEach((k) => houseCells.add(k));
       result.open.forEach((k) => houseGaps.add(k));
       result.doors.forEach((houseId, key) => this.doors.set(key, houseId));
       entries.push(...result.entries);
       for (const e of result.entries) {
-        const house = region.houses.find((hs) => hs.id === e.houseId)!;
+        const house = placed.houses.find((hs) => hs.id === e.houseId)!;
         const [hw, hh] = HOUSE_FOOTPRINT[house.variant] ?? HOUSE_FOOTPRINT[0];
         grid.houses.push({ houseId: house.id, gx: originGx + house.gx, gy: originGy + house.gy, w: hw, h: hh, entryGx: e.gx, entryGy: e.gy });
         grid.keepClear.add(key(e.gx, e.gy));
@@ -250,16 +264,17 @@ export default class OverworldScene extends Phaser.Scene {
     // Order matters: each step avoids what the earlier ones claimed. Roads come after the
     // plazas and ponds so they route around them, and everything decorative comes after roads.
     buildForestBorder(this, grid);
-    const { plazas, anchors, wells } = placePlazas(grid);
-    placePonds(grid);
-    grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
-    // The player's own village edits, each slotted in where it can't move anything else
-    // (game/townEdits.ts).
-    // Land bought opens before the player's edits go down, so they can be built on it.
+    // Land bought is town from here on: roads may run onto it, and edits can go down on it.
     this.plots = plotsAround(inset, inset, plotCols, plotRows);
     this.plotSize = [plotCols, plotRows];
     const owned = new Set(this.town.plots);
-    for (const p of this.plots) if (owned.has(p.id)) openPlot(grid, p);
+    for (const p of this.plots) if (owned.has(p.id)) openPlot(grid, p, houseCells);
+    const { plazas, anchors, wells } = placePlazas(grid);
+    placePonds(grid);
+    // The player's own village edits, each slotted in where it can't move anything else
+    // (game/townEdits.ts).
+    paintWater(grid, this.town);
+    grid.road = buildRoads([...entries, ...anchors], blocked, worldW, worldH, grid.plaza);
     const cut = new Set(this.town.cut);
     cutTrees(grid, cut, true);
     paintRoads(grid, this.town);
@@ -357,9 +372,15 @@ export default class OverworldScene extends Phaser.Scene {
     bus.on('open-town-editor', this.onOpenTownEditor);
     bus.on('close-town-editor', this.onCloseTownEditor);
     bus.on('town-tool', this.onTownTool);
+    bus.on('place-house', this.onPlaceHouse);
+    bus.on('cancel-place-house', this.endPlacing);
+    bus.on('pin-houses', this.onPinHouses);
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPlacePointer);
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPlacePointer);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onBuildPointer);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onBuildPointer);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPlotPointer);
+    this.input.on(Phaser.Input.Events.POINTER_UP, this.onStrokeEnd);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPlotPointer);
     this.input.on(Phaser.Input.Events.GAME_OUT, this.clearPlotHover);
     this.events.once('shutdown', () => {
@@ -372,6 +393,10 @@ export default class OverworldScene extends Phaser.Scene {
       bus.off('open-town-editor', this.onOpenTownEditor);
       bus.off('close-town-editor', this.onCloseTownEditor);
       bus.off('town-tool', this.onTownTool);
+      bus.off('place-house', this.onPlaceHouse);
+      bus.off('cancel-place-house', this.endPlacing);
+      bus.off('pin-houses', this.onPinHouses);
+      this.placing = null;
     });
   }
 
@@ -473,6 +498,85 @@ export default class OverworldScene extends Phaser.Scene {
     bus.emit('town-message', { text });
   }
 
+  // The end of a brush stroke that changed water: redraw the town so ponds get their shores,
+  // and carry on building.
+  private onStrokeEnd = () => {
+    if (!this.waterChanged) return;
+    this.waterChanged = false;
+    this.rebuildKeepingBuild();
+  };
+
+  private rebuildKeepingBuild() {
+    if (this.player) {
+      const { gx, gy } = worldToTile(this.player.x, this.player.y);
+      this.game.registry.set('returnTile', { gx, gy });
+    }
+    this.game.registry.set('resumeBuilding', this.building);
+    this.scene.restart();
+  }
+
+  // ------------------------------------------------------------ placing a new house
+
+  // A see-through copy of the new house follows the pointer, red where it can't go.
+  private placing: { ghost: Phaser.GameObjects.Image; outline: Phaser.GameObjects.Graphics; at: { gx: number; gy: number } | null } | null = null;
+
+  private onPlaceHouse = ({ name }: { name: string }) => {
+    this.endPlacing();
+    const variant = STARTER_HOUSE_VARIANT;
+    const roof = ROOF_COLORS[hash(name) % ROOF_COLORS.length];
+    const texture = skin(this, this.grid?.biome ?? DEFAULT_TOWN_BIOME, houseTextureKey(variant, DEFAULT_MATERIAL[variant], DEFAULT_WALL_COLOR[variant], roof));
+    const ghost = this.add.image(0, 0, texture).setOrigin(0, 0).setAlpha(0.75).setDepth(1e6 - 2).setVisible(false);
+    const outline = this.add.graphics().setDepth(1e6 - 1);
+    this.hover?.clear();
+    this.placing = { ghost, outline, at: null };
+  };
+
+  private endPlacing = () => {
+    this.placing?.ghost.destroy();
+    this.placing?.outline.destroy();
+    this.placing = null;
+  };
+
+  private onPlacePointer = (p: Phaser.Input.Pointer) => {
+    if (!this.placing || !this.grid) return;
+    const variant = STARTER_HOUSE_VARIANT;
+    const [w, h] = HOUSE_FOOTPRINT[variant];
+    const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+    // The pointer holds the house by its middle.
+    const gx = Math.round(wp.x / TILE - w / 2);
+    const gy = Math.round(wp.y / TILE - h / 2);
+    const water = Object.keys(this.town.ground).filter((k) => this.town.ground[k] === 'water');
+    const ok = houseFits(this.grid, variant, gx, gy, new Set([...this.town.props.flatMap(propCells), ...water]));
+    const { ghost, outline } = this.placing;
+    ghost.setPosition(gx * TILE, gy * TILE).setVisible(true).setTint(ok ? 0xffffff : 0xff5a5a);
+    outline
+      .clear()
+      .fillStyle(ok ? 0x63c74d : 0xe43b44, 0.25)
+      .fillRect(gx * TILE, gy * TILE, w * TILE, h * TILE)
+      .lineStyle(2, ok ? 0xb8f28c : 0xff8a8a, 1)
+      .strokeRect(gx * TILE + 1, gy * TILE + 1, w * TILE - 2, h * TILE - 2);
+    this.placing.at = ok ? { gx, gy } : null;
+    if (!p.isDown || p.event.type === 'pointermove' || p.event.type === 'mousemove') return;
+    if (!ok) return this.message("Something's in the way there. Find a spot where the house isn't red.");
+    // The region it went in: the one under it, or the nearest.
+    const cx = gx + w / 2, cy = gy + h / 2;
+    let region = '';
+    let best = Infinity;
+    for (const a of this.grid.areas) {
+      const d = Math.max(a.originGx - cx, 0, cx - (a.originGx + a.width)) + Math.max(a.originGy - cy, 0, cy - (a.originGy + a.height));
+      if (d < best) [region, best] = [a.region.id, d];
+    }
+    bus.emit('house-spot', { gx, gy, regionId: region });
+  };
+
+  // The new house goes where it was placed, and every other house stays exactly where it is now.
+  private onPinHouses = ({ houseId, gx, gy }: { houseId: string; gx: number; gy: number }) => {
+    for (const r of this.grid?.houses ?? []) this.town.houses[r.houseId] ??= [r.gx, r.gy];
+    this.town.houses[houseId] = [gx, gy];
+    this.endPlacing();
+    this.saveTown();
+  };
+
   // ------------------------------------------------------------ land for sale
 
   private hoveredPlot: Plot | null = null;
@@ -488,7 +592,7 @@ export default class OverworldScene extends Phaser.Scene {
   // clicking buys it. Not while a build tool is in hand, so a brush stroke never buys land.
   private onPlotPointer = (p: Phaser.Input.Pointer) => {
     const guest = this.game.registry.get('role') === 'guest';
-    if (!this.grid || !this.plotHover || guest || !this.fingerprint || (this.building && this.tool)) return this.clearPlotHover();
+    if (!this.grid || !this.plotHover || guest || !this.fingerprint || (this.building && this.tool) || this.placing) return this.clearPlotHover();
     const w = this.cameras.main.getWorldPoint(p.x, p.y);
     const plot = plotAt(this.plots, Math.floor(w.x / TILE), Math.floor(w.y / TILE));
     if (!plot || !this.plotShades.has(plot.id)) return this.clearPlotHover();
@@ -521,12 +625,7 @@ export default class OverworldScene extends Phaser.Scene {
   private buyPlot(plot: Plot) {
     this.town.plots.push(plot.id);
     this.saveTown();
-    if (this.player) {
-      const { gx, gy } = worldToTile(this.player.x, this.player.y);
-      this.game.registry.set('returnTile', { gx, gy });
-    }
-    this.game.registry.set('resumeBuilding', this.building);
-    this.scene.restart();
+    this.rebuildKeepingBuild();
   }
 
   private saveTown() {
@@ -566,7 +665,7 @@ export default class OverworldScene extends Phaser.Scene {
   }
 
   private onBuildPointer = (p: Phaser.Input.Pointer) => {
-    if (!this.building || !this.tool || !this.grid || !this.hover) return;
+    if (!this.building || !this.tool || !this.grid || !this.hover || this.placing) return;
     const { gx, gy } = this.tileAt(p);
     const { cells, ok } = this.toolCells(gx, gy);
     this.hover.clear();
@@ -620,8 +719,12 @@ export default class OverworldScene extends Phaser.Scene {
     const paint = tool.paint;
     const cells: string[] = [];
     for (let dy = 0; dy < BRUSH; dy++) for (let dx = 0; dx < BRUSH; dx++) cells.push(key(gx + dx, gy + dy));
-    const current = (c: string) => this.town.ground[c] ?? (g.road.has(c) ? 'path' : 'grass');
-    const change = cells.filter((c) => paintable(g, c) && current(c) !== paint);
+    const current = (c: string) => (g.water.has(c) ? 'water' : this.town.ground[c] ?? (g.road.has(c) ? 'path' : 'grass'));
+    // Never water under the player's feet, which would leave them stranded in a pond.
+    const here = this.player ? worldToTile(this.player.x, this.player.y) : null;
+    const change = cells.filter((c) =>
+      current(c) !== paint &&
+      (paint === 'water' ? waterable(g, c) && c !== (here && key(here.gx, here.gy)) : paintable(g, c)));
     if (change.length === 0) return;
     if (!spend(change.length * GROUND_PRICE[paint])) {
       return this.message(`That costs ${change.length * GROUND_PRICE[paint]} coins. Write notes to earn more!`);
@@ -631,7 +734,19 @@ export default class OverworldScene extends Phaser.Scene {
       this.paintObjects.delete(c);
       if (paint === 'path') g.road.add(c);
       else g.road.delete(c);
-      if (paint === 'tall') this.paintObjects.set(c, drawTallGrass(this, g, c));
+      const [x, y] = c.split(',').map(Number);
+      // Water's shoreline is drawn with the town: a plain patch shows it until the stroke ends.
+      if (paint === 'water' || g.water.has(c)) this.waterChanged = true;
+      if (paint === 'water') {
+        g.water.add(c);
+        g.blocked.add(c);
+        this.paintObjects.set(c, [this.add.image(x * TILE, y * TILE, 'terrain-water').setOrigin(0, 0).setDepth(-925)]);
+      } else if (g.water.has(c)) {
+        g.water.delete(c);
+        g.blocked.delete(c);
+        this.paintObjects.set(c, [this.add.image(x * TILE, y * TILE, g.skin('terrain-grass')).setOrigin(0, 0).setDepth(-925)]);
+      }
+      if (paint === 'tall') this.paintObjects.set(c, [...(this.paintObjects.get(c) ?? []), ...drawTallGrass(this, g, c)]);
       this.town.ground[c] = paint;
     }
     if (this.ground) retileRoads(g, this.ground, change);

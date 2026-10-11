@@ -193,7 +193,7 @@ export function renderYards(scene: Phaser.Scene, g: WorldGrid) {
     for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]]) {
       const lx = x + dx, ly = y + dy;
       if (!isFree(g, lx, ly) || nearHouse(g, lx, ly, 1, 0, 1)) continue;
-      if (lamps.some(([ax, ay]) => Math.max(Math.abs(ax - lx), Math.abs(ay - ly)) < 9)) continue;
+      if (lamps.some(([ax, ay]) => Math.max(Math.abs(ax - lx), Math.abs(ay - ly)) < 14)) continue;
       if (g.lights.some((l) => Math.hypot(l.x / TILE - lx, l.y / TILE - ly) < 6)) continue;
       lampAt(scene, g, lx, ly);
       claim(lx, ly);

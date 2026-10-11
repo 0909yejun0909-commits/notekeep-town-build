@@ -7,36 +7,19 @@ import styles from './TownEditor.module.css';
 import { useWallet } from '@/lib/walletStore';
 import { replaceWorld, useVault } from '@/lib/vault/open';
 import {
-  BRUSH, GROUND_KINDS, PLOT_PRICE, TOWN_PROPS, type TownPropId, type TownPropSpec, type TownTool,
+  BRUSH, GROUND_KINDS, TOWN_PROPS, type TownPropId, type TownPropSpec, type TownTool,
 } from '@/lib/townEdits';
 
-type Tab = 'decorate' | 'ground' | 'land' | 'houses' | 'remove';
+type Tab = 'decorate' | 'ground' | 'houses' | 'remove';
 const TABS: Array<[Tab, string]> = [
   ['decorate', 'Decorate'],
   ['ground', 'Ground'],
-  ['land', 'Land'],
   ['houses', 'Houses'],
   ['remove', 'Pick up'],
 ];
 
-// The region the player is standing in (or nearest), where a new house goes.
-function regionHere(): string {
-  const game = (window as any).__game;
-  const grid = game?.scene.getScene('OverworldScene')?.grid;
-  const player = game?.registry.get('player');
-  if (!grid || !player) return '';
-  const tx = player.x / 16, ty = player.y / 16;
-  let best = '';
-  let bestD = Infinity;
-  for (const a of grid.areas) {
-    const dx = Math.max(a.originGx - tx, 0, tx - (a.originGx + a.width));
-    const dy = Math.max(a.originGy - ty, 0, ty - (a.originGy + a.height));
-    if (dx + dy < bestD) [best, bestD] = [a.region.id, dx + dy];
-  }
-  return best;
-}
 
-const GROUND_SWATCH: Record<string, string> = { path: '#e4a672', tall: '#265c42', grass: '#3e8948' };
+const GROUND_SWATCH: Record<string, string> = { path: '#e4a672', tall: '#265c42', water: '#0095e9', grass: '#3e8948' };
 
 const sameTool = (a: TownTool | null, b: TownTool) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -49,10 +32,6 @@ const ICONS = {
   bag: {
     rows: ['...OOO...', '..O...O..', '.OOOOOOO.', '.OYYYYYO.', '.OYYYYYO.', '.OYYYYYO.', '.OYYYYYO.', '..OOOOO..', '.........'],
     palette: { O: '#1f1418', Y: '#c8964f' } as Record<string, string>,
-  },
-  lock: {
-    rows: ['..OOOOO..', '.OO...OO.', '.O.....O.', '.O.....O.', 'OOOOOOOOO', 'OYYYYYYYO', 'OYYYOYYYO', 'OYYYYYYYO', 'OOOOOOOOO'],
-    palette: { O: '#1f1418', Y: '#f7c948' } as Record<string, string>,
   },
   house: {
     rows: ['....R....', '...RRR...', '..RRRRR..', '.RRRRRRR.', 'RRRRRRRRR', '.WWWWWWW.', '.WDDWWNW.', '.WDDWWWW.', '.WDDWWWW.'],
@@ -104,6 +83,10 @@ export default function TownEditor() {
   const { vault } = useVault();
   const [houseName, setHouseName] = useState('');
   const [adding, setAdding] = useState(false);
+  // A new house being placed in town: its name, and the folder's files if it brings notes in.
+  const [placing, setPlacing] = useState<{ name: string; files: File[] | null } | null>(null);
+  const placingRef = useRef(placing);
+  placingRef.current = placing;
   const folderInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -131,13 +114,41 @@ export default function TownEditor() {
     return () => clearTimeout(t);
   }, [note]);
 
-  // Esc finishes, like the other editors.
+  // Once the house has a spot in town, it's built there: the town is rebuilt around it, which
+  // ends building.
+  useEffect(() => {
+    const onSpot = async ({ gx, gy, regionId }: { gx: number; gy: number; regionId: string }) => {
+      const p = placingRef.current;
+      if (!p || !vault?.createHouse) return;
+      setAdding(true);
+      try {
+        const { world, houseId } = p.files && vault.importHouse
+          ? await vault.importHouse(regionId, p.name, p.files.map((f) => ({ path: f.webkitRelativePath.split('/').slice(1).join('/'), file: f })))
+          : await vault.createHouse(regionId, p.name);
+        bus.emit('pin-houses', { houseId, gx, gy });
+        setPlacing(null);
+        setHouseName('');
+        replaceWorld(world);
+        done();
+      } catch (err) {
+        setNote(err instanceof Error ? err.message : "Couldn't build that house.");
+        cancelPlacing();
+      } finally {
+        setAdding(false);
+      }
+    };
+    bus.on('house-spot', onSpot);
+    return () => bus.off('house-spot', onSpot);
+  }, [vault]);
+
+  // Esc puts down a house being placed, or else finishes, like the other editors.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
-      done();
+      if (placingRef.current) cancelPlacing();
+      else done();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -152,7 +163,14 @@ export default function TownEditor() {
     bus.emit('town-tool', { tool: t });
   }
 
+  function cancelPlacing() {
+    if (!placingRef.current) return;
+    setPlacing(null);
+    bus.emit('cancel-place-house', undefined);
+  }
+
   function done() {
+    cancelPlacing();
     setOpen(false);
     setTool(null);
     bus.emit('town-tool', { tool: null });
@@ -161,35 +179,24 @@ export default function TownEditor() {
 
   const keep = (e: React.MouseEvent) => e.preventDefault();
   const hint =
-    tab === 'land' ? `Click the dark land around your town to buy a plot for ${PLOT_PRICE} coins. Plots touching your town or your land can be bought.`
+    placing ? `Click the town where "${placing.name}" should go. It turns red where something's in the way. Esc to cancel.`
     : tab === 'houses' ? 'Houses are free. Start an empty one to write in, or bring in a folder of notes from your computer.'
     : !tool ? 'Pick something below, then click the town. Walk with the arrow keys to reach other spots.'
     : tool.kind === 'prop' ? 'Click the town to place it. Green tiles are free.'
     : tool.kind === 'ground' ? `Click or drag to paint ${BRUSH}x${BRUSH} tiles at a time.`
     : 'Click a decoration you placed to put it back in your bag. Placing it again is free.';
 
-  // A new house is a new folder: the town is rebuilt around it, which ends building.
-  async function addHouse(files?: FileList | null) {
+  // A new house is a new folder. First it's placed: the town shows it under the pointer.
+  function startHouse(files?: FileList | null) {
     if (!vault?.createHouse || adding) return;
-    const picked = files ? [...files] : [];
-    const folderName = picked[0]?.webkitRelativePath.split('/')[0] ?? '';
+    const picked = files ? [...files] : null;
+    const folderName = picked?.[0]?.webkitRelativePath.split('/')[0] ?? '';
     const name = houseName.trim() || folderName;
     if (!name) return setNote('Give the house a name first.');
-    setAdding(true);
-    try {
-      const { world } = files && vault.importHouse
-        ? await vault.importHouse(regionHere(), name, picked.map((f) => ({ path: f.webkitRelativePath.split('/').slice(1).join('/'), file: f })))
-        : await vault.createHouse(regionHere(), name);
-      setHouseName('');
-      replaceWorld(world);
-      done();
-    } catch (err) {
-      setNote(err instanceof Error ? err.message : "Couldn't build that house.");
-    } finally {
-      setAdding(false);
-    }
+    setNote(null);
+    setPlacing({ name, files: picked });
+    bus.emit('place-house', { name });
   }
-
   return (
     <div className={styles.bar} data-panel="town-editor">
       <div className={styles.head}>
@@ -201,6 +208,11 @@ export default function TownEditor() {
           </span>
         )}
         <span className={note ? `${styles.hint} ${styles.note}` : styles.hint}>{note ?? hint}</span>
+        {placing && (
+          <button className={styles.btn} onMouseDown={keep} onClick={cancelPlacing}>
+            Cancel
+          </button>
+        )}
         <button className={`${styles.btn} ${styles.done}`} data-tour="build-done" onMouseDown={keep} onClick={done}>
           Done
         </button>
@@ -214,10 +226,11 @@ export default function TownEditor() {
             className={`${styles.btn} ${tab === id ? styles.on : ''}`}
             onMouseDown={keep}
             onClick={() => {
+              cancelPlacing();
               setTab(id);
               if (id === 'remove') pick({ kind: 'remove' });
-              // Land is bought by clicking it with nothing in hand; houses aren't placed.
-              else if (id === 'land' || id === 'houses') {
+              // Houses aren't painted or placed like decorations: put the tool down.
+              else if (id === 'houses') {
                 if (tool) pick(tool);
               } else if (tool && tool.kind === 'remove') pick(tool);
             }}
@@ -272,19 +285,6 @@ export default function TownEditor() {
             );
           })}
 
-        {tab === 'land' && (
-          <div className={styles.item} data-tour="build-land">
-            <span className={styles.art}>
-              <PixelIcon name="lock" />
-            </span>
-            <span className={styles.name}>A plot</span>
-            <span className={styles.price}>
-              <Coin size={12} />
-              {PLOT_PRICE}
-            </span>
-          </div>
-        )}
-
         {tab === 'houses' && (
           <div className={styles.houses}>
             {vault?.createHouse ? (
@@ -300,11 +300,11 @@ export default function TownEditor() {
                   // Typed letters must not walk the player.
                   onKeyDown={(e) => {
                     e.stopPropagation();
-                    if (e.key === 'Enter') void addHouse();
+                    if (e.key === 'Enter') startHouse();
                   }}
                   onKeyUp={(e) => e.stopPropagation()}
                 />
-                <button className={styles.item} data-tour="new-house" disabled={adding} onMouseDown={keep} onClick={() => void addHouse()}>
+                <button className={styles.item} data-tour="new-house" disabled={adding} onMouseDown={keep} onClick={() => startHouse()}>
                   <span className={styles.art}>
                     <PixelIcon name="house" />
                   </span>
@@ -333,7 +333,7 @@ export default function TownEditor() {
                   multiple
                   {...{ webkitdirectory: '', directory: '' }}
                   onChange={(e) => {
-                    void addHouse(e.target.files);
+                    startHouse(e.target.files);
                     e.target.value = '';
                   }}
                 />

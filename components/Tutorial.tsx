@@ -9,7 +9,7 @@ import { topUpTutorial, useWallet } from '@/lib/walletStore';
 import { MORE_WORDS, MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { SHELF_W } from '@/lib/interiorLayout';
 import type { WorldModel } from '@/lib/types';
-import { PLOT_PRICE } from '@/lib/townEdits';
+import { PLOT, PLOT_PRICE } from '@/lib/townEdits';
 
 const TILE = 16;
 
@@ -57,6 +57,21 @@ function nearestHouseSprite(): any {
     if (d < bestD) [best, bestD] = [h, d];
   }
   return best;
+}
+
+// The plot of land for sale nearest the player that can be bought now.
+function nearestLand(): Rect | null {
+  const s = scene('OverworldScene');
+  const player = game()?.registry.get('player');
+  if (!s?.plots || !player || !sceneOn('OverworldScene')) return null;
+  let best: any = null;
+  let bestD = Infinity;
+  for (const p of s.plots) {
+    if (!s.plotShades?.has(p.id)) continue;
+    const d = Math.hypot((p.x + PLOT / 2) * TILE - player.x, (p.y + PLOT / 2) * TILE - player.y);
+    if (d < bestD) [best, bestD] = [p, d];
+  }
+  return best ? worldRect('OverworldScene', best.x * TILE, best.y * TILE, PLOT * TILE, PLOT * TILE) : null;
 }
 
 function nearestHouse(): Rect | null {
@@ -352,7 +367,7 @@ const STEPS: Step[] = [
     id: 'add-house',
     text: (
       <>
-        <p>Houses are free. Type a name and press Empty house for a new house to write in.</p>
+        <p>Houses are free. Type a name, press Empty house, then click the town where it should go. It shows red where something's in the way.</p>
         <p>
           Already have notes on your computer? From a folder brings a whole folder in as a house: its notes become books
           on the shelf and its folders become rooms.
@@ -364,30 +379,21 @@ const STEPS: Step[] = [
     lost: () => (buildOpen() ? null : 'build'),
   },
   {
-    id: 'land-tab',
-    text: <p>Your town can grow outwards too. Open the Land tab.</p>,
-    target: () => rectOf('[data-tour="build-tab-land"]'),
-    done: () => !!el('[data-tour="build-land"]'),
-    auto: () => click('[data-tour="build-tab-land"]'),
-    lost: () => (buildOpen() ? null : 'build'),
+    id: 'build-done',
+    text: <p>Click Done to stop building.</p>,
+    target: () => rectOf('[data-tour="build-done"]'),
+    done: () => !buildOpen(),
+    auto: () => click('[data-tour="build-done"]'),
   },
   {
     id: 'land',
     text: (
       <p>
         The dark grass around your town is land for sale, {PLOT_PRICE} coins a square plot. Point at it to see the lock,
-        and click to buy: then you can walk and build on it.
+        and click to buy it: then it&apos;s part of your town, to walk and build on.
       </p>
     ),
-    target: () => rectOf('[data-tour="build-land"]'),
-    lost: () => (buildOpen() ? null : 'build'),
-  },
-  {
-    id: 'build-done',
-    text: <p>Click Done to stop building.</p>,
-    target: () => rectOf('[data-tour="build-done"]'),
-    done: () => !buildOpen(),
-    auto: () => click('[data-tour="build-done"]'),
+    target: nearestLand,
   },
   {
     id: 'more',
@@ -398,8 +404,7 @@ const STEPS: Step[] = [
     id: 'home',
     text: (
       <p>
-        That&apos;s everything! Home takes you back to the title screen. Your town is there, ready for your first notes,
-        and you can open a folder of notes from there too.
+        That&apos;s everything! Home takes you back to the title screen, where Your town is ready for your first notes.
       </p>
     ),
     target: () => rectOf('[data-tour="home"]'),

@@ -124,11 +124,12 @@ export function buildGroves(scene: Phaser.Scene, g: WorldGrid) {
     for (let x = g.border; x < g.w - g.border; x++) {
       const density = fbm(seed, x, y, 8);
       const area = areaAt(g, x, y);
-      let p = density > 0.6 ? 0.24 : density > 0.5 ? 0.035 : 0.006;
+      // Kept sparse: the town is the player's to fill, so it starts with room to spare.
+      let p = density > 0.6 ? 0.12 : density > 0.5 ? 0.018 : 0.003;
       if (!area) p *= 1.6;
       // Thicken the woods just inside the ring so the forest edge frays into the meadow.
       const edge = ringDistance(g, x, y);
-      if (edge < 3) p = Math.max(p, [0.3, 0.16, 0.07][edge]);
+      if (edge < 3) p = Math.max(p, [0.2, 0.09, 0.03][edge]);
       if (rand01(seed ^ 1, x, y) >= p) continue;
 
       const biome: BiomeId = area?.region.biome ?? (fbm(seed ^ 2, x, y, 20) > 0.5 ? 'forest' : 'meadow');
@@ -207,7 +208,7 @@ export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
       const grove = fbm(g.seed ^ 0xc1, x, y, 8);
       const nearDoor = nearHouse(g, x, y, 1, 0, 2);
 
-      if (!bought && !nearDoor && grove > 0.5 && grove < 0.68 && roll < 0.07) {
+      if (!bought && !nearDoor && grove > 0.5 && grove < 0.68 && roll < 0.035) {
         const kind = mix(seed ^ 1, x, y) % 10;
         const swap = g.biome !== 'forest' && mix(seed ^ 17, x, y) % 3 === 0;
         if (kind < 4 && swap) standIn(x, y, g.biome === 'snow' ? SNOWMAN : BARREL_CACTUS);
@@ -220,7 +221,7 @@ export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
       }
 
       const bed = fbm(g.seed ^ 0x99, x, y, 7);
-      if (bed > 0.63) {
+      if (bed > 0.68) {
         if (roll < 0.34) {
           flat(x, y, 'decor', pick(DECOR.clusters, seed ^ 7, x, y));
         } else if (roll < 0.5) {
@@ -231,9 +232,9 @@ export function buildGroundCover(scene: Phaser.Scene, g: WorldGrid) {
         continue;
       }
 
-      if (roll < 0.012) flat(x, y, 'decor', pick(DECOR.clusters, seed ^ 11, x, y));
-      else if (roll < 0.018) flat(x, y, 'flowers', (mix(seed ^ 12, x, y) % 10) * 10 + (mix(seed ^ 13, x, y) % 5));
-      else if (roll < 0.05) {
+      if (roll < 0.006) flat(x, y, 'decor', pick(DECOR.clusters, seed ^ 11, x, y));
+      else if (roll < 0.009) flat(x, y, 'flowers', (mix(seed ^ 12, x, y) % 10) * 10 + (mix(seed ^ 13, x, y) % 5));
+      else if (roll < 0.03) {
         const anims = ['grass-anim-1', 'grass-anim-2', 'grass-anim-3', 'flower-grass-1', 'flower-grass-2', 'flower-grass-3', 'flower-grass-4', 'flower-grass-5', 'flower-grass-6'];
         const anim = pick(anims, seed ^ 14, x, y);
         sway(x, y, anim, anim, 8);
