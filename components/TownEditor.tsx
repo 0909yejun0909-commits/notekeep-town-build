@@ -80,7 +80,7 @@ export default function TownEditor() {
   const [bag, setBag] = useState<Partial<Record<TownPropId, number>>>({});
   const [note, setNote] = useState<string | null>(null);
   const wallet = useWallet();
-  const { vault } = useVault();
+  const { vault, setVault } = useVault();
   const [houseName, setHouseName] = useState('');
   const [adding, setAdding] = useState(false);
   // A new house being placed in town: its name, and the folder's files if it brings notes in.
@@ -128,6 +128,7 @@ export default function TownEditor() {
         bus.emit('pin-houses', { houseId, gx, gy });
         setPlacing(null);
         setHouseName('');
+        setVault({ ...vault, world });
         replaceWorld(world);
         done();
       } catch (err) {

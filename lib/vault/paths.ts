@@ -61,3 +61,8 @@ export function newHousePath(regionId: string, name: string, paths: string[], fo
   if (taken) throw new Error(`There's already a house called "${clean}".`);
   return path;
 }
+
+// Where `path` ends up when the folder `from` becomes `to`: moved if it's inside, else as is.
+export function movedPath(path: string, from: string, to: string): string {
+  return path === from || path.startsWith(`${from}/`) ? to + path.slice(from.length) : path;
+}

@@ -6,6 +6,7 @@ import {
   settleStudy, unlockPrice, withStreak, wordCount, type Inventory, type WalletData,
 } from './wallet';
 import { DEFAULT_APPEARANCE } from './characterCatalog';
+import { movedPath } from './vault/paths';
 
 export type Notice = { id: number; amount: number; text: string };
 export type WalletView = {
@@ -130,6 +131,13 @@ export function notesAdded(heads: Map<string, string>) {
     session.data = { ...session.data, record: session.data.record + extra };
     publish();
   }
+}
+
+// A house was renamed: its notes are the same notes under new paths, already counted.
+export function notesMoved(from: string, to: string) {
+  if (!session) return;
+  session.units = new Map([...session.units].map(([id, u]) => [movedPath(id, from, to), u]));
+  session.unsure = new Set([...session.unsure].map((id) => movedPath(id, from, to)));
 }
 
 export function stopWallet() {

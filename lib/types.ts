@@ -71,6 +71,11 @@ export type VaultHandle = {
   createHouse?: (regionId: string, name: string) => Promise<{ world: WorldModel; houseId: string }>;
   // Like createHouse, then copies `files` (paths inside a folder the player picked) into it.
   importHouse?: (regionId: string, name: string, files: { path: string; file: File }[]) => Promise<{ world: WorldModel; houseId: string }>;
+  // Optional: absent means houses can't be renamed. Moves the house's folder to `name` in the
+  // same region and returns the re-parsed world and the house's new id. Only houses
+  // canRenameHouse() allows: in a folder from the player's own computer, the ones made in town.
+  renameHouse?: (houseId: string, name: string) => Promise<{ world: WorldModel; houseId: string }>;
+  canRenameHouse?: (houseId: string) => boolean;
 };
 
 // Every piece's footprint in tiles: [cols, rows]. Both the track that PLACES

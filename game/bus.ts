@@ -48,6 +48,7 @@ type BusEvents = {
   'commit-interior-layout': { roomId: string; layout: InteriorLayout };
   'open-exterior-editor': {
     houseId: string;
+    name: string;
     currentVariant: number;
     currentMaterial: MaterialId;
     currentWallColor: WallColor;
@@ -72,6 +73,8 @@ type BusEvents = {
   'cancel-place-house': undefined;
   'house-spot': { gx: number; gy: number; regionId: string };
   'pin-houses': { houseId: string; gx: number; gy: number };
+  // A house's folder was renamed (components/ExteriorEditor.tsx): the town keeps it where it stands.
+  'house-renamed': { from: string; to: string };
   'commit-exterior-variant': {
     houseId: string;
     variant: number;

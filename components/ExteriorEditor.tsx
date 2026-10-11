@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { bus } from '@/game/bus';
 import { track } from '@/lib/achievementStore';
+import { moveHouseSaves } from '@/lib/houseRename';
+import { replaceWorld, useVault } from '@/lib/vault/open';
 import Coin from './Coin';
 import { unlockId } from '@/lib/wallet';
 import { unlockAll, unlockCost, useWallet } from '@/lib/walletStore';
@@ -21,6 +23,7 @@ const MATERIAL_LABEL: Record<MaterialId, string> = { wood: 'Wood', stone: 'Stone
 
 type Session = {
   houseId: string;
+  name: string;
   currentVariant: number;
   currentMaterial: MaterialId;
   currentWallColor: WallColor;
@@ -37,7 +40,7 @@ type Session = {
 const WALL_SWATCH: Record<WallColor, string> = { base: '#c9924f', green: '#4c8c4a', red: '#a4402a' };
 const ROOF_SWATCH: Record<RoofColor, string> = { black: '#2b2b2b', blue: '#3a6ea5', red: '#8a2f22' };
 
-const ROWS = ['shape', 'material', 'walls', 'roof', 'save', 'cancel'] as const;
+const ROWS = ['name', 'shape', 'material', 'walls', 'roof', 'save', 'cancel'] as const;
 const SAVE_ROW = ROWS.indexOf('save');
 
 function cycle<T>(list: readonly T[], current: T, dir: number): T {
@@ -52,7 +55,12 @@ export default function ExteriorEditor() {
   const [roofColor, setRoofColor] = useState<RoofColor>('black');
   const [error, setError] = useState<string | null>(null);
   const [row, setRow] = useState(0);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
   const wallet = useWallet();
+  const { vault, setVault } = useVault();
+  const renamable = !!session && !!vault?.renameHouse && !!vault.canRenameHouse?.(session.houseId);
 
   useEffect(() => {
     const onOpen = (payload: Session) => {
@@ -61,8 +69,10 @@ export default function ExteriorEditor() {
       setMaterial(payload.currentMaterial);
       setWallColor(payload.currentWallColor);
       setRoofColor(payload.currentRoofColor);
+      setName(payload.name);
       setError(null);
-      setRow(0);
+      setBusy(false);
+      setRow(1);
     };
     bus.on('open-exterior-editor', onOpen);
     return () => bus.off('open-exterior-editor', onOpen);
@@ -74,11 +84,18 @@ export default function ExteriorEditor() {
     if (!session) return;
     function onKey(e: KeyboardEvent) {
       const k = e.key;
+      // Typing a name: only Up/Down, Enter and Esc are the editor's; everything else types (and
+      // stays away from the game's own keys).
+      const typing = e.target === nameInput.current;
+      if (typing && k !== 'ArrowUp' && k !== 'ArrowDown' && k !== 'Enter' && k !== 'Escape') {
+        e.stopPropagation();
+        return;
+      }
       const left = k === 'ArrowLeft' || k === 'a' || k === 'A';
       const right = k === 'ArrowRight' || k === 'd' || k === 'D';
       if (k === 'Escape') close();
-      else if (k === 'ArrowUp' || k === 'w' || k === 'W') setRow((r) => (r + ROWS.length - 1) % ROWS.length);
-      else if (k === 'ArrowDown' || k === 's' || k === 'S') setRow((r) => (r + 1) % ROWS.length);
+      else if (k === 'ArrowUp' || k === 'w' || k === 'W') moveRow(-1);
+      else if (k === 'ArrowDown' || k === 's' || k === 'S') moveRow(1);
       else if (left || right) change(ROWS[row], left ? -1 : 1);
       else if (k === 'Enter' || k === ' ') {
         if (!e.repeat) (ROWS[row] === 'cancel' ? close : save)();
@@ -90,7 +107,16 @@ export default function ExteriorEditor() {
     return () => window.removeEventListener('keydown', onKey, true);
   });
 
+  // The name row takes the keyboard when the cursor reaches it, and gives it back when it leaves.
+  function moveRow(dir: number) {
+    const next = (row + dir + ROWS.length) % ROWS.length;
+    setRow(next);
+    if (ROWS[next] === 'name') nameInput.current?.focus();
+    else nameInput.current?.blur();
+  }
+
   function close() {
+    if (busy) return;
     setSession(null);
     bus.emit('close-exterior-editor', undefined);
   }
@@ -152,10 +178,10 @@ export default function ExteriorEditor() {
     return picked.filter(([k, v]) => costOf(k, v) > 0).map(([k, v]) => unlockId(k, v));
   }
 
-  function save() {
-    if (!session) return;
+  async function save() {
+    if (!session || busy) return;
     const total = upgrades().reduce((n, id) => n + unlockCost(wallet, id), 0);
-    if (total > 0 && !unlockAll(upgrades())) {
+    if (total > 0 && (!wallet.active || wallet.balance < total)) {
       setError(
         wallet.active
           ? `These upgrades cost ${total} coins and you have ${wallet.balance}. Write notes to earn more!`
@@ -163,12 +189,34 @@ export default function ExteriorEditor() {
       );
       return;
     }
+    // Renamed first, so a name that can't be used costs nothing.
+    let houseId = session.houseId;
+    if (renamable && vault?.renameHouse && name.trim() !== session.name) {
+      setBusy(true);
+      try {
+        const renamed = await vault.renameHouse(houseId, name);
+        if (renamed.houseId !== houseId) {
+          bus.emit('house-renamed', { from: houseId, to: renamed.houseId });
+          const fingerprint = (window as any).__game?.registry.get('vaultFingerprint') as string | undefined;
+          if (fingerprint) moveHouseSaves(fingerprint, houseId, renamed.houseId);
+          setVault({ ...vault, world: renamed.world });
+          replaceWorld(renamed.world);
+          houseId = renamed.houseId;
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Couldn't rename the house.");
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+    }
+    if (total > 0) unlockAll(upgrades());
     const before = {
       variant: session.currentVariant, material: session.currentMaterial,
       wallColor: session.currentWallColor, roofColor: session.currentRoofColor,
     };
     if (exteriorChanged(before, { variant, material, wallColor, roofColor })) track('exteriorsChanged');
-    bus.emit('commit-exterior-variant', { houseId: session.houseId, variant, material, wallColor, roofColor });
+    bus.emit('commit-exterior-variant', { houseId, variant, material, wallColor, roofColor });
     setSession(null);
     bus.emit('close-exterior-editor', undefined);
   }
@@ -223,18 +271,40 @@ export default function ExteriorEditor() {
           <div className={styles.rows}>
             <div className={styles.row} onMouseEnter={() => setRow(0)}>
               <span className={cursor(0)} />
-              <span className={styles.label}>Shape</span>
-              {arrows('shape', `${variant + 1} of ${HOUSE_VARIANTS.length}`)}
+              <span className={styles.label}>Name</span>
+              {renamable ? (
+                <input
+                  ref={nameInput}
+                  className={styles.name}
+                  value={name}
+                  maxLength={60}
+                  spellCheck={false}
+                  data-tour="house-name-edit"
+                  disabled={busy}
+                  onFocus={() => setRow(0)}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              ) : (
+                <span className={styles.value} title="Houses from a folder of your own keep their folder's name.">
+                  {session.name}
+                </span>
+              )}
             </div>
 
             <div className={styles.row} onMouseEnter={() => setRow(1)}>
               <span className={cursor(1)} />
-              <span className={styles.label}>Material</span>
-              {arrows('material', MATERIAL_LABEL[material])}
+              <span className={styles.label}>Shape</span>
+              {arrows('shape', `${variant + 1} of ${HOUSE_VARIANTS.length}`)}
             </div>
 
             <div className={styles.row} onMouseEnter={() => setRow(2)}>
               <span className={cursor(2)} />
+              <span className={styles.label}>Material</span>
+              {arrows('material', MATERIAL_LABEL[material])}
+            </div>
+
+            <div className={styles.row} onMouseEnter={() => setRow(3)}>
+              <span className={cursor(3)} />
               <span className={styles.label}>Walls</span>
               <div className={styles.options}>
                 {wallChoices.map((c) => (
@@ -254,8 +324,8 @@ export default function ExteriorEditor() {
               </div>
             </div>
 
-            <div className={styles.row} data-tour="house-roof" onMouseEnter={() => setRow(3)}>
-              <span className={cursor(3)} />
+            <div className={styles.row} data-tour="house-roof" onMouseEnter={() => setRow(4)}>
+              <span className={cursor(4)} />
               <span className={styles.label}>Roof</span>
               <div className={styles.options}>
                 {ROOF_COLORS.map((c) => (
@@ -284,6 +354,7 @@ export default function ExteriorEditor() {
                     className={`${styles.action} ${i === row ? styles.current : ''}`}
                     data-tour={which === 'save' ? 'house-save' : undefined}
                     onMouseDown={keep}
+                    disabled={busy}
                     onClick={which === 'save' ? save : close}
                   >
                     {which === 'cancel' ? 'Cancel' : total > 0 ? 'Buy and save' : 'Save'}

@@ -375,6 +375,7 @@ export default class OverworldScene extends Phaser.Scene {
     bus.on('place-house', this.onPlaceHouse);
     bus.on('cancel-place-house', this.endPlacing);
     bus.on('pin-houses', this.onPinHouses);
+    bus.on('house-renamed', this.onHouseRenamed);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPlacePointer);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPlacePointer);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onBuildPointer);
@@ -396,6 +397,7 @@ export default class OverworldScene extends Phaser.Scene {
       bus.off('place-house', this.onPlaceHouse);
       bus.off('cancel-place-house', this.endPlacing);
       bus.off('pin-houses', this.onPinHouses);
+      bus.off('house-renamed', this.onHouseRenamed);
       this.placing = null;
     });
   }
@@ -574,6 +576,16 @@ export default class OverworldScene extends Phaser.Scene {
     for (const r of this.grid?.houses ?? []) this.town.houses[r.houseId] ??= [r.gx, r.gy];
     this.town.houses[houseId] = [gx, gy];
     this.endPlacing();
+    this.saveTown();
+  };
+
+  // Renamed, the house would otherwise be laid out afresh under its new name, and the others
+  // with it: every house is pinned where it stands first.
+  private onHouseRenamed = ({ from, to }: { from: string; to: string }) => {
+    for (const r of this.grid?.houses ?? []) this.town.houses[r.houseId] ??= [r.gx, r.gy];
+    const at = this.town.houses[from];
+    delete this.town.houses[from];
+    if (at) this.town.houses[to] = at;
     this.saveTown();
   };
 
@@ -758,6 +770,7 @@ export default class OverworldScene extends Phaser.Scene {
     this.editingExterior = true;
     bus.emit('open-exterior-editor', {
       houseId: house.id,
+      name: house.name,
       currentVariant: house.variant,
       currentMaterial: house.material,
       currentWallColor: house.wallColor,

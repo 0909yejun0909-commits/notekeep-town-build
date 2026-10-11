@@ -3,11 +3,11 @@
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
 import type { InteriorLayout, NoteRef, Room, VaultHandle, WorldModel } from '@/lib/types';
 import { HOUSE_MARKER, isNotePath, makeLinkResolver, parseVault, ROOT_ID } from '@/lib/vault/parse';
-import { foldersOf, newHousePath, newNotePath, newRoomPath } from '@/lib/vault/paths';
+import { foldersOf, movedPath, newHousePath, newNotePath, newRoomPath } from '@/lib/vault/paths';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
-import { notesAdded, startWallet, stopWallet } from '@/lib/walletStore';
+import { notesAdded, notesMoved, startWallet, stopWallet } from '@/lib/walletStore';
 import { HEAD_BYTES, STARTER_GRANT, TOWN_GRANT } from '@/lib/wallet';
 import { startAchievements, stopAchievements } from '@/lib/achievementStore';
 import type { TownEdits } from '@/lib/townEdits';
@@ -201,6 +201,31 @@ async function writeFile(handle: FileSystemFileHandle, data: string | Blob) {
   await writable.close();
 }
 
+// Copies everything in `src` into `dst` (the house marker too), collecting the new file
+// handles by their path under `prefix`.
+async function copyDir(src: FileSystemDirectoryHandle, dst: FileSystemDirectoryHandle, prefix: string, out: Map<string, FileSystemFileHandle>) {
+  for await (const [name, handle] of (src as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
+    const path = `${prefix}/${name}`;
+    if (handle.kind === 'directory') {
+      await copyDir(handle as FileSystemDirectoryHandle, await dst.getDirectoryHandle(name, { create: true }), path, out);
+    } else {
+      const target = await dst.getFileHandle(name, { create: true });
+      await writeFile(target, await (handle as FileSystemFileHandle).getFile());
+      out.set(path, target);
+    }
+  }
+}
+
+const parentOf = (path: string) => path.slice(0, path.lastIndexOf('/'));
+const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+
+// The path a house is renamed to: its region, the new name, and no clash with any other
+// folder or note (its own old name doesn't count).
+function renamedHousePath(houseId: string, name: string, paths: string[], folders: string[]): string {
+  const outside = (p: string) => movedPath(p, houseId, '') === p;
+  return newHousePath(parentOf(houseId), name, paths.filter(outside), folders.filter(outside));
+}
+
 // Browser storage can refuse names outside plain ASCII, so names are stored escaped
 // (encodeURIComponent) and shown as typed. Only what this file's vault code uses is wrapped.
 function escapedDir(dir: FileSystemDirectoryHandle, name: string): FileSystemDirectoryHandle {
@@ -329,6 +354,15 @@ async function openFolder(
     return path;
   };
 
+  // Folders can't be renamed in place, so a move is a copy, then the old one deleted; nothing
+  // is deleted unless the copy finished.
+  const moveFolder = async (from: string, to: string) => {
+    const copied = new Map<string, FileSystemFileHandle>();
+    await copyDir(await dirAt(from), await dirAt(to, true), to, copied);
+    await (await dirAt(parentOf(from))).removeEntry(baseName(from), { recursive: true });
+    return copied;
+  };
+
   return {
     world: current,
     readNote: async (id) => (await getFile(id)).text(),
@@ -388,6 +422,37 @@ async function openFolder(
       // Bringing notes in isn't writing them: they count as already paid for.
       notesAdded(added);
       return { world: await reparse(), houseId };
+    },
+    // Only houses made in town: renaming a folder of the player's own would change it in
+    // Obsidian too.
+    canRenameHouse: (houseId) => houses.includes(houseId),
+    renameHouse: async (houseId, houseName) => {
+      if (!houses.includes(houseId)) throw new Error("This house is a folder of your own, so it can't be renamed here.");
+      const to = renamedHousePath(houseId, houseName, paths, folders);
+      if (to === houseId) return { world: current, houseId };
+      await ensureWritable(dir);
+      // A name that only changes case would be the same folder on most computers: go by way
+      // of a temporary one.
+      const copied = to.toLowerCase() === houseId.toLowerCase()
+        ? await moveFolder(houseId, `${to} (renaming)`).then(() => moveFolder(`${to} (renaming)`, to))
+        : await moveFolder(houseId, to);
+      const move = (p: string) => movedPath(p, houseId, to);
+      for (const p of paths) {
+        const next = move(p);
+        if (next === p) continue;
+        files.delete(p);
+        const handle = copied.get(next);
+        if (handle) files.set(next, handle);
+        const head = heads.get(p);
+        heads.delete(p);
+        if (head !== undefined) heads.set(next, head);
+      }
+      paths.splice(0, paths.length, ...paths.map(move));
+      folders.splice(0, folders.length, ...folders.map(move));
+      houses.splice(0, houses.length, ...houses.map(move));
+      resolve = makeLinkResolver(paths);
+      notesMoved(houseId, to);
+      return { world: await reparse(), houseId: to };
     },
   };
 }
@@ -469,6 +534,23 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
       resolve = makeLinkResolver(paths);
       notesAdded(added);
       return { world: await reparse(), houseId };
+    },
+    canRenameHouse: (houseId) => houseId.split('/').length === 2 && folders.includes(houseId),
+    renameHouse: async (houseId, houseName) => {
+      const to = renamedHousePath(houseId, houseName, paths, folders);
+      if (to === houseId) return { world: current, houseId };
+      const move = (p: string) => movedPath(p, houseId, to);
+      for (const p of paths) {
+        if (move(p) === p) continue;
+        files[move(p)] = files[p];
+        delete files[p];
+      }
+      paths.splice(0, paths.length, ...paths.map(move));
+      folders.splice(0, folders.length, ...folders.map(move));
+      houses.splice(0, houses.length, ...houses.map(move));
+      resolve = makeLinkResolver(paths);
+      notesMoved(houseId, to);
+      return { world: await reparse(), houseId: to };
     },
   };
 }

@@ -76,6 +76,21 @@
   font-size: 21px;
 }
 
+.name {
+  width: 220px;
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 21px;
+  color: #3f2832;
+  background: #fff7e6;
+  border: 3px solid #3f2832;
+  outline: none;
+}
+
+.name:focus {
+  box-shadow: 0 0 0 3px #e69c69;
+}
+
 .options {
   display: flex;
   align-items: center;
