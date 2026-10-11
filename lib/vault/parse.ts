@@ -11,7 +11,7 @@ import {
 } from '@/lib/houseCatalog';
 import { foldersOf } from '@/lib/vault/paths';
 
-const ROOT_ID = '.';
+export const ROOT_ID = '.';
 const MAIN = 'Main';
 const ROOM_CLEAR_ROWS = 3;
 const NOTE_EXT = /\.md$/i;
@@ -35,6 +35,9 @@ function comparePaths(a: string, b: string) {
   if (al !== bl) return al < bl ? -1 : 1;
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+// The hidden file a house made in town carries, so its folder is a house while still empty.
+export const HOUSE_MARKER = '.notekeep-house';
 
 export function isNotePath(path: string): boolean {
   if (!NOTE_EXT.test(path) || SKIP_NOTE.test(path)) return false;
@@ -224,6 +227,7 @@ export async function parseVault(
   paths: string[],
   readHead: (path: string) => Promise<string>,
   folders: string[] = [],
+  houses: string[] = [],
 ): Promise<WorldModel> {
   const notePaths = paths.filter(isNotePath).sort(comparePaths);
   const heads = await mapLimit(notePaths, 16, async (p) => {
@@ -261,6 +265,15 @@ export async function parseVault(
   });
 
   const withFiles = new Set(foldersOf(paths));
+  // A house added in town (`houses`, marked with HOUSE_MARKER) is a house before it has any
+  // notes, so it can be walked into and written in. Other empty folders stay out of town.
+  for (const folder of [...houses].sort(comparePaths)) {
+    const segs = folder.split('/');
+    if (segs.length !== 2 || segs.some((s) => s.startsWith('.'))) continue;
+    let region = regions.get(segs[0]);
+    if (!region) regions.set(segs[0], (region = { id: segs[0], name: segs[0], houses: new Map() }));
+    if (!region.houses.has(folder)) region.houses.set(folder, { id: folder, name: segs[1], rooms: new Map() });
+  }
   for (const folder of folders) {
     const segs = folder.split('/');
     if (segs.length !== 3 || withFiles.has(folder) || segs.some((s) => s.startsWith('.'))) continue;

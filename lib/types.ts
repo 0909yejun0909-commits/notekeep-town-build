@@ -66,6 +66,11 @@ export type VaultHandle = {
   // Optional: absent means rooms can't be added (multiplayer guest). Creates the folder
   // `<houseId>/<name>` and returns the re-parsed world that contains the new, empty room.
   createRoom?: (houseId: string, name: string) => Promise<{ world: WorldModel; room: Room }>;
+  // Optional: absent means houses can't be added. Creates an empty house folder in region
+  // `regionId` (or the vault's first region folder) and returns the re-parsed world.
+  createHouse?: (regionId: string, name: string) => Promise<{ world: WorldModel; houseId: string }>;
+  // Like createHouse, then copies `files` (paths inside a folder the player picked) into it.
+  importHouse?: (regionId: string, name: string, files: { path: string; file: File }[]) => Promise<{ world: WorldModel; houseId: string }>;
 };
 
 // Every piece's footprint in tiles: [cols, rows]. Both the track that PLACES

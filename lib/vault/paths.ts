@@ -43,3 +43,21 @@ export function newRoomPath(houseId: string, name: string, paths: string[], fold
   if (taken) throw new Error(`"${clean}" is already a folder in this house.`);
   return path;
 }
+
+// Folder path for a new house in region folder `regionId`. Like a room, any folder or file of
+// that name is taken.
+export function newHousePath(regionId: string, name: string, paths: string[], folders: string[]): string {
+  const clean = cleanName(name);
+  if (!clean || clean.startsWith('.')) throw new Error('Give the house a name.');
+  if (clean.length > 60) throw new Error('That name is too long.');
+  const path = `${regionId}/${clean}`;
+  const lower = path.toLowerCase();
+  const taken =
+    folders.some((f) => f.toLowerCase() === lower) ||
+    paths.some((p) => {
+      const pl = p.toLowerCase();
+      return pl === lower || pl.startsWith(`${lower}/`);
+    });
+  if (taken) throw new Error(`There's already a house called "${clean}".`);
+  return path;
+}

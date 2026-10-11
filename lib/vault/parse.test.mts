@@ -48,6 +48,12 @@ test('empty folders never create a region or a house', async () => {
   assert.deepEqual(world.regions[0].houses.map((h) => h.id), ['R/H']);
 });
 
+test('a house made in town is a house before it has notes, with an empty Main room', async () => {
+  const world = await parseVault('V', ['R/H/a.md'], blank, ['R/New', 'Town/Home'], ['R/New', 'Town/Home']);
+  assert.deepEqual(world.regions.map((r) => [r.id, r.houses.map((h) => h.id)]), [['R', ['R/H', 'R/New']], ['Town', ['Town/Home']]]);
+  assert.deepEqual(world.regions[0].houses[1].rooms.map((r) => [r.id, r.name, r.notes.length]), [['R/New', 'Main', 0]]);
+});
+
 test('a big folder stays one room instead of splitting', async () => {
   const paths = Array.from({ length: 35 }, (_, i) => `R/H/Big/n${String(i).padStart(2, '0')}.md`);
   const rooms = await roomsOf('R/H', paths);
