@@ -238,3 +238,100 @@ export function runsOf(layout: Layout): Run[] {
   }
   return runs;
 }
+
+// The shortest list of keeps, deletes and inserts turning `a` into `b` (Myers' diff), or
+// null past `maxD` changes.
+function diffOps(a: string, b: string, maxD: number): ('k' | 'd' | 'i')[] | null {
+  const n = a.length;
+  const m = b.length;
+  const off = n + m + 1;
+  const v = new Int32Array(2 * off + 1);
+  const trace: Int32Array[] = [];
+  let found = -1;
+  for (let d = 0; d <= Math.min(n + m, maxD) && found < 0; d++) {
+    trace.push(v.slice());
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[x] === b[y]) {
+        x++;
+        y++;
+      }
+      v[off + k] = x;
+      if (x >= n && y >= m) {
+        found = d;
+        break;
+      }
+    }
+  }
+  if (found < 0) return null;
+  const ops: ('k' | 'd' | 'i')[] = [];
+  let x = n;
+  let y = m;
+  for (let d = found; d >= 0; d--) {
+    const vd = trace[d];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && vd[off + k - 1] < vd[off + k + 1]) ? k + 1 : k - 1;
+    const prevX = vd[off + prevK];
+    const prevY = prevX - prevK;
+    while (x > prevX && y > prevY) {
+      ops.push('k');
+      x--;
+      y--;
+    }
+    if (d > 0) ops.push(x === prevX ? 'i' : 'd');
+    x = prevX;
+    y = prevY;
+  }
+  return ops.reverse();
+}
+
+// The editor's text rewritten wholesale to `next` (a table lined up, rows and columns added):
+// every character that stays keeps its tags around it, as worked out by a diff. Added spaces
+// go outside a mark that ends there, so padding never stretches a highlight. Null if the
+// result wouldn't show exactly `next`, so nothing is ever changed in a way that can't be
+// carried over.
+export function rewriteVisible(raw: string, next: string): string | null {
+  const layout = layoutOf(raw);
+  const old = layout.visible;
+  if (next === old) return raw;
+  let pre = 0;
+  while (pre < old.length && pre < next.length && old[pre] === next[pre]) pre++;
+  let suf = 0;
+  while (suf < old.length - pre && suf < next.length - pre && old[old.length - 1 - suf] === next[next.length - 1 - suf]) suf++;
+  const mid = diffOps(old.slice(pre, old.length - suf), next.slice(pre, next.length - suf), 2000);
+  if (!mid) return null;
+  const ops = [...Array(pre).fill('k'), ...mid, ...Array(suf).fill('k')] as ('k' | 'd' | 'i')[];
+
+  // The tags before each shown character, and those after the last.
+  const tagsBefore: string[][] = Array.from({ length: old.length + 1 }, () => []);
+  for (const h of layout.hidden) tagsBefore[toVisible(layout, h.start)].push(raw.slice(h.start, h.end));
+
+  let out = '';
+  let i = 0; // in the old text
+  let j = 0; // in the new
+  let pending = '';
+  const arrive = () => {
+    const tags = tagsBefore[i];
+    if (pending && /^\s+$/.test(pending)) {
+      let c = 0;
+      while (c < tags.length && /^<\//.test(tags[c])) c++;
+      out += tags.slice(0, c).join('') + pending + tags.slice(c).join('');
+    } else out += pending + tags.join('');
+    pending = '';
+  };
+  for (const op of ops) {
+    if (op === 'i') {
+      pending += next[j++];
+      continue;
+    }
+    arrive();
+    if (op === 'k') {
+      out += old[i];
+      j++;
+    }
+    i++;
+  }
+  arrive();
+  return layoutOf(out).visible === next ? out : null;
+}

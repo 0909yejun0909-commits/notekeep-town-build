@@ -1,3 +1,5 @@
+import { NEW_TABLE, NEW_TABLE_SELECT } from './markdownTable';
+
 // Notion-style "/" commands for the note editor. Notes are Markdown files, so every command
 // writes Markdown: a block command turns the caret's line into that block, an insert command
 // drops something in where the "/" was typed.
@@ -7,7 +9,7 @@ export type SlashCommand = {
   label: string;
   hint: string;
   aliases: string[];
-} & ({ prefix: string } | { insert: (today: Date) => string; caretAt?: number });
+} & ({ prefix: string } | { insert: (today: Date) => string; caretAt?: number; select?: number });
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'text', label: 'Text', hint: 'Plain text', aliases: ['plain', 'paragraph', 'p'], prefix: '' },
@@ -23,7 +25,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'code', label: 'Code block', hint: '```', aliases: ['code', 'snippet'], insert: () => '```\n\n```\n', caretAt: 4 },
   {
     id: 'table', label: 'Table', hint: '| |', aliases: ['table', 'grid'],
-    insert: () => '| Column | Column |\n| --- | --- |\n|  |  |\n', caretAt: 2,
+    insert: () => NEW_TABLE, caretAt: NEW_TABLE_SELECT[0], select: NEW_TABLE_SELECT[1] - NEW_TABLE_SELECT[0],
   },
   { id: 'date', label: 'Today', hint: 'date', aliases: ['date', 'today', 'now'], insert: (d) => d.toISOString().slice(0, 10) },
 ];
@@ -53,10 +55,11 @@ export function matchCommands(query: string): SlashCommand[] {
 // Any block marker a line already starts with, so a command replaces it instead of stacking.
 const BLOCK_PREFIX = /^(#{1,6} |> 💡 |> |- \[[ xX]\] |[-*+] |\d+[.)] )/;
 
-// The note after running `cmd` on the "/query" from `start` to `caret`, and where the caret goes.
+// The note after running `cmd` on the "/query" from `start` to `caret`, and where the caret
+// goes (with `selEnd`, what's selected: a placeholder to type over).
 export function applyCommand(
   text: string, start: number, caret: number, cmd: SlashCommand, today = new Date(),
-): { text: string; caret: number } {
+): { text: string; caret: number; selEnd?: number } {
   const without = text.slice(0, start) + text.slice(caret);
   if ('prefix' in cmd) {
     const lineStart = without.lastIndexOf('\n', start - 1) + 1;
@@ -72,7 +75,7 @@ export function applyCommand(
   ins = lead + ins;
   const next = without.slice(0, start) + ins + without.slice(start);
   const at = start + lead.length + (cmd.caretAt ?? ins.length - lead.length);
-  return { text: next, caret: at };
+  return cmd.select ? { text: next, caret: at, selEnd: at + cmd.select } : { text: next, caret: at };
 }
 
 // Enter at the end of a list item starts the next item; Enter on an empty item ends the list.

@@ -29,8 +29,10 @@ import {
 } from '@/lib/noteMarks';
 import { BOOK_SRC, paperBookUrl } from '@/lib/paperBook';
 import Coin from './Coin';
-import { applyCommand, continueList, matchCommands, slashAt, type SlashCommand } from '@/lib/slashCommands';
-import { editVisible, layoutOf, runsOf, toRaw, toVisible } from '@/lib/noteEditorText';
+import { applyCommand, continueList, matchCommands, slashAt, SLASH_COMMANDS, type SlashCommand } from '@/lib/slashCommands';
+import { editVisible, layoutOf, rewriteVisible, runsOf, toRaw, toVisible } from '@/lib/noteEditorText';
+import { editTable, nextCell, nextRow, tableAt, type TableEdit, type TableOp } from '@/lib/markdownTable';
+import { toggleTaskAt } from '@/lib/noteTasks';
 
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'mov'];
 
@@ -386,6 +388,9 @@ const READER_CSS = `
     font-family: Georgia, serif; font-size: 15px; font-weight: 700; color: ${INK}; line-height: 1;
   }
   .note-tool:hover { background: ${INK_WASH}; }
+  .note-tool-text { font-family: ${PIXEL_FONT}; font-size: 14px; font-weight: 400; padding: 0 6px; white-space: nowrap; }
+  .note-tools-label { font-family: ${PIXEL_FONT}; font-size: 14px; color: ${INK_SOFT}; padding: 0 4px; cursor: help; }
+  .note-prose li.task-list-item input[type=checkbox]:not(:disabled) { cursor: pointer; }
   .note-float { position: absolute; z-index: 60; transform: translate(-50%, calc(-100% - 8px)); }
   .note-float.below { transform: translate(-50%, 8px); }
 `;
@@ -412,6 +417,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   // Where the caret is in the draft itself, among the tags the editor doesn't show; forgotten
   // when the caret is moved (lib/noteEditorText.ts editVisible()).
   const caretRef = useRef<number | null>(null);
+  // The caret in the shown text, for the table bar: it shows while the caret is in a table.
+  const [caretAt, setCaretAt] = useState(0);
   const pendingSel = useRef<[number, number] | null>(null);
   const history = useRef<{ past: EditSnap[]; future: EditSnap[]; typedAt: number; burstAt: number }>({ past: [], future: [], typedAt: 0, burstAt: 0 });
   const mirrorRef = useRef<HTMLDivElement>(null);
@@ -460,6 +467,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const commitDraft = useCallback((next: string, sel: [number, number], typing: boolean, caret: number | null = null) => {
     pendingSel.current = sel;
     caretRef.current = caret;
+    setCaretAt(sel[0]);
     if (next === draftRef.current) {
       selRef.current = sel;
       setDraft(next);
@@ -487,6 +495,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     (redo ? h.past : h.future).push({ raw: draftRef.current, sel: selRef.current });
     h.typedAt = 0;
     caretRef.current = null;
+    setCaretAt(snap.sel[0]);
     draftRef.current = snap.raw;
     selRef.current = snap.sel;
     pendingSel.current = snap.sel;
@@ -517,6 +526,23 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     t.addEventListener('beforeinput', onBefore);
     return () => t.removeEventListener('beforeinput', onBefore);
   }, [editing, undo]);
+
+  // The caret moved, however it was moved (React's onSelect misses a selection set from code).
+  const noteSelection = useCallback((t: HTMLTextAreaElement) => {
+    const sel: [number, number] = [t.selectionStart, t.selectionEnd];
+    if (sel[0] !== selRef.current[0] || sel[1] !== selRef.current[1]) caretRef.current = null;
+    selRef.current = sel;
+    setCaretAt(sel[0]);
+  }, []);
+  useEffect(() => {
+    if (!editing) return;
+    const onChange = () => {
+      const t = textareaRef.current;
+      if (t && document.activeElement === t) noteSelection(t);
+    };
+    document.addEventListener('selectionchange', onChange);
+    return () => document.removeEventListener('selectionchange', onChange);
+  }, [editing, noteSelection]);
 
   // The "/" menu scrolls to keep the highlighted command in sight as the arrow keys move it.
   useLayoutEffect(() => {
@@ -664,18 +690,10 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     window.getSelection()?.removeAllRanges();
   }, [page]);
 
-  const markWhileReading = useCallback(
-    async (op: MarkOp) => {
-      const range = readingSelection();
-      const root = pagesRef.current;
-      const map = contentMapRef.current;
-      if (!range || !root || !map || raw === null || !note || !vault?.writeNote) return;
-      const segs = selectSegments(raw, selectedPieces(root, range, map));
-      window.getSelection()?.removeAllRanges();
-      setFloatAt(null);
-      if (segs.length === 0) return;
-      const next = op(raw, segs, existingMarks(root, map), strongRanges(root, map)).text;
-      if (next === raw) return;
+  // A change made while reading (a highlight, a ticked box): shown, then saved.
+  const saveWhileReading = useCallback(
+    async (next: string) => {
+      if (!note || !vault?.writeNote) return;
       setRaw(next);
       await display(next, () => false);
       setSaveState('saving');
@@ -689,8 +707,38 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         setSaveError(err instanceof Error ? err.message : 'Could not save');
       }
     },
-    [readingSelection, raw, note, vault, display],
+    [note, vault, display],
   );
+
+  const markWhileReading = useCallback(
+    async (op: MarkOp) => {
+      const range = readingSelection();
+      const root = pagesRef.current;
+      const map = contentMapRef.current;
+      if (!range || !root || !map || raw === null || !note || !vault?.writeNote) return;
+      const segs = selectSegments(raw, selectedPieces(root, range, map));
+      window.getSelection()?.removeAllRanges();
+      setFloatAt(null);
+      if (segs.length === 0) return;
+      const next = op(raw, segs, existingMarks(root, map), strongRanges(root, map)).text;
+      if (next !== raw) await saveWhileReading(next);
+    },
+    [readingSelection, raw, note, vault, display, saveWhileReading],
+  );
+
+  // A to-do's box clicked. Reading, it's saved there and then; editing, it's part of the draft.
+  const toggleTask = (box: HTMLInputElement) => {
+    const offset = Number(box.closest<HTMLElement>('li[data-src]')?.dataset.src);
+    if (!Number.isFinite(offset)) return;
+    if (editingRef.current) {
+      const next = toggleTaskAt(draftRef.current, previewMap.toSource(offset, 'start'));
+      if (next !== null) commitDraft(next, selRef.current, false);
+      return;
+    }
+    const map = contentMapRef.current;
+    const next = raw !== null && map ? toggleTaskAt(raw, map.toSource(offset, 'start')) : null;
+    if (next !== null) void saveWhileReading(next);
+  };
 
   // ---- Editing ----
 
@@ -825,6 +873,24 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         </a>
       );
     },
+    // List items keep where they start in the note, so a to-do's box knows which line it ticks.
+    li: ({ node, className, children }: { node?: Element; className?: string; children?: React.ReactNode }) => (
+      <li className={className} data-src={node?.position?.start.offset}>
+        {children}
+      </li>
+    ),
+    input: ({ type, checked }: { type?: string; checked?: boolean }) =>
+      type === 'checkbox' ? (
+        <input
+          type="checkbox"
+          checked={!!checked}
+          disabled={!canWrite}
+          title={canWrite ? (checked ? 'Untick' : 'Tick') : undefined}
+          // Ticking a box mustn't take the keyboard from the editor.
+          onMouseDown={(e) => e.preventDefault()}
+          onChange={(e) => toggleTask(e.currentTarget)}
+        />
+      ) : null,
     img: (props: { src?: string | Blob; alt?: string; title?: string }) => {
       const { src, alt, title } = props;
       const url = typeof src === 'string' ? src : undefined;
@@ -858,10 +924,31 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     setSlash((prev) => ({ ...at, x, y, index: prev && prev.start === at.start && prev.query === at.query ? prev.index : 0 }));
   };
 
-  // The shown text becomes `next` (a slash command, a list carried on), caret at `caret`.
-  const replaceText = (next: string, caret: number) => {
-    const r = editVisible(draftRef.current, next, caret, caret, caretRef.current);
+  // The shown text becomes `next` (a slash command, a list carried on), caret at `caret`, or
+  // [caret, selEnd] selected.
+  const replaceText = (next: string, caret: number, selEnd = caret) => {
+    const r = editVisible(draftRef.current, next, caret, selEnd, caretRef.current);
     commitDraft(r.raw, r.sel, false, r.caret);
+  };
+
+  // A table moved about or lined up: rewritten whole, every highlight kept on its words.
+  const applyTable = (edit: TableEdit | null) => {
+    if (!edit) return;
+    const next = rewriteVisible(draftRef.current, edit.text);
+    if (next === null) return;
+    textareaRef.current?.focus({ preventScroll: true });
+    commitDraft(next, edit.sel, false);
+  };
+
+  const tableOp = (op: TableOp) => applyTable(editTable(editorLayout.visible, caretAt, op));
+
+  const insertTable = () => {
+    const t = textareaRef.current;
+    const cmd = SLASH_COMMANDS.find((c) => c.id === 'table')!;
+    if (!t) return;
+    const r = applyCommand(t.value, t.selectionStart, t.selectionStart, cmd);
+    t.focus({ preventScroll: true });
+    replaceText(r.text, r.caret, r.selEnd);
   };
 
   const runSlash = (cmd: SlashCommand) => {
@@ -870,7 +957,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     const r = applyCommand(t.value, slash.start, t.selectionStart, cmd);
     setSlash(null);
     t.focus({ preventScroll: true });
-    replaceText(r.text, r.caret);
+    replaceText(r.text, r.caret, r.selEnd);
   };
 
   const pick = (color: HighlightId) => {
@@ -966,9 +1053,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     updateSlash(t);
                   }}
                   onSelect={(e) => {
-                    const sel: [number, number] = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd];
-                    if (sel[0] !== selRef.current[0] || sel[1] !== selRef.current[1]) caretRef.current = null;
-                    selRef.current = sel;
+                    noteSelection(e.currentTarget);
                     updateSlash(e.currentTarget);
                   }}
                   onBlur={() => setSlash(null)}
@@ -999,8 +1084,34 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                         return;
                       }
                     }
+                    // In a table, Tab and Shift+Tab go cell to cell and Enter a row down.
+                    if (e.key === 'Tab' && !mod && !e.altKey) {
+                      const t = e.currentTarget;
+                      const edit = nextCell(t.value, t.selectionStart, e.shiftKey);
+                      if (edit) {
+                        e.preventDefault();
+                        applyTable(edit);
+                        return;
+                      }
+                    }
+                    if (e.key === 'Enter' && mod && !e.shiftKey && !e.altKey) {
+                      // ⌘Enter ticks or unticks the to-do on the caret's line.
+                      const t = e.currentTarget;
+                      const next = toggleTaskAt(t.value, t.selectionStart);
+                      if (next !== null) {
+                        e.preventDefault();
+                        replaceText(next, t.selectionStart, t.selectionEnd);
+                        return;
+                      }
+                    }
                     if (e.key === 'Enter' && !mod && !e.shiftKey && !e.altKey) {
                       const t = e.currentTarget;
+                      const row = t.selectionStart === t.selectionEnd ? nextRow(t.value, t.selectionStart) : null;
+                      if (row) {
+                        e.preventDefault();
+                        applyTable(row);
+                        return;
+                      }
                       const next = t.selectionStart === t.selectionEnd ? continueList(t.value, t.selectionStart) : null;
                       if (next) {
                         e.preventDefault();
@@ -1091,6 +1202,40 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 onUnderline={() => markWhileEditing(toggleUnderline)}
                 onClear={() => markWhileEditing(clearMarks)}
               />
+            </div>
+          )}
+
+          {/* Tables, in the right page's top margin: a new one, or rows and columns of the one
+              the caret is in. */}
+          {editing && (
+            <div
+              style={{
+                position: 'absolute',
+                left: PAGES_LEFT + (PAGES_W + SPINE_GAP) / 2,
+                width: (PAGES_W - SPINE_GAP) / 2,
+                top: PAGES_TOP - 40,
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
+              <div className="note-tools" data-tour="table-tools" onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
+                {tableAt(editorLayout.visible, caretAt) ? (
+                  <>
+                    <span className="note-tools-label" title="Tab: next cell. Shift+Tab: back. Enter: next row (on an empty last row, out of the table).">
+                      Table
+                    </span>
+                    <button className="note-tool note-tool-text" title="Add a row below" onClick={() => tableOp('row-below')}>+ Row</button>
+                    <button className="note-tool note-tool-text" title="Add a column to the right" onClick={() => tableOp('col-right')}>+ Col</button>
+                    <span className="note-tools-sep" />
+                    <button className="note-tool note-tool-text" title="Delete this row" onClick={() => tableOp('del-row')}>− Row</button>
+                    <button className="note-tool note-tool-text" title="Delete this column" onClick={() => tableOp('del-col')}>− Col</button>
+                  </>
+                ) : (
+                  <button className="note-tool note-tool-text" title="Insert a table (or type /table)" onClick={insertTable}>
+                    ⊞ Table
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
