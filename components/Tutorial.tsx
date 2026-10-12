@@ -254,8 +254,11 @@ const STEPS: Step[] = [
     also: () => rectOf('[data-tour="note-progress"]'),
     done: () => /Save to earn/.test(el('[data-tour="note-progress"]')?.textContent ?? ''),
     auto: () => {
-      const area = el<HTMLTextAreaElement>('[data-tour="note-text"]');
-      if (area) type(area, `${area.value}${area.value ? ' ' : ''}${SAMPLE_NOTE}`);
+      const area = el<HTMLElement>('[data-tour="note-text"]');
+      // The note is edited on the page (components/richNote); the Markdown view is a text box.
+      const page = (area as (HTMLElement & { __noteEditor?: { typeAtEnd: (t: string) => void } }) | null)?.__noteEditor;
+      if (page) page.typeAtEnd(SAMPLE_NOTE);
+      else if (area instanceof HTMLTextAreaElement) type(area, `${area.value}${area.value ? ' ' : ''}${SAMPLE_NOTE}`);
     },
     // The book opens a moment before its editor does, so only a closed book counts as lost.
     lost: () => (noteOpen() ? null : shelfOpen() ? 'new-note' : 'shelf'),

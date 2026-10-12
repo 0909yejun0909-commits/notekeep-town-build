@@ -96,7 +96,7 @@ export function toRaw(layout: Layout, a: number, b: number): Range {
   };
 }
 
-const closes = { u: '/u', mark: '/mark' } as const;
+const closes = { u: '/u', mark: '/mark', b: '/b', i: '/i', s: '/s' } as const;
 
 // A tag pair left with nothing between (its text deleted) goes too; not one whose tags take
 // in `typed`, though (in `raw`): that's a tag being typed by hand.
@@ -112,7 +112,7 @@ function dropEmptyPairs(raw: string, typed: Range): { raw: string; removed: Rang
       const open = markTag(text.slice(hidden[i].start, hidden[i].end));
       const close = markTag(text.slice(hidden[i + 1].start, hidden[i + 1].end));
       const handTyped = ta < tb && hidden[i].start < tb && hidden[i + 1].end > ta;
-      if ((open === 'u' || open === 'mark') && close === closes[open] && hidden[i].end === hidden[i + 1].start && !handTyped) {
+      if (open && !open.startsWith('/') && close === closes[open as keyof typeof closes] && hidden[i].end === hidden[i + 1].start && !handTyped) {
         gone.push({ start: hidden[i].start, end: hidden[i + 1].end });
         i++;
       }

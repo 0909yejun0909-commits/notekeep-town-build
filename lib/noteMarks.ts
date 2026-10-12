@@ -88,14 +88,20 @@ export function trackedReplace(
 export const PHRASING_PARENTS = new Set(['paragraph', 'heading', 'tableCell', 'emphasis', 'strong', 'delete', 'link', 'noteMark']);
 const OPEN_MARK = /^<mark(?:\s+style\s*=\s*"([^"]*)")?\s*>$/i;
 
+// The HTML tags that mark text: underline, highlight, and bold, italic and strikethrough
+// (written as tags where ** and the like can't say it; Obsidian reads them too).
+export type MarkTagName = 'u' | 'mark' | 'b' | 'i' | 's';
+const TAG_NAMES: Record<string, MarkTagName> = { u: 'u', b: 'b', strong: 'b', i: 'i', em: 'i', s: 's', del: 's', strike: 's' };
+
 // Which mark tag a piece of inline HTML is, if any. Inside text these never show as written:
 // a pair becomes a mark, and a tag without its partner disappears.
-export function markTag(html: string): 'u' | '/u' | 'mark' | '/mark' | null {
+export function markTag(html: string): MarkTagName | `/${MarkTagName}` | null {
   const v = html.trim();
-  if (/^<u>$/i.test(v)) return 'u';
-  if (/^<\/u>$/i.test(v)) return '/u';
+  if (OPEN_MARK.test(v)) return 'mark';
   if (/^<\/mark>$/i.test(v)) return '/mark';
-  return OPEN_MARK.test(v) ? 'mark' : null;
+  const m = /^<(\/?)([a-z]+)>$/i.exec(v);
+  const name = m && TAG_NAMES[m[2].toLowerCase()];
+  return name ? (m[1] ? `/${name}` : name) : null;
 }
 const HEX = /background(?:-color)?\s*:\s*(#[0-9a-f]{3,8})\b/i;
 
@@ -103,8 +109,8 @@ type Tok =
   | { t: 'node'; node: PhrasingContent }
   | { t: 'text'; value: string; s: number; e: number; lin: boolean }
   | { t: 'eq'; s: number; e: number; canOpen: boolean; canClose: boolean }
-  | { t: 'open'; tag: 'u' | 'mark'; s: number; e: number; hex?: string }
-  | { t: 'close'; tag: 'u' | 'mark'; s: number; e: number };
+  | { t: 'open'; tag: MarkTagName; s: number; e: number; hex?: string }
+  | { t: 'close'; tag: MarkTagName; s: number; e: number };
 
 type Frame = { open: Extract<Tok, { t: 'eq' | 'open' }> | null; children: PhrasingContent[] };
 
@@ -153,13 +159,12 @@ function tokenize(node: PhrasingContent, src: string): Tok[] {
     const e = h.position?.end.offset;
     if (s === undefined || e === undefined) return [{ t: 'node', node }];
     const tag = markTag(h.value);
-    if (tag === 'u') return [{ t: 'open', tag: 'u', s, e }];
-    if (tag === '/u') return [{ t: 'close', tag: 'u', s, e }];
-    if (tag === '/mark') return [{ t: 'close', tag: 'mark', s, e }];
     if (tag === 'mark') {
       const m = OPEN_MARK.exec(h.value.trim())!;
       return [{ t: 'open', tag: 'mark', s, e, hex: m[1] ? HEX.exec(m[1])?.[1] : undefined }];
     }
+    if (tag?.startsWith('/')) return [{ t: 'close', tag: tag.slice(1) as MarkTagName, s, e }];
+    if (tag) return [{ t: 'open', tag: tag as MarkTagName, s, e }];
   }
   if (node.type === 'inlineCode') {
     const c = node as InlineCode;
@@ -172,8 +177,9 @@ function tokenize(node: PhrasingContent, src: string): Tok[] {
 
 function markNode(open: Extract<Tok, { t: 'eq' | 'open' }>, close: { s: number; e: number }, children: PhrasingContent[]): PhrasingContent {
   const pos = { dataOs: open.s, dataOe: open.e, dataCs: close.s, dataCe: close.e };
-  if (open.t === 'open' && open.tag === 'u') {
-    return { type: 'noteMark', data: { hName: 'u', hProperties: { dataK: 'u', ...pos } }, children } as unknown as PhrasingContent;
+  if (open.t === 'open' && open.tag !== 'mark') {
+    const hName = { u: 'u', b: 'strong', i: 'em', s: 'del' }[open.tag];
+    return { type: 'noteMark', data: { hName, hProperties: { dataK: open.tag, ...pos } }, children } as unknown as PhrasingContent;
   }
   const hex = open.t === 'open' ? open.hex : undefined;
   const known = hex ? HIGHLIGHTS.find((h) => h.hex.toLowerCase() === hex.toLowerCase()) : HIGHLIGHTS[0];

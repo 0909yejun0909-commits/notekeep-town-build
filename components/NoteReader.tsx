@@ -33,6 +33,8 @@ import { applyCommand, continueList, matchCommands, slashAt, SLASH_COMMANDS, typ
 import { editVisible, layoutOf, rewriteVisible, runsOf, toRaw, toVisible } from '@/lib/noteEditorText';
 import { editTable, nextCell, nextRow, tableAt, type TableEdit, type TableOp } from '@/lib/markdownTable';
 import { toggleTaskAt } from '@/lib/noteTasks';
+import RichNoteEditor, { type RichNoteApi } from './richNote/RichNoteEditor';
+import type { EditorState } from './richNote/editor';
 
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'mov'];
 
@@ -147,7 +149,7 @@ function pieces(root: HTMLElement, map: SourceMap): Piece[] {
 }
 
 function existingMarks(root: HTMLElement, map: SourceMap): ExistingMark[] {
-  return [...root.querySelectorAll<HTMLElement>('[data-k]')].map((el) => ({
+  return [...root.querySelectorAll<HTMLElement>('[data-k="hl"], [data-k="u"]')].map((el) => ({
     kind: el.dataset.k as 'hl' | 'u',
     open: { start: map.toSource(Number(el.dataset.os), 'start'), end: map.toSource(Number(el.dataset.oe), 'end') },
     close: { start: map.toSource(Number(el.dataset.cs), 'start'), end: map.toSource(Number(el.dataset.ce), 'end') },
@@ -254,10 +256,13 @@ const READER_CSS = `
   }
   .note-book { animation: note-open 160ms ease-out; }
 
+  /* Two pages a spread, the rest of the note running on to the right; a spread is turned by
+     sliding it into the frame (which clips but can't scroll, so nothing slides it half a spread). */
   .note-pages {
     column-count: 2; column-gap: ${SPINE_GAP}px; column-fill: auto;
-    height: 100%; overflow: hidden;
+    height: 100%; overflow: visible;
   }
+  .note-frame { overflow: clip; }
   .note-prose { font-family: ${BODY_FONT}; font-size: 16px; line-height: 25px; color: ${INK}; word-wrap: break-word; }
   .note-prose > :first-child { margin-top: 0; }
   .note-prose p { margin: 0 0 11px; }
@@ -315,6 +320,45 @@ const READER_CSS = `
     font-family: ${PIXEL_FONT}; font-size: 28px; line-height: 36px; color: ${INK};
     margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid ${INK_LINE}; word-break: break-word;
   }
+
+  /* The note edited on the page (components/richNote): the reading view's look, with a caret. */
+  .rn-root { outline: none; caret-color: #8a3b12; }
+  .rn-root .rn-t { white-space: pre-wrap; outline: none; }
+  .rn-root p.rn-b, .rn-root h1.rn-b, .rn-root h2.rn-b, .rn-root h3.rn-b, .rn-root h4.rn-b, .rn-root h5.rn-b, .rn-root h6.rn-b { min-height: 25px; }
+  .rn-root > p.rn-b:nth-child(2):last-child:has(> br:only-child)::before {
+    content: 'Type here, or / for headings, lists, to-dos and more'; position: absolute; color: ${INK_SOFT}; font-style: italic; pointer-events: none;
+  }
+  .rn-li { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+  .rn-li .rn-t { flex: 1; min-width: 0; }
+  .rn-mk { flex: none; min-width: 12px; color: ${INK_SOFT}; user-select: none; text-align: right; }
+  .rn-box {
+    display: inline-block; width: 14px; height: 14px; position: relative; top: 2px; cursor: pointer;
+    border: 2px solid ${INK}; border-radius: 3px; box-sizing: border-box;
+  }
+  .rn-box.on { background: ${INK}; box-shadow: inset 0 0 0 2px #fcf8ef; }
+  .rn-done .rn-t { text-decoration: line-through; color: ${INK_SOFT}; }
+  .rn-code { position: relative; }
+  .rn-code pre.rn-codetext {
+    margin: 4px 0 12px; padding: 8px 12px; outline: none; white-space: pre-wrap; line-height: 1.5; break-inside: avoid;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px;
+    background: ${INK_WASH}; border: 1px dashed ${INK_LINE}; border-radius: 6px;
+  }
+  .rn-lang { position: absolute; top: 6px; right: 8px; font-size: 11px; color: ${INK_SOFT}; font-family: ui-monospace, Menlo, monospace; }
+  .rn-table { break-inside: avoid; }
+  .rn-cell { outline: none; min-width: 40px; }
+  .rn-cell:focus { background: rgba(138, 59, 18, 0.07); }
+  .rn-raw { border-radius: 4px; }
+  .rn-raw:hover { outline: 1px dashed ${INK_LINE}; outline-offset: 2px; }
+  .rn-rawedit {
+    width: 100%; box-sizing: border-box; resize: vertical; margin: 4px 0 12px; padding: 6px 8px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; color: ${INK};
+    background: #fffaf0; border: 2px solid ${INK_LINE}; border-radius: 4px; outline: none;
+  }
+  .rn-link { color: #8a3b12; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: text; }
+  .rn-atom { user-select: all; }
+  .rn-atom-wikilink, .rn-atom-embed { color: #8a3b12; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+  .rn-atom-other { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: ${INK_SOFT}; }
+  .rn-atom img { display: inline-block; vertical-align: bottom; max-height: 160px; margin: 2px 0; }
 
   .note-editor {
     width: 100%; height: 100%; resize: none; outline: none; border: 0; background: transparent;
@@ -408,6 +452,12 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const urlsRef = useRef<string[]>([]);
 
   const [editing, setEditing] = useState(false);
+  // Editing is on the page itself (components/richNote); the Markdown view is there for what
+  // only source can do.
+  const [editorMode, setEditorMode] = useState<'page' | 'markdown'>('page');
+  const [richKey, setRichKey] = useState(0);
+  const [richState, setRichState] = useState<EditorState>({ kind: null, inTable: false, page: 0, pages: 1 });
+  const richRef = useRef<RichNoteApi>(null);
   const editingRef = useRef(false);
   const [draft, setDraft] = useState('');
   // The editor shows the draft without its mark tags (lib/noteEditorText.ts), so the browser's
@@ -621,6 +671,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         // A blank page (a note just added from the bookshelf) opens ready to write in.
         if (text.trim() === '' && vault.writeNote) {
           beginDraft(text);
+          setEditorMode('page');
+          setRichKey((k) => k + 1);
           setEditing(true);
           editingRef.current = true;
           requestAnimationFrame(() => textareaRef.current?.focus());
@@ -644,7 +696,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     setPageCount(count);
     const p = Math.min(page, count - 1);
     if (p !== page) setPage(p);
-    el.scrollLeft = p * PAGE_STRIDE;
+    el.style.transform = `translateX(${-p * PAGE_STRIDE}px)`;
   }, [content, page, editing]);
 
   // ---- Highlight and underline while reading ----
@@ -745,6 +797,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const startEdit = useCallback(() => {
     if (raw === null) return;
     beginDraft(raw);
+    setEditorMode('page');
+    setRichKey((k) => k + 1);
     setSaveState('idle');
     setSaveError(null);
     setFloatAt(null);
@@ -997,7 +1051,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
           }}
         >
           {/* Text area spanning both pages */}
-          <div style={{ position: 'absolute', left: PAGES_LEFT, top: PAGES_TOP, width: PAGES_W, height: PAGES_H }}>
+          <div className="note-frame" style={{ position: 'absolute', left: PAGES_LEFT, top: PAGES_TOP, width: PAGES_W, height: PAGES_H }}>
             {!editing && (
               <div ref={pagesRef} className="note-pages note-prose">
                 <h2 className="note-title">{note.title}</h2>
@@ -1011,7 +1065,32 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               </div>
             )}
 
-            {editing && (
+            {editing && editorMode === 'page' && (
+              <RichNoteEditor
+                key={richKey}
+                ref={richRef}
+                markdown={draft}
+                title={note.title}
+                canWrite={canWrite}
+                onChange={(md) => {
+                  draftRef.current = md;
+                  setDraft(md);
+                }}
+                onSave={() => void save()}
+                onState={setRichState}
+                onSlashOpen={(open) => (slashOpen.current = open)}
+                resolveImage={async (target) => {
+                  if (!vault) return null;
+                  const url = await resolveBinary(vault, note.id, target);
+                  if (url) urlsRef.current.push(url);
+                  return url;
+                }}
+                pagesWidth={PAGES_W}
+                spineGap={SPINE_GAP}
+              />
+            )}
+
+            {editing && editorMode === 'markdown' && (
               <div
                 style={{
                   display: 'grid',
@@ -1196,12 +1275,21 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 justifyContent: 'center',
               }}
             >
-              <MarkTools
-                onHighlight={(c) => markWhileEditing(pick(c))}
-                onBold={() => markWhileEditing(boldOp)}
-                onUnderline={() => markWhileEditing(toggleUnderline)}
-                onClear={() => markWhileEditing(clearMarks)}
-              />
+              {editorMode === 'page' ? (
+                <MarkTools
+                  onHighlight={(c) => richRef.current?.highlight(c)}
+                  onBold={() => richRef.current?.format('b')}
+                  onUnderline={() => richRef.current?.format('u')}
+                  onClear={() => richRef.current?.clearFormatting()}
+                />
+              ) : (
+                <MarkTools
+                  onHighlight={(c) => markWhileEditing(pick(c))}
+                  onBold={() => markWhileEditing(boldOp)}
+                  onUnderline={() => markWhileEditing(toggleUnderline)}
+                  onClear={() => markWhileEditing(clearMarks)}
+                />
+              )}
             </div>
           )}
 
@@ -1219,19 +1307,19 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               }}
             >
               <div className="note-tools" data-tour="table-tools" onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
-                {tableAt(editorLayout.visible, caretAt) ? (
+                {(editorMode === 'page' ? richState.inTable : !!tableAt(editorLayout.visible, caretAt)) ? (
                   <>
                     <span className="note-tools-label" title="Tab: next cell. Shift+Tab: back. Enter: next row (on an empty last row, out of the table).">
                       Table
                     </span>
-                    <button className="note-tool note-tool-text" title="Add a row below" onClick={() => tableOp('row-below')}>+ Row</button>
-                    <button className="note-tool note-tool-text" title="Add a column to the right" onClick={() => tableOp('col-right')}>+ Col</button>
+                    <button className="note-tool note-tool-text" title="Add a row below" onClick={() => (editorMode === 'page' ? richRef.current?.tableOp('row-below') : tableOp('row-below'))}>+ Row</button>
+                    <button className="note-tool note-tool-text" title="Add a column to the right" onClick={() => (editorMode === 'page' ? richRef.current?.tableOp('col-right') : tableOp('col-right'))}>+ Col</button>
                     <span className="note-tools-sep" />
-                    <button className="note-tool note-tool-text" title="Delete this row" onClick={() => tableOp('del-row')}>− Row</button>
-                    <button className="note-tool note-tool-text" title="Delete this column" onClick={() => tableOp('del-col')}>− Col</button>
+                    <button className="note-tool note-tool-text" title="Delete this row" onClick={() => (editorMode === 'page' ? richRef.current?.tableOp('del-row') : tableOp('del-row'))}>− Row</button>
+                    <button className="note-tool note-tool-text" title="Delete this column" onClick={() => (editorMode === 'page' ? richRef.current?.tableOp('del-col') : tableOp('del-col'))}>− Col</button>
                   </>
                 ) : (
-                  <button className="note-tool note-tool-text" title="Insert a table (or type /table)" onClick={insertTable}>
+                  <button className="note-tool note-tool-text" title="Insert a table (or type /table)" onClick={() => (editorMode === 'page' ? richRef.current?.insertTable() : insertTable())}>
                     ⊞ Table
                   </button>
                 )}
@@ -1251,12 +1339,20 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   ‹ Prev
                 </button>
               ) : (
-                <button className="note-btn" disabled={editPage === 0} onClick={() => turnEditPage(-1)}>
+                <button
+                  className="note-btn"
+                  disabled={editorMode === 'page' ? richState.page === 0 : editPage === 0}
+                  onClick={() => (editorMode === 'page' ? richRef.current?.turnPage(-1) : turnEditPage(-1))}
+                >
                   ‹ Prev
                 </button>
               )}
               <span className="note-hint" style={{ flex: 'none' }}>
-                {editing ? `${editPage + 1}/${editPageCount}` : `${page + 1}/${pageCount}`}
+                {editing
+                  ? editorMode === 'page'
+                    ? `${richState.page + 1}/${richState.pages}`
+                    : `${editPage + 1}/${editPageCount}`
+                  : `${page + 1}/${pageCount}`}
               </span>
               <span
                 className="note-hint"
@@ -1306,6 +1402,22 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 </>
               ) : (
                 <>
+                  <button
+                    className="note-btn"
+                    data-tour="note-mode"
+                    title={editorMode === 'page' ? 'See and edit this note as Markdown' : 'Back to editing on the page'}
+                    onClick={() => {
+                      if (editorMode === 'page') {
+                        beginDraft(draftRef.current);
+                        setEditorMode('markdown');
+                      } else {
+                        setRichKey((k) => k + 1);
+                        setEditorMode('page');
+                      }
+                    }}
+                  >
+                    {editorMode === 'page' ? 'Markdown' : 'Page'}
+                  </button>
                   <button className="note-btn" data-tour="note-cancel" onClick={cancelEdit} title="Stop editing (Esc)">
                     Cancel
                   </button>
@@ -1318,7 +1430,11 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                   >
                     Save
                   </button>
-                  <button className="note-btn" disabled={editPage >= editPageCount - 1} onClick={() => turnEditPage(1)}>
+                  <button
+                    className="note-btn"
+                    disabled={editorMode === 'page' ? richState.page >= richState.pages - 1 : editPage >= editPageCount - 1}
+                    onClick={() => (editorMode === 'page' ? richRef.current?.turnPage(1) : turnEditPage(1))}
+                  >
                     Next ›
                   </button>
                 </>

@@ -22,7 +22,7 @@ const DELIM_CELL = /^\s*:?-+:?\s*$/;
 const isRowLine = (line: string) => /^\s*\|/.test(line);
 
 // A row's cells: split on the pipes that aren't escaped (\|), the outer ones dropped.
-function cellsOf(line: string): string[] {
+export function cellsOf(line: string): string[] {
   let s = line.trim();
   if (s.startsWith('|')) s = s.slice(1);
   if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
@@ -127,6 +127,11 @@ function layOut(t: Shape): { text: string; cellAt: (row: number, col: number) =>
   line(dashes, false);
   for (const r of rows.slice(1)) line(r, true);
   return { text, cellAt: (row, col) => cells[row][col] };
+}
+
+// A table's Markdown, columns lined up: rows of cell text (header first) and their alignment.
+export function tableMarkdown(rows: string[][], align: Align[]): string {
+  return layOut({ indent: '', rows, align }).text;
 }
 
 // The new text with the table replaced by `shape`, and cell (row, col)'s text selected.
