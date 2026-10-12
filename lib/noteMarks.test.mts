@@ -80,7 +80,7 @@ test('still drops other raw HTML', () => {
 
 test('highlights span inline formatting', () => {
   const html = render('==a **b** c==');
-  assert.match(html, /<mark[^>]*>.*<strong>.*b.*<\/strong>.*<\/mark>/);
+  assert.match(html, /<mark[^>]*>.*<strong[^>]*>.*b.*<\/strong>.*<\/mark>/);
 });
 
 test('marks record where their tokens sit in the source', () => {

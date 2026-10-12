@@ -85,8 +85,18 @@ export function trackedReplace(
 
 // ---- Rendering: a remark plugin that turns the tokens into <mark>/<u> ----
 
-const PHRASING_PARENTS = new Set(['paragraph', 'heading', 'tableCell', 'emphasis', 'strong', 'delete', 'link', 'noteMark']);
+export const PHRASING_PARENTS = new Set(['paragraph', 'heading', 'tableCell', 'emphasis', 'strong', 'delete', 'link', 'noteMark']);
 const OPEN_MARK = /^<mark(?:\s+style\s*=\s*"([^"]*)")?\s*>$/i;
+
+// Which mark tag a piece of inline HTML is, if any. Inside text these never show as written:
+// a pair becomes a mark, and a tag without its partner disappears.
+export function markTag(html: string): 'u' | '/u' | 'mark' | '/mark' | null {
+  const v = html.trim();
+  if (/^<u>$/i.test(v)) return 'u';
+  if (/^<\/u>$/i.test(v)) return '/u';
+  if (/^<\/mark>$/i.test(v)) return '/mark';
+  return OPEN_MARK.test(v) ? 'mark' : null;
+}
 const HEX = /background(?:-color)?\s*:\s*(#[0-9a-f]{3,8})\b/i;
 
 type Tok =
@@ -142,12 +152,14 @@ function tokenize(node: PhrasingContent, src: string): Tok[] {
     const s = h.position?.start.offset;
     const e = h.position?.end.offset;
     if (s === undefined || e === undefined) return [{ t: 'node', node }];
-    const v = h.value.trim();
-    if (/^<u>$/i.test(v)) return [{ t: 'open', tag: 'u', s, e }];
-    if (/^<\/u>$/i.test(v)) return [{ t: 'close', tag: 'u', s, e }];
-    if (/^<\/mark>$/i.test(v)) return [{ t: 'close', tag: 'mark', s, e }];
-    const m = OPEN_MARK.exec(v);
-    if (m) return [{ t: 'open', tag: 'mark', s, e, hex: m[1] ? HEX.exec(m[1])?.[1] : undefined }];
+    const tag = markTag(h.value);
+    if (tag === 'u') return [{ t: 'open', tag: 'u', s, e }];
+    if (tag === '/u') return [{ t: 'close', tag: 'u', s, e }];
+    if (tag === '/mark') return [{ t: 'close', tag: 'mark', s, e }];
+    if (tag === 'mark') {
+      const m = OPEN_MARK.exec(h.value.trim())!;
+      return [{ t: 'open', tag: 'mark', s, e, hex: m[1] ? HEX.exec(m[1])?.[1] : undefined }];
+    }
   }
   if (node.type === 'inlineCode') {
     const c = node as InlineCode;
@@ -214,6 +226,12 @@ function pairUp(children: PhrasingContent[], src: string): PhrasingContent[] {
 function walk(node: Nodes, src: string) {
   if (!('children' in node)) return;
   const parent = node as Parent;
+  // Bold keeps where it came from, delimiters included, so the toolbar can tell what's bold.
+  const s = parent.position?.start.offset;
+  const e = parent.position?.end.offset;
+  if (parent.type === 'strong' && s !== undefined && e !== undefined) {
+    parent.data = { ...parent.data, hProperties: { ...(parent.data as any)?.hProperties, dataBs: s, dataBe: e } } as Parent['data'];
+  }
   if (PHRASING_PARENTS.has(parent.type)) parent.children = pairUp(parent.children as PhrasingContent[], src);
   for (const child of parent.children) walk(child as Nodes, src);
 }
@@ -342,4 +360,48 @@ export function toggleUnderline(raw: string, segments: Range[], existing: Existi
 export function clearMarks(raw: string, segments: Range[], existing: ExistingMark[]): MarkEdit {
   const hit = existing.filter((m) => segments.some((s) => contentOverlaps(s, m)));
   return rewrite(raw, hit.flatMap(tokensOf), []);
+}
+
+// ---- Bold ----
+
+// Bold is plain Markdown, **text**. `strong` holds the bold runs the selection could be in,
+// delimiters included. A selection that's all bold already comes out of it: the whole run
+// when it's the whole run, else the run splits around it. Anything else is wrapped, apart
+// from the parts already bold.
+export function toggleBold(raw: string, segments: Range[], strong: Range[]): MarkEdit {
+  const runOf = (seg: Range) => strong.find((r) => r.start + 2 <= seg.start && seg.end <= r.end - 2);
+  const runs = segments.map(runOf);
+  if (segments.length === 0) return rewrite(raw, [], []);
+  if (runs.every(Boolean)) {
+    const deletes: Range[] = [];
+    const inserts: Insert[] = [];
+    for (const run of new Set(runs)) {
+      const r = run!;
+      const inside = segments.filter((_, i) => runs[i] === r);
+      const d = raw.slice(r.start, r.start + 2);
+      deletes.push({ start: r.start, end: r.start + 2 }, { start: r.end - 2, end: r.end });
+      if (inside.length !== 1) continue;
+      const { start: a, end: b } = inside[0];
+      // What's left of the run either side stays bold, its delimiters hugging the words.
+      const left = raw.slice(r.start + 2, a);
+      const right = raw.slice(b, r.end - 2);
+      if (left.trim()) {
+        inserts.push({ at: r.start + 2, text: d, close: false });
+        inserts.push({ at: r.start + 2 + left.trimEnd().length, text: d, close: true });
+      }
+      if (right.trim()) {
+        inserts.push({ at: b + (right.length - right.trimStart().length), text: d, close: false });
+        inserts.push({ at: r.end - 2, text: d, close: true });
+      }
+    }
+    return rewrite(raw, deletes, inserts);
+  }
+  return rewrite(
+    raw,
+    [],
+    segments.filter((_, i) => !runs[i]).flatMap((seg) => [
+      { at: seg.start, text: '**', close: false },
+      { at: seg.end, text: '**', close: true },
+    ]),
+  );
 }

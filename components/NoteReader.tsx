@@ -16,6 +16,7 @@ import {
   piecesInRange,
   remarkMarks,
   selectSegments,
+  toggleBold,
   toggleUnderline,
   trackedReplace,
   type ExistingMark,
@@ -29,6 +30,7 @@ import {
 import { BOOK_SRC, paperBookUrl } from '@/lib/paperBook';
 import Coin from './Coin';
 import { applyCommand, continueList, matchCommands, slashAt, type SlashCommand } from '@/lib/slashCommands';
+import { editVisible, layoutOf, runsOf, toRaw, toVisible } from '@/lib/noteEditorText';
 
 const VIDEO_EXT = ['mp4', 'webm', 'ogg', 'mov'];
 
@@ -170,7 +172,16 @@ function selectedPieces(root: HTMLElement, range: globalThis.Range, map: SourceM
   return out;
 }
 
-type MarkOp = (raw: string, segs: SourceRange[], existing: ExistingMark[]) => MarkEdit;
+// Bold runs in the rendered note (lib/noteMarks.ts tags each <strong>), as places in its source.
+function strongRanges(root: HTMLElement, map: SourceMap): SourceRange[] {
+  return [...root.querySelectorAll<HTMLElement>('[data-bs]')].map((el) => ({
+    start: map.toSource(Number(el.dataset.bs), 'start'),
+    end: map.toSource(Number(el.dataset.be), 'end'),
+  }));
+}
+
+type MarkOp = (raw: string, segs: SourceRange[], existing: ExistingMark[], strong: SourceRange[]) => MarkEdit;
+const boldOp: MarkOp = (raw, segs, _existing, strong) => toggleBold(raw, segs, strong);
 const highlightOp =
   (color: HighlightId): MarkOp =>
   (raw, segs, existing) =>
@@ -197,10 +208,12 @@ function caretXY(t: HTMLTextAreaElement, pos: number): { x: number; y: number } 
 
 function MarkTools({
   onHighlight,
+  onBold,
   onUnderline,
   onClear,
 }: {
   onHighlight: (color: HighlightId) => void;
+  onBold: () => void;
   onUnderline: () => void;
   onClear: () => void;
 }) {
@@ -218,6 +231,9 @@ function MarkTools({
         />
       ))}
       <span className="note-tools-sep" />
+      <button className="note-tool" title="Bold (⌘B)" aria-label="Bold" onClick={onBold}>
+        <span style={{ fontWeight: 700 }}>B</span>
+      </button>
       <button className="note-tool" title="Underline (⌘U)" aria-label="Underline" onClick={onUnderline}>
         <span style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>U</span>
       </button>
@@ -301,8 +317,17 @@ const READER_CSS = `
   .note-editor {
     width: 100%; height: 100%; resize: none; outline: none; border: 0; background: transparent;
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13.5px; line-height: 21px; color: ${INK};
-    caret-color: #8a3b12; padding: 0; margin: 0; overflow-y: auto; tab-size: 2;
+    caret-color: #8a3b12; padding: 0; margin: 0; overflow-y: scroll; tab-size: 2;
   }
+  /* Same box, font and wrapping as the editor, so every letter lands under its twin; only the
+     marks show. Both always keep room for the scrollbar, so both wrap at the same width. */
+  .note-mirror {
+    position: absolute; inset: 0; box-sizing: border-box; color: transparent; pointer-events: none; user-select: none;
+    white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word; scrollbar-color: transparent transparent;
+  }
+  .note-mirror .mhl { background: var(--hl); border-radius: 3px; }
+  .note-mirror .mu { text-decoration: underline; text-decoration-color: ${INK}; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  ${HIGHLIGHTS.map((h) => `.note-mirror .hl-${h.id} { --hl: ${h.hex}; }`).join('\n  ')}
   .note-editor::selection { background: rgba(138, 59, 18, 0.25); }
   .note-editor::placeholder { color: ${INK_SOFT}; font-style: italic; }
   /* The "/" command menu, a slip of paper under the caret. */
@@ -318,6 +343,7 @@ const READER_CSS = `
   .note-scroll { height: 100%; overflow-y: auto; padding-right: 6px; }
   .note-scroll::-webkit-scrollbar, .note-editor::-webkit-scrollbar { width: 6px; }
   .note-scroll::-webkit-scrollbar-thumb, .note-editor::-webkit-scrollbar-thumb { background: ${INK_LINE}; border-radius: 3px; }
+  .note-mirror::-webkit-scrollbar-thumb { background: transparent; }
 
   .note-btn {
     font-family: ${PIXEL_FONT}; font-size: 16px;
@@ -365,6 +391,7 @@ const READER_CSS = `
 `;
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type EditSnap = { raw: string; sel: [number, number] };
 
 export default function NoteReader({ note }: { note: NoteRef | null }) {
   const { vault } = useVault();
@@ -378,6 +405,16 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   const [editing, setEditing] = useState(false);
   const editingRef = useRef(false);
   const [draft, setDraft] = useState('');
+  // The editor shows the draft without its mark tags (lib/noteEditorText.ts), so the browser's
+  // own undo, which only knows the shown text, can't be used: the editor keeps its own.
+  const draftRef = useRef('');
+  const selRef = useRef<[number, number]>([0, 0]);
+  // Where the caret is in the draft itself, among the tags the editor doesn't show; forgotten
+  // when the caret is moved (lib/noteEditorText.ts editVisible()).
+  const caretRef = useRef<number | null>(null);
+  const pendingSel = useRef<[number, number] | null>(null);
+  const history = useRef<{ past: EditSnap[]; future: EditSnap[]; typedAt: number; burstAt: number }>({ past: [], future: [], typedAt: 0, burstAt: 0 });
+  const mirrorRef = useRef<HTMLDivElement>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -403,6 +440,95 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
 
   const canWrite = !!vault?.writeNote;
   const previewMap = useMemo(() => linkWikilinks(draft), [draft]);
+  const editorLayout = useMemo(() => layoutOf(draft), [draft]);
+  const editorRuns = useMemo(() => runsOf(editorLayout), [editorLayout]);
+  const slashMenuRef = useRef<HTMLDivElement>(null);
+
+  const beginDraft = useCallback((text: string) => {
+    // The editor turns \r\n into \n as it shows the text; the draft does too, so they line up.
+    const clean = text.replace(/\r\n?/g, '\n');
+    draftRef.current = clean;
+    selRef.current = [0, 0];
+    caretRef.current = null;
+    pendingSel.current = null;
+    history.current = { past: [], future: [], typedAt: 0, burstAt: 0 };
+    setDraft(clean);
+  }, []);
+
+  // One change to the draft: remembered for undo (a run of typing is one step, a few seconds
+  // at most), with the editor's selection put back once it shows the new text.
+  const commitDraft = useCallback((next: string, sel: [number, number], typing: boolean, caret: number | null = null) => {
+    pendingSel.current = sel;
+    caretRef.current = caret;
+    if (next === draftRef.current) {
+      selRef.current = sel;
+      setDraft(next);
+      return;
+    }
+    const h = history.current;
+    const now = performance.now();
+    const sameBurst = typing && h.past.length > 0 && now - h.typedAt < 1000 && now - h.burstAt < 4000;
+    if (!sameBurst) {
+      h.past.push({ raw: draftRef.current, sel: selRef.current });
+      if (h.past.length > 200) h.past.shift();
+      h.burstAt = now;
+    }
+    h.future = [];
+    h.typedAt = typing ? now : 0;
+    draftRef.current = next;
+    selRef.current = sel;
+    setDraft(next);
+  }, []);
+
+  const undo = useCallback((redo: boolean) => {
+    const h = history.current;
+    const snap = (redo ? h.future : h.past).pop();
+    if (!snap) return;
+    (redo ? h.past : h.future).push({ raw: draftRef.current, sel: selRef.current });
+    h.typedAt = 0;
+    caretRef.current = null;
+    draftRef.current = snap.raw;
+    selRef.current = snap.sel;
+    pendingSel.current = snap.sel;
+    setDraft(snap.raw);
+  }, []);
+
+  // The editor's selection, where the last change left it, and the colour behind it scrolled
+  // with it.
+  useLayoutEffect(() => {
+    const t = textareaRef.current;
+    const sel = pendingSel.current;
+    if (t && sel) {
+      pendingSel.current = null;
+      if (t.selectionStart !== sel[0] || t.selectionEnd !== sel[1]) t.setSelectionRange(sel[0], sel[1]);
+    }
+    if (t && mirrorRef.current) mirrorRef.current.scrollTop = t.scrollTop;
+  }, [draft, editing]);
+
+  // Undo from the browser's menus goes to the editor's own history too.
+  useEffect(() => {
+    const t = textareaRef.current;
+    if (!editing || !t) return;
+    const onBefore = (e: InputEvent) => {
+      if (e.inputType !== 'historyUndo' && e.inputType !== 'historyRedo') return;
+      e.preventDefault();
+      undo(e.inputType === 'historyRedo');
+    };
+    t.addEventListener('beforeinput', onBefore);
+    return () => t.removeEventListener('beforeinput', onBefore);
+  }, [editing, undo]);
+
+  // The "/" menu scrolls to keep the highlighted command in sight as the arrow keys move it.
+  useLayoutEffect(() => {
+    const menu = slashMenuRef.current;
+    const item = menu?.querySelector<HTMLElement>('.slash-item.on');
+    if (!menu || !item) return;
+    if (slash?.index === 0) menu.scrollTop = 0;
+    else if (item.offsetTop < menu.scrollTop) menu.scrollTop = item.offsetTop;
+    else if (item.offsetTop + item.offsetHeight > menu.scrollTop + menu.clientHeight) {
+      menu.scrollTop = item.offsetTop + item.offsetHeight - menu.clientHeight;
+    }
+  }, [slash]);
 
   useEffect(() => {
     return () => {
@@ -468,7 +594,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         setStatus('idle');
         // A blank page (a note just added from the bookshelf) opens ready to write in.
         if (text.trim() === '' && vault.writeNote) {
-          setDraft(text);
+          beginDraft(text);
           setEditing(true);
           editingRef.current = true;
           requestAnimationFrame(() => textareaRef.current?.focus());
@@ -483,7 +609,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     return () => {
       cancelled = true;
     };
-  }, [note, vault, display]);
+  }, [note, vault, display, beginDraft]);
 
   useLayoutEffect(() => {
     const el = pagesRef.current;
@@ -548,7 +674,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
       window.getSelection()?.removeAllRanges();
       setFloatAt(null);
       if (segs.length === 0) return;
-      const next = op(raw, segs, existingMarks(root, map)).text;
+      const next = op(raw, segs, existingMarks(root, map), strongRanges(root, map)).text;
       if (next === raw) return;
       setRaw(next);
       await display(next, () => false);
@@ -570,14 +696,14 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
 
   const startEdit = useCallback(() => {
     if (raw === null) return;
-    setDraft(raw);
+    beginDraft(raw);
     setSaveState('idle');
     setSaveError(null);
     setFloatAt(null);
     setEditing(true);
     editingRef.current = true;
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [raw]);
+  }, [raw, beginDraft]);
 
   const editStep = (t: HTMLTextAreaElement) => Math.max(EDIT_LINE, Math.floor(t.clientHeight / EDIT_LINE) * EDIT_LINE);
 
@@ -595,6 +721,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     setEditPage(maxTop > 0 && t.scrollTop >= maxTop - EDIT_LINE ? count - 1 : Math.floor((t.scrollTop + 1) / step));
     const p = previewRef.current;
     if (p) p.scrollTop = maxTop > 0 ? (t.scrollTop / maxTop) * (p.scrollHeight - p.clientHeight) : 0;
+    if (mirrorRef.current) mirrorRef.current.scrollTop = t.scrollTop;
   }, []);
 
   useLayoutEffect(() => {
@@ -610,28 +737,21 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     t.focus({ preventScroll: true });
   };
 
-  // Goes through the browser's own editing so ⌘Z undoes a highlight like any typing.
+  // The selection is in the shown text (no tags); the marks go into the draft, and undo with
+  // the editor's own history.
   const markWhileEditing = (op: MarkOp) => {
     const t = textareaRef.current;
     const preview = previewRef.current;
     if (!t || !preview || t.selectionStart === t.selectionEnd) return;
-    const a = t.selectionStart;
-    const b = t.selectionEnd;
-    const segs = selectSegments(draft, piecesInRange(pieces(preview, previewMap), a, b));
+    const current = draftRef.current;
+    const { start: a, end: b } = toRaw(layoutOf(current), t.selectionStart, t.selectionEnd);
+    const segs = selectSegments(current, piecesInRange(pieces(preview, previewMap), a, b));
     if (segs.length === 0) return;
-    const edit = op(draft, segs, existingMarks(preview, previewMap));
-    const next = edit.text;
-    if (next === draft) return;
-    let pre = 0;
-    while (pre < draft.length && pre < next.length && draft[pre] === next[pre]) pre++;
-    let suf = 0;
-    while (suf < draft.length - pre && suf < next.length - pre && draft[draft.length - 1 - suf] === next[next.length - 1 - suf]) suf++;
+    const edit = op(current, segs, existingMarks(preview, previewMap), strongRanges(preview, previewMap));
+    if (edit.text === current) return;
+    const after = layoutOf(edit.text);
     t.focus({ preventScroll: true });
-    t.setSelectionRange(pre, draft.length - suf);
-    const insert = next.slice(pre, next.length - suf);
-    const ok = insert ? document.execCommand('insertText', false, insert) : document.execCommand('delete');
-    if (!ok || t.value !== next) setDraft(next);
-    t.setSelectionRange(edit.map(a, 'start'), edit.map(b, 'end'));
+    commitDraft(edit.text, [toVisible(after, edit.map(a, 'start')), toVisible(after, edit.map(b, 'end'))], false);
   };
 
   const cancelEdit = useCallback(() => {
@@ -738,18 +858,10 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     setSlash((prev) => ({ ...at, x, y, index: prev && prev.start === at.start && prev.query === at.query ? prev.index : 0 }));
   };
 
-  // Swap the note's text for `next` through the browser's own editing, so ⌘Z undoes it.
-  const replaceText = (t: HTMLTextAreaElement, next: string, caret: number) => {
-    const cur = t.value;
-    let pre = 0;
-    while (pre < cur.length && pre < next.length && cur[pre] === next[pre]) pre++;
-    let suf = 0;
-    while (suf < cur.length - pre && suf < next.length - pre && cur[cur.length - 1 - suf] === next[next.length - 1 - suf]) suf++;
-    t.setSelectionRange(pre, cur.length - suf);
-    const insert = next.slice(pre, next.length - suf);
-    const ok = insert ? document.execCommand('insertText', false, insert) : document.execCommand('delete');
-    if (!ok || t.value !== next) setDraft(next);
-    t.setSelectionRange(caret, caret);
+  // The shown text becomes `next` (a slash command, a list carried on), caret at `caret`.
+  const replaceText = (next: string, caret: number) => {
+    const r = editVisible(draftRef.current, next, caret, caret, caretRef.current);
+    commitDraft(r.raw, r.sel, false, r.caret);
   };
 
   const runSlash = (cmd: SlashCommand) => {
@@ -758,7 +870,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     const r = applyCommand(t.value, slash.start, t.selectionStart, cmd);
     setSlash(null);
     t.focus({ preventScroll: true });
-    replaceText(t, r.text, r.caret);
+    replaceText(r.text, r.caret);
   };
 
   const pick = (color: HighlightId) => {
@@ -822,18 +934,43 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 }}
               >
                 <div style={{ position: 'relative', height: '100%', minHeight: 0 }}>
+                {/* The highlights and underlines, drawn behind the editor's see-through text. */}
+                <div ref={mirrorRef} className="note-editor note-mirror" aria-hidden="true">
+                  {editorRuns.map((r, i) =>
+                    r.hl || r.hex || r.u ? (
+                      <span
+                        key={i}
+                        className={[r.hl || r.hex ? 'mhl' : '', r.hl ? `hl-${r.hl}` : '', r.u ? 'mu' : ''].join(' ')}
+                        style={r.hex ? ({ '--hl': r.hex } as React.CSSProperties) : undefined}
+                      >
+                        {r.text}
+                      </span>
+                    ) : (
+                      r.text
+                    ),
+                  )}
+                  {'\u200b'}
+                </div>
                 <textarea
                   ref={textareaRef}
                   data-tour="note-text"
                   className="note-editor"
-                  value={draft}
+                  style={{ position: 'relative' }}
+                  value={editorLayout.visible}
                   spellCheck={false}
                   placeholder="Type / for headings, lists, to-dos and more"
                   onChange={(e) => {
-                    setDraft(e.target.value);
-                    updateSlash(e.target);
+                    const t = e.target;
+                    const r = editVisible(draftRef.current, t.value, t.selectionStart, t.selectionEnd, caretRef.current);
+                    commitDraft(r.raw, r.sel, true, r.caret);
+                    updateSlash(t);
                   }}
-                  onSelect={(e) => updateSlash(e.currentTarget)}
+                  onSelect={(e) => {
+                    const sel: [number, number] = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd];
+                    if (sel[0] !== selRef.current[0] || sel[1] !== selRef.current[1]) caretRef.current = null;
+                    selRef.current = sel;
+                    updateSlash(e.currentTarget);
+                  }}
                   onBlur={() => setSlash(null)}
                   onScroll={(e) => {
                     syncEditPages();
@@ -867,7 +1004,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                       const next = t.selectionStart === t.selectionEnd ? continueList(t.value, t.selectionStart) : null;
                       if (next) {
                         e.preventDefault();
-                        replaceText(t, next.text, next.caret);
+                        replaceText(next.text, next.caret);
                         return;
                       }
                     }
@@ -877,6 +1014,15 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     } else if (mod && k === 's') {
                       e.preventDefault();
                       void save();
+                    } else if (mod && k === 'z') {
+                      e.preventDefault();
+                      undo(e.shiftKey);
+                    } else if (mod && k === 'y') {
+                      e.preventDefault();
+                      undo(true);
+                    } else if (mod && k === 'b') {
+                      e.preventDefault();
+                      markWhileEditing(boldOp);
                     } else if (mod && k === 'u') {
                       e.preventDefault();
                       markWhileEditing(toggleUnderline);
@@ -890,6 +1036,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 />
                 {slash && slashMatches.length > 0 && (
                   <div
+                    ref={slashMenuRef}
                     className="slash-menu"
                     data-tour="slash-menu"
                     style={{
@@ -940,6 +1087,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             >
               <MarkTools
                 onHighlight={(c) => markWhileEditing(pick(c))}
+                onBold={() => markWhileEditing(boldOp)}
                 onUnderline={() => markWhileEditing(toggleUnderline)}
                 onClear={() => markWhileEditing(clearMarks)}
               />
@@ -1039,6 +1187,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             <div style={{ zoom }}>
               <MarkTools
                 onHighlight={(c) => void markWhileReading(pick(c))}
+                onBold={() => void markWhileReading(boldOp)}
                 onUnderline={() => void markWhileReading(toggleUnderline)}
                 onClear={() => void markWhileReading(clearMarks)}
               />
