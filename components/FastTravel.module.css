@@ -14,7 +14,7 @@
   border: 3px solid #1f1418;
   box-shadow: inset 0 3px 0 #b86f50, 0 4px 0 #1f1418;
   color: #f4e4c1;
-  font-family: 'CuteFantasy', monospace;
+  font-family: var(--label-font, 'CuteFantasy', monospace);
   font-size: 18px;
   cursor: pointer;
 }
@@ -39,7 +39,7 @@
   justify-content: center;
   padding-top: 12vh;
   background: rgba(0, 0, 0, 0.6);
-  font-family: 'CuteFantasy', monospace;
+  font-family: var(--label-font, 'CuteFantasy', monospace);
   image-rendering: pixelated;
 }
 
@@ -161,7 +161,7 @@
 }
 
 .preview {
-  font-family: Georgia, 'Iowan Old Style', serif;
+  font-family: var(--note-font, Georgia, 'Iowan Old Style', serif);
   font-size: 13px;
   color: rgba(59, 42, 32, 0.7);
   overflow: hidden;

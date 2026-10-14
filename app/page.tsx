@@ -35,6 +35,7 @@ import SoundPlayer from '@/components/SoundPlayer';
 import Meditate from '@/components/Meditate';
 import RestHud from '@/components/RestHud';
 import NowPlaying from '@/components/NowPlaying';
+import NotebookMode from '@/components/NotebookMode';
 import { bus } from '@/game/bus';
 import { readInvite, type Invite } from '@/lib/multiplayer/guest';
 import { RELAY_URL } from '@/lib/multiplayer/session';
@@ -102,6 +103,7 @@ function Game() {
 
       <NpcDialogue />
       <PlotTooltip />
+      <NotebookMode />
     </div>
   );
 }

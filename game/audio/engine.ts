@@ -86,10 +86,18 @@ function create(): Engine {
   return { ctx, music, sfx, ambience, noise };
 }
 
+// Quiet: the town is out of sight (the notebook view), so it makes no sound either.
+let quiet = false;
+
 function sync() {
   if (!engine) return;
-  if (muted || document.hidden) void engine.ctx.suspend();
+  if (muted || quiet || document.hidden) void engine.ctx.suspend();
   else void engine.ctx.resume();
+}
+
+export function setQuiet(next: boolean) {
+  quiet = next;
+  sync();
 }
 
 function typing(target: EventTarget | null): boolean {
@@ -127,7 +135,7 @@ export function onUnlock(cb: (e: Engine) => void) {
 // would otherwise sit queued and play the moment sound comes back.
 export function liveEngine(): Engine | null {
   install();
-  return engine && engine.ctx.state === 'running' && !muted && !document.hidden ? engine : null;
+  return engine && engine.ctx.state === 'running' && !muted && !quiet && !document.hidden ? engine : null;
 }
 
 export function isMuted(): boolean {

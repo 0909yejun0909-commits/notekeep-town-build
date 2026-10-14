@@ -1,5 +1,6 @@
 import type { InteriorLayout } from './types';
 import { movedPath } from './vault/paths';
+import { loadTownEdits, saveTownEdits } from './townEdits';
 
 // A room layout after its house was renamed: the furniture holding notes points at their new
 // paths.
@@ -10,9 +11,10 @@ export function movedLayout(layout: InteriorLayout, from: string, to: string): I
   };
 }
 
-// Room layouts and the house's look are saved by room and house id (lib/interiorStore.ts,
-// lib/exteriorStore.ts); a renamed house takes them with it. Where it stands in town is the
-// town's own to move (OverworldScene, 'house-renamed').
+// Room layouts, the house's look and where it stands in town are saved by room and house id
+// (lib/interiorStore.ts, lib/exteriorStore.ts, lib/townEdits.ts); a renamed house takes them with
+// it. A town that's up keeps its own copy of where houses stand: it moves it too, on
+// 'house-renamed' (OverworldScene).
 export function moveHouseSaves(fingerprint: string, from: string, to: string) {
   try {
     const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter((k): k is string => !!k);
@@ -38,5 +40,11 @@ export function moveHouseSaves(fingerprint: string, from: string, to: string) {
     }
   } catch {
     // Storage unavailable: the house keeps its notes and loses only its saved looks.
+  }
+  const town = loadTownEdits(fingerprint);
+  if (town.houses[from]) {
+    town.houses[to] = town.houses[from];
+    delete town.houses[from];
+    saveTownEdits(fingerprint, town);
   }
 }

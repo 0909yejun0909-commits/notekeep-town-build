@@ -297,6 +297,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (this.game.registry.get('resumeBuilding')) this.onOpenTownEditor();
     this.game.registry.remove('resumeBuilding');
     this.grid = grid;
+    if (this.placeNewHouses(grid)) return;
 
     // Coming back out of a house puts the player on the road in front of that door.
     const returnTile = this.game.registry.get('returnTile') as { gx: number; gy: number } | undefined;
@@ -588,6 +589,49 @@ export default class OverworldScene extends Phaser.Scene {
     if (at) this.town.houses[to] = at;
     this.saveTown();
   };
+
+  // A town's houses stay where they first stood: the layout would otherwise move them as the
+  // vault grows. A house that's new since (made in the notebook view, or a folder added on
+  // disk) keeps the layout's spot if that's clear of every other house, else takes the open
+  // ground nearest the middle of town. True when the town is redrawn with it.
+  private placeNewHouses(grid: WorldGrid): boolean {
+    if (!this.fingerprint || this.game.registry.get('role') === 'guest') return false;
+    const todo = grid.houses.filter((h) => !this.town.houses[h.houseId]);
+    if (todo.length === 0) return false;
+    if (todo.length === grid.houses.length) {
+      for (const r of grid.houses) this.town.houses[r.houseId] = [r.gx, r.gy];
+      this.saveTown();
+      return false;
+    }
+    for (const r of grid.houses) if (!todo.includes(r)) this.town.houses[r.houseId] ??= [r.gx, r.gy];
+    const water = Object.keys(this.town.ground).filter((k) => this.town.ground[k] === 'water');
+    const fixed = new Set([...this.town.props.flatMap(propCells), ...water]);
+    const taken = grid.houses.filter((h) => !todo.includes(h)).map((h) => ({ gx: h.gx, gy: h.gy, w: h.w, h: h.h }));
+    const clear = (gx: number, gy: number, w: number, h: number) =>
+      taken.every((o) => gx + w + 1 <= o.gx || o.gx + o.w + 1 <= gx || gy + h + 1 <= o.gy || o.gy + o.h + 1 <= gy);
+    for (const house of todo) {
+      let spot: [number, number] | null = clear(house.gx, house.gy, house.w, house.h) ? [house.gx, house.gy] : null;
+      const variant = Number(Object.keys(HOUSE_FOOTPRINT).find((v) => HOUSE_FOOTPRINT[+v][0] === house.w && HOUSE_FOOTPRINT[+v][1] === house.h) ?? STARTER_HOUSE_VARIANT);
+      const cx = Math.floor(grid.w / 2 - house.w / 2);
+      const cy = Math.floor(grid.h / 2 - house.h / 2);
+      for (let r = 0; !spot && r < Math.max(grid.w, grid.h); r++) {
+        for (let dy = -r; dy <= r && !spot; dy++) {
+          for (let dx = -r; dx <= r && !spot; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const gx = cx + dx;
+            const gy = cy + dy;
+            if (clear(gx, gy, house.w, house.h) && houseFits(grid, variant, gx, gy, fixed)) spot = [gx, gy];
+          }
+        }
+      }
+      spot ??= [house.gx, house.gy];
+      this.town.houses[house.houseId] = spot;
+      taken.push({ gx: spot[0], gy: spot[1], w: house.w, h: house.h });
+    }
+    this.saveTown();
+    this.scene.restart();
+    return true;
+  }
 
   // ------------------------------------------------------------ land for sale
 

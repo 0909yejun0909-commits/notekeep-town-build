@@ -29,6 +29,8 @@ import {
 } from '@/lib/noteMarks';
 import { BOOK_SRC, paperBookUrl } from '@/lib/paperBook';
 import Coin from './Coin';
+import MarkTools from './MarkTools';
+import { onBeforeViewSwitch, setFocusNote } from '@/lib/displayPrefs';
 import { applyCommand, continueList, matchCommands, slashAt, SLASH_COMMANDS, type SlashCommand } from '@/lib/slashCommands';
 import { editVisible, layoutOf, rewriteVisible, runsOf, toRaw, toVisible } from '@/lib/noteEditorText';
 import { editTable, nextCell, nextRow, tableAt, type TableEdit, type TableOp } from '@/lib/markdownTable';
@@ -66,7 +68,8 @@ const INK = '#3b2a20';
 const INK_SOFT = 'rgba(59, 42, 32, 0.6)';
 const INK_LINE = 'rgba(59, 42, 32, 0.3)';
 const INK_WASH = 'rgba(59, 42, 32, 0.08)';
-const BODY_FONT = "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Times New Roman', serif";
+// Note text: book type, or whatever the font setting picked (lib/displayPrefs.ts, app/globals.css).
+const BODY_FONT = "var(--note-font, Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Times New Roman', serif)";
 const PIXEL_FONT = 'var(--pixel-font)';
 
 function extOf(path: string): string {
@@ -88,7 +91,7 @@ function linkWikilinks(md: string | SourceMap): SourceMap {
   );
 }
 
-async function resolveBinary(vault: VaultHandle, notePath: string, path: string): Promise<string | null> {
+export async function resolveBinary(vault: VaultHandle, notePath: string, path: string): Promise<string | null> {
   const dir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/') + 1) : '';
   const candidates = dir ? [dir + path, path] : [path];
   for (const candidate of candidates) {
@@ -208,45 +211,6 @@ function caretXY(t: HTMLTextAreaElement, pos: number): { x: number; y: number } 
   const at = { x: mark.offsetLeft, y: mark.offsetTop - t.scrollTop };
   div.remove();
   return at;
-}
-
-function MarkTools({
-  onHighlight,
-  onBold,
-  onUnderline,
-  onClear,
-}: {
-  onHighlight: (color: HighlightId) => void;
-  onBold: () => void;
-  onUnderline: () => void;
-  onClear: () => void;
-}) {
-  return (
-    // Buttons mustn't take focus or the selection they act on goes away.
-    <div className="note-tools" onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
-      {HIGHLIGHTS.map((h) => (
-        <button
-          key={h.id}
-          className="note-swatch"
-          style={{ background: h.hex }}
-          title={`Highlight ${h.label.toLowerCase()}${h.id === 'yellow' ? ' (⌘⇧H)' : ''}`}
-          aria-label={`Highlight ${h.label.toLowerCase()}`}
-          onClick={() => onHighlight(h.id)}
-        />
-      ))}
-      <span className="note-tools-sep" />
-      <button className="note-tool" title="Bold (⌘B)" aria-label="Bold" onClick={onBold}>
-        <span style={{ fontWeight: 700 }}>B</span>
-      </button>
-      <button className="note-tool" title="Underline (⌘U)" aria-label="Underline" onClick={onUnderline}>
-        <span style={{ textDecoration: 'underline', textUnderlineOffset: 2 }}>U</span>
-      </button>
-      <button className="note-tool" title="Clear highlight and underline" aria-label="Clear formatting" onClick={onClear}>
-        <span style={{ textDecoration: 'line-through' }}>T</span>
-        <span style={{ fontSize: 10, marginLeft: 1 }}>x</span>
-      </button>
-    </div>
-  );
 }
 
 const READER_CSS = `
@@ -878,6 +842,21 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
       setSaveError(err instanceof Error ? err.message : 'Could not save');
     }
   }, [note, vault, draft, display]);
+
+  // Switching to the notebook view: an edit in progress is saved first, and the notebook opens
+  // the same note.
+  const flushRef = useRef<() => Promise<void>>(async () => undefined);
+  flushRef.current = async () => {
+    if (!note) return;
+    const text = draftRef.current;
+    if (editingRef.current && vault?.writeNote && text !== raw) {
+      await vault.writeNote(note.id, text);
+      noteSaved(note.id, text, note.title);
+    }
+    setFocusNote(note.id);
+    bus.emit('close-note', undefined);
+  };
+  useEffect(() => onBeforeViewSwitch(() => flushRef.current()), []);
 
   // Capture phase so Escape closes the book before anything else sees it (Track C's convention).
   useEffect(() => {

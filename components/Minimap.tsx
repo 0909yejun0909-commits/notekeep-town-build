@@ -124,7 +124,7 @@ function drawLabels(ctx: CanvasRenderingContext2D, layout: MinimapLayout, k: num
     }
   };
 
-  ctx.font = `${FONT * dpr}px CuteFantasy, monospace`;
+  ctx.font = `${FONT * dpr}px ${document.documentElement.dataset.font === 'smooth' ? 'system-ui, sans-serif' : 'CuteFantasy, monospace'}`;
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
   ctx.lineWidth = 3 * dpr;

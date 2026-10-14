@@ -16,10 +16,30 @@
   src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
 }
 
+/* Smooth type for the "Smooth" font setting: whatever clean sans-serif the computer has, drawn a
+   little smaller so it fills the space the pixel letters were laid out for. */
+@font-face {
+  font-family: 'SmoothUI';
+  src: local('Inter'), local('Segoe UI'), local('Roboto'), local('Helvetica Neue'), local('Helvetica'), local('Arial'),
+    local('Liberation Sans'), local('DejaVu Sans');
+  size-adjust: 88%;
+}
+
 :root {
   --pixel-font: 'Tiny5', 'CuteFantasy', monospace;
   --background: #ffffff;
   --foreground: #171717;
+}
+
+/* The font setting (lib/displayPrefs.ts): Pixel puts the pixel letters in notes too; Smooth
+   takes them out everywhere; Mixed (no attribute change) is the town's own look. */
+:root[data-font='pixel'] {
+  --note-font: 'Tiny5', 'CuteFantasy', monospace;
+}
+:root[data-font='smooth'] {
+  --pixel-font: 'SmoothUI', system-ui, -apple-system, sans-serif;
+  --label-font: 'SmoothUI', system-ui, -apple-system, sans-serif;
+  --note-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 @theme inline {

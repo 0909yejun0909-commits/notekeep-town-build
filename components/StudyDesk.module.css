@@ -23,7 +23,7 @@
   border-radius: 6px;
   box-shadow: inset 0 -4px 0 #e4c99a, 0 6px 0 rgba(24, 20, 37, 0.35);
   color: #3b2a20;
-  font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+  font-family: var(--note-font, Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif);
   font-size: 17px;
   line-height: 1.45;
 }

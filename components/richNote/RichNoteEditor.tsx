@@ -31,6 +31,8 @@ type Props = {
   resolveImage: (target: string) => Promise<string | null>;
   pagesWidth: number;
   spineGap: number;
+  // 'book': the book's two-page spreads. 'scroll': one long page in a [data-scroll] parent.
+  layout?: 'book' | 'scroll';
 };
 
 // The note on the book's pages, edited in place (components/richNote/editor.ts does the work).
@@ -88,6 +90,7 @@ const RichNoteEditor = forwardRef<RichNoteApi, Props>(function RichNoteEditor(pr
       },
       onSave: () => live.current.onSave(),
       resolveImage: (t) => live.current.resolveImage(t),
+      paged: live.current.layout !== 'scroll',
       renderRaw: (el, src) => {
         const r = createRoot(el);
         r.render(
@@ -129,7 +132,7 @@ const RichNoteEditor = forwardRef<RichNoteApi, Props>(function RichNoteEditor(pr
     <>
       <div
         ref={rootRef}
-        className="note-pages note-prose rn-root"
+        className={props.layout === 'scroll' ? 'note-prose rn-root' : 'note-pages note-prose rn-root'}
         data-tour="note-text"
         contentEditable={props.canWrite}
         suppressContentEditableWarning
@@ -140,10 +143,14 @@ const RichNoteEditor = forwardRef<RichNoteApi, Props>(function RichNoteEditor(pr
           ref={menuRef}
           className="slash-menu"
           data-tour="slash-menu"
-          style={{
-            left: Math.max(0, Math.min(slash.x % (props.pagesWidth + props.spineGap), props.pagesWidth - 230)),
-            ...(slash.y + 240 > 400 ? { bottom: 400 - slash.y + 24 } : { top: slash.y + 4 }),
-          }}
+          style={
+            props.layout === 'scroll'
+              ? { left: Math.max(0, Math.min(slash.x, props.pagesWidth - 230)), top: slash.y + 4 }
+              : {
+                  left: Math.max(0, Math.min(slash.x % (props.pagesWidth + props.spineGap), props.pagesWidth - 230)),
+                  ...(slash.y + 240 > 400 ? { bottom: 400 - slash.y + 24 } : { top: slash.y + 4 }),
+                }
+          }
           onMouseDown={(e) => e.preventDefault()}
         >
           <div className="slash-head">{slash.query ? `Commands for "${slash.query}"` : 'Turn this line into'}</div>

@@ -26,6 +26,8 @@ export type EditorHooks = {
   // Shows a raw block (front matter, HTML, a callout...) the way the note view would.
   renderRaw: (el: HTMLElement, src: string) => () => void;
   resolveImage: (target: string) => Promise<string | null>;
+  // False for one long page that scrolls (the notebook view) instead of the book's spreads.
+  paged?: boolean;
 };
 
 type TextBlock = Extract<Block, { runs: Run[] }>;
@@ -658,10 +660,12 @@ export class NoteEditor {
   }
 
   private pages() {
+    if (this.hooks.paged === false) return 1;
     return Math.max(1, Math.ceil((this.root.scrollWidth - 1) / this.stride()));
   }
 
   private showPage(page: number) {
+    if (this.hooks.paged === false) return;
     this.page = Math.min(this.pages() - 1, Math.max(0, page));
     this.root.style.transform = `translateX(${-this.page * this.stride()}px)`;
   }
@@ -683,6 +687,14 @@ export class NoteEditor {
       const c = this.containerOf(s.focusNode);
       if (!c) return;
       rect = c.getBoundingClientRect();
+    }
+    if (this.hooks.paged === false) {
+      const view = this.root.closest<HTMLElement>('[data-scroll]');
+      if (!view) return;
+      const v = view.getBoundingClientRect();
+      if (rect.bottom > v.bottom - 24) view.scrollTop += rect.bottom - v.bottom + 48;
+      else if (rect.top < v.top + 8) view.scrollTop -= v.top - rect.top + 48;
+      return;
     }
     const page = Math.floor((this.across(rect) + 1) / this.stride());
     if (page !== this.page) this.showPage(page);
