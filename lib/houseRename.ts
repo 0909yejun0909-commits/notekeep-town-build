@@ -48,3 +48,22 @@ export function moveHouseSaves(fingerprint: string, from: string, to: string) {
     saveTownEdits(fingerprint, town);
   }
 }
+
+// A note renamed: furniture holding it, in any saved room, holds it under its new path.
+export function moveNoteSaves(fingerprint: string, from: string, to: string) {
+  try {
+    const prefix = `interior:${fingerprint}:`;
+    const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter((k): k is string => !!k?.startsWith(prefix));
+    for (const k of keys) {
+      const raw = localStorage.getItem(k);
+      if (raw === null || !raw.includes(JSON.stringify(from).slice(1, -1))) continue;
+      try {
+        localStorage.setItem(k, JSON.stringify(movedLayout(JSON.parse(raw), from, to)));
+      } catch {
+        // Unreadable: left as it is, and read as no layout like before.
+      }
+    }
+  } catch {
+    // Storage unavailable: the note keeps its words and loses only its spot on the furniture.
+  }
+}

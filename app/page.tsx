@@ -30,7 +30,7 @@ import Arcade from '@/components/Arcade';
 import ChoiceMenu from '@/components/ChoiceMenu';
 import BiomePicker from '@/components/BiomePicker';
 import MissingArtBanner from '@/components/MissingArtBanner';
-import SoundToggle from '@/components/SoundToggle';
+import Settings from '@/components/Settings';
 import SoundPlayer from '@/components/SoundPlayer';
 import Meditate from '@/components/Meditate';
 import RestHud from '@/components/RestHud';
@@ -92,7 +92,7 @@ function Game() {
       <Arcade />
       <ChoiceMenu />
       <BiomePicker />
-      <SoundToggle />
+      <Settings />
       <NowPlaying />
       <SoundPlayer />
       <Meditate />

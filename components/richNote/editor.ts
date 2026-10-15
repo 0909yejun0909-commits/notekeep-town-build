@@ -1,4 +1,5 @@
 import { isAtom, normalize, parseInline, serializeInline, type AtomKind, type Marks, type Run } from '@/lib/richNote/inline';
+import { makeTitleEditable } from './titleEdit';
 import { newId, parseNote, serializeNote, type Block, type Note } from '@/lib/richNote/blocks';
 import {
   clearMarks, deleteRange, equalRuns, highlight, inlineShortcut, insertRuns, marksAt, runsLength, sliceRuns, splitRuns, toggleMark, visibleText,
@@ -28,6 +29,8 @@ export type EditorHooks = {
   resolveImage: (target: string) => Promise<string | null>;
   // False for one long page that scrolls (the notebook view) instead of the book's spreads.
   paged?: boolean;
+  // Renames the note from its title; without it the title can't be edited.
+  onTitle?: (title: string) => Promise<boolean>;
 };
 
 type TextBlock = Extract<Block, { runs: Run[] }>;
@@ -276,6 +279,7 @@ export class NoteEditor {
     this.titleEl = el('h2', 'note-title');
     this.titleEl.contentEditable = 'false';
     this.titleEl.textContent = title;
+    if (hooks.onTitle) this.disposers.push(makeTitleEditable(this.titleEl, title, (t) => this.hooks.onTitle!(t)));
     this.renderAll();
     const on = <K extends keyof HTMLElementEventMap>(type: K, fn: (e: HTMLElementEventMap[K]) => void) => {
       root.addEventListener(type, fn as EventListener);

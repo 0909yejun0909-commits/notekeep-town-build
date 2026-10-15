@@ -3,13 +3,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MINIMAP_TILE, getMinimapSource, type MinimapLayout } from '@/game/minimap';
 import { RELAY_URL } from '@/lib/multiplayer/session';
+import { useFontStyle } from '@/lib/displayPrefs';
 import type { RoofColor, TownBiome } from '@/lib/types';
 import styles from './Minimap.module.css';
 
 // Longest side of the map in CSS px.
 const SIZE = 260;
-// Label size in CSS px; CuteFantasy is drawn on a 9px grid.
-const FONT = 9;
+// Labels in CSS px, by text style (lib/displayPrefs.ts): CuteFantasy is drawn on a 9px grid,
+// the softer letters need a little more room to read.
+const LABEL_FONTS: Record<string, [number, string]> = {
+  pixel: [9, 'CuteFantasy, Tiny5, monospace'],
+  mixed: [11, 'PixelifySans, CuteFantasy, monospace'],
+  smooth: [11, 'Nunito, system-ui, sans-serif'],
+};
 const LABEL_MAX = 72;
 const STORE_KEY = 'notekeep.minimapOpen';
 
@@ -20,6 +26,7 @@ const GROUND: Record<TownBiome, Record<number, string>> = {
     [MINIMAP_TILE.road]: '#d2ab6e',
     [MINIMAP_TILE.water]: '#4a8fd0',
     [MINIMAP_TILE.plaza]: '#bdb39e',
+    [MINIMAP_TILE.cloud]: '#e8eef6',
   },
   snow: {
     [MINIMAP_TILE.grass]: '#e3ecf4',
@@ -27,6 +34,7 @@ const GROUND: Record<TownBiome, Record<number, string>> = {
     [MINIMAP_TILE.road]: '#b9a48a',
     [MINIMAP_TILE.water]: '#a6d4ef',
     [MINIMAP_TILE.plaza]: '#c6cad3',
+    [MINIMAP_TILE.cloud]: '#c9d6e4',
   },
   desert: {
     [MINIMAP_TILE.grass]: '#e4c08a',
@@ -34,6 +42,7 @@ const GROUND: Record<TownBiome, Record<number, string>> = {
     [MINIMAP_TILE.road]: '#bf8650',
     [MINIMAP_TILE.water]: '#4aa3c8',
     [MINIMAP_TILE.plaza]: '#d6c4a0',
+    [MINIMAP_TILE.cloud]: '#e8eef6',
   },
 };
 
@@ -67,7 +76,7 @@ function drawLayout(layout: MinimapLayout, k: number, dpr: number, w: number, h:
   const palette = GROUND[layout.biome];
   ctx.fillStyle = palette[MINIMAP_TILE.grass];
   ctx.fillRect(0, 0, w, h);
-  for (const kind of [MINIMAP_TILE.blocked, MINIMAP_TILE.plaza, MINIMAP_TILE.road, MINIMAP_TILE.water]) {
+  for (const kind of [MINIMAP_TILE.blocked, MINIMAP_TILE.plaza, MINIMAP_TILE.road, MINIMAP_TILE.water, MINIMAP_TILE.cloud]) {
     ctx.fillStyle = palette[kind];
     for (let i = 0; i < layout.tiles.length; i++) {
       if (layout.tiles[i] === kind) cell(i % layout.w, Math.floor(i / layout.w), 1, 1);
@@ -105,7 +114,8 @@ function drawLabels(ctx: CanvasRenderingContext2D, layout: MinimapLayout, k: num
   };
 
   const pad = 2 * dpr;
-  const bh = Math.ceil(FONT * dpr + pad);
+  const [size, family] = LABEL_FONTS[document.documentElement.dataset.font ?? ''] ?? LABEL_FONTS.mixed;
+  const bh = Math.ceil(size * dpr + pad);
 
   // spots(bw): [left, top] in backing px, tried in order.
   const place = (raw: string, spots: (bw: number) => [number, number][], color: string) => {
@@ -124,7 +134,7 @@ function drawLabels(ctx: CanvasRenderingContext2D, layout: MinimapLayout, k: num
     }
   };
 
-  ctx.font = `${FONT * dpr}px ${document.documentElement.dataset.font === 'smooth' ? 'system-ui, sans-serif' : 'CuteFantasy, monospace'}`;
+  ctx.font = `${size * dpr}px ${family}`;
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
   ctx.lineWidth = 3 * dpr;
@@ -163,6 +173,7 @@ export default function Minimap() {
   const [place, setPlace] = useState('');
   const [hovered, setHovered] = useState<string | null>(null);
   const [fontsReady, setFontsReady] = useState(0);
+  const fontStyle = useFontStyle();
   const canvas = useRef<HTMLCanvasElement>(null);
   const backdrop = useRef<HTMLCanvasElement | null>(null);
 
@@ -198,7 +209,7 @@ export default function Minimap() {
     el.width = Math.round(cssW * dpr);
     el.height = Math.round(cssH * dpr);
     backdrop.current = drawLayout(layout, scale * dpr, dpr, el.width, el.height);
-  }, [layout, open, cssW, cssH, scale, fontsReady]);
+  }, [layout, open, cssW, cssH, scale, fontsReady, fontStyle]);
 
   useEffect(() => {
     let raf = 0;

@@ -31,6 +31,7 @@ import {
   type DoorSlot,
 } from '@/lib/interiorLayout';
 import { getLayout, saveLayout } from '@/lib/interiorStore';
+import { movedLayout } from '@/lib/houseRename';
 import {
   CATALOG_BY_ID,
   missingExtra,
@@ -193,6 +194,17 @@ export default class InteriorScene extends Phaser.Scene {
     this.scene.restart({ houseId: this.houseId, roomId });
   };
 
+  // A note renamed while its furniture is in this room: the furniture opens it by its new name.
+  private renamed = new Map<string, NoteRef>();
+  private onNoteRenamed = ({ from, to }: { from: string; to: string }) => {
+    const world = this.game.registry.get('world') as WorldModel | undefined;
+    const note = world?.regions.flatMap((r) => r.houses.flatMap((h) => h.rooms.flatMap((rm) => rm.notes))).find((n) => n.id === to);
+    if (!note) return;
+    for (const [k, n] of this.renamed) if (n.id === from) this.renamed.set(k, note);
+    this.renamed.set(from, note);
+    this.layout = movedLayout(this.layout, from, to);
+  };
+
   private onWorldUpdated = () => {
     if (this.fingerprint) return;
     const layouts = this.game.registry.get('sessionLayouts') as Record<string, InteriorLayout> | undefined;
@@ -210,6 +222,7 @@ export default class InteriorScene extends Phaser.Scene {
     this.roomId = data.roomId ?? data.houseId;
     this.fromRoomId = data.fromRoomId;
     this.arriveNoteId = data.noteId;
+    this.renamed = new Map();
     this.shelfOpen = false;
     this.noteOpen = false;
     this.wardrobeOpen = false;
@@ -427,7 +440,9 @@ export default class InteriorScene extends Phaser.Scene {
     bus.on('close-arcade', this.onCloseApp);
     bus.on('commit-interior-layout', this.onCommitLayout);
     bus.on('world-updated', this.onWorldUpdated);
+    bus.on('note-renamed', this.onNoteRenamed);
     this.events.once('shutdown', () => {
+      bus.off('note-renamed', this.onNoteRenamed);
       if (getLabelSource() === this.projectLabels) setLabelSource(null);
       this.scale.off(Phaser.Scale.Events.RESIZE, this.fitCamera);
       bus.off('close-shelf', this.onCloseShelf);
@@ -499,6 +514,7 @@ export default class InteriorScene extends Phaser.Scene {
 
   private openNote(note: NoteRef) {
     if (this.overlayOpen() || this.exiting) return;
+    note = this.renamed.get(note.id) ?? note;
     this.noteOpen = true;
     bus.emit('open-note', { note });
   }

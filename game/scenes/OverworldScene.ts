@@ -42,7 +42,7 @@ import {
   releaseProp, renderTallGrass,
 } from '@/game/townEdits';
 import { spend, walletNow } from '@/lib/walletStore';
-import { drawLockedPlot, openPlot, plotAt, plotReachable, plotsAround, type Plot } from '@/game/plots';
+import { drawClouds, drawLockedPlot, openPlot, plotAt, plotReachable, plotsAround, type Plot } from '@/game/plots';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -73,6 +73,10 @@ export default class OverworldScene extends Phaser.Scene {
   private plots: Plot[] = [];
   private plotShades = new Map<string, Phaser.GameObjects.Graphics>();
   private plotSize: [number, number] = [0, 0];
+  // The plots for sale that can be seen: those touching the town or land already bought. The
+  // rest, and the forest beyond them, are under cloud.
+  private shownPlots = new Set<string>();
+  private clouded: (x: number, y: number) => boolean = () => false;
   private plotHover: Phaser.GameObjects.Graphics | null = null;
   private ground: GroundTiles | null = null;
 
@@ -269,6 +273,16 @@ export default class OverworldScene extends Phaser.Scene {
     this.plotSize = [plotCols, plotRows];
     const owned = new Set(this.town.plots);
     for (const p of this.plots) if (owned.has(p.id)) openPlot(grid, p, houseCells);
+    this.shownPlots = new Set(this.plots.filter((p) => owned.has(p.id) || plotReachable(p, plotCols, plotRows, owned)).map((p) => p.id));
+    const townRight = inset + plotCols * PLOT;
+    const townBottom = inset + plotRows * PLOT;
+    this.clouded = (x, y) => {
+      if (x >= inset && y >= inset && x < townRight && y < townBottom) return false;
+      // Forest goes with the plot it borders.
+      const cx = Math.min(Math.max(x, BORDER), worldW - BORDER - 1);
+      const cy = Math.min(Math.max(y, BORDER), worldH - BORDER - 1);
+      return !this.shownPlots.has(`${Math.floor((cx - inset) / PLOT)},${Math.floor((cy - inset) / PLOT)}`);
+    };
     const { plazas, anchors, wells } = placePlazas(grid);
     placePonds(grid);
     // The player's own village edits, each slotted in where it can't move anything else
@@ -293,6 +307,7 @@ export default class OverworldScene extends Phaser.Scene {
     for (const k of houseGaps) if (!grid.used.has(k)) blocked.delete(k);
     this.plotShades = new Map(this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawLockedPlot(this, p)]));
     this.plotHover = this.add.graphics().setDepth(1e6 - 1);
+    drawClouds(this, worldW, worldH, this.clouded);
     // Rebuilt after buying land while building: carry on building.
     if (this.game.registry.get('resumeBuilding')) this.onOpenTownEditor();
     this.game.registry.remove('resumeBuilding');
@@ -425,48 +440,70 @@ export default class OverworldScene extends Phaser.Scene {
       }));
   };
 
+  // The map shows the town, the land for sale next to it, and one plot's width of the cloud
+  // beyond: cropped to that, so it's drawn as large as it can be.
   private minimapSource(world: WorldModel, grid: WorldGrid, player: Phaser.GameObjects.Sprite): MinimapSource {
-    const tiles = new Uint8Array(grid.w * grid.h);
+    let [x0, y0, x1, y1] = [grid.w, grid.h, 0, 0];
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
-        const k = key(x, y);
-        tiles[y * grid.w + x] = grid.water.has(k)
-          ? MINIMAP_TILE.water
-          : grid.road.has(k)
-            ? MINIMAP_TILE.road
-            : grid.plaza.has(k)
-              ? MINIMAP_TILE.plaza
-              : grid.blocked.has(k)
-                ? MINIMAP_TILE.blocked
-                : MINIMAP_TILE.grass;
+        if (this.clouded(x, y)) continue;
+        x0 = Math.min(x0, x);
+        y0 = Math.min(y0, y);
+        x1 = Math.max(x1, x + 1);
+        y1 = Math.max(y1, y + 1);
+      }
+    }
+    x0 = Math.max(0, x0 - PLOT);
+    y0 = Math.max(0, y0 - PLOT);
+    x1 = Math.min(grid.w, x1 + PLOT);
+    y1 = Math.min(grid.h, y1 + PLOT);
+    const w = Math.max(1, x1 - x0);
+    const h = Math.max(1, y1 - y0);
+    const tiles = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const gx = x + x0;
+        const gy = y + y0;
+        const k = key(gx, gy);
+        tiles[y * w + x] = this.clouded(gx, gy)
+          ? MINIMAP_TILE.cloud
+          : grid.water.has(k)
+            ? MINIMAP_TILE.water
+            : grid.road.has(k)
+              ? MINIMAP_TILE.road
+              : grid.plaza.has(k)
+                ? MINIMAP_TILE.plaza
+                : grid.blocked.has(k)
+                  ? MINIMAP_TILE.blocked
+                  : MINIMAP_TILE.grass;
       }
     }
     const byId = new Map(world.regions.flatMap((r) => r.houses.map((h) => [h.id, h] as const)));
     const cam = this.cameras.main;
     return {
       layout: {
-        w: grid.w,
-        h: grid.h,
+        w,
+        h,
         biome: grid.biome,
         tiles,
         houses: grid.houses.map((r) => ({
           id: r.houseId,
           name: byId.get(r.houseId)?.name ?? '',
-          gx: r.gx,
-          gy: r.gy,
+          gx: r.gx - x0,
+          gy: r.gy - y0,
           w: r.w,
           h: r.h,
           roof: byId.get(r.houseId)?.roofColor ?? 'red',
         })),
-        areas: grid.areas.map((a) => ({ name: a.region.name, gx: a.originGx, gy: a.originGy, w: a.width, h: a.height })),
+        areas: grid.areas.map((a) => ({ name: a.region.name, gx: a.originGx - x0, gy: a.originGy - y0, w: a.width, h: a.height })),
         townName: world.name,
       },
       frame: () => ({
-        player: { x: player.x / TILE, y: player.y / TILE - 0.5 },
-        view: { x: cam.worldView.x / TILE, y: cam.worldView.y / TILE, w: cam.worldView.width / TILE, h: cam.worldView.height / TILE },
+        player: { x: player.x / TILE - x0, y: player.y / TILE - 0.5 - y0 },
+        view: { x: cam.worldView.x / TILE - x0, y: cam.worldView.y / TILE - y0, w: cam.worldView.width / TILE, h: cam.worldView.height / TILE },
         peers: currentPresences()
           .filter(([, p]) => p.scene === 'overworld')
-          .map(([, p]) => ({ x: p.gx + 0.5, y: p.gy + 0.5 })),
+          .map(([, p]) => ({ x: p.gx + 0.5 - x0, y: p.gy + 0.5 - y0 })),
       }),
     };
   }
@@ -651,7 +688,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (!this.grid || !this.plotHover || guest || !this.fingerprint || (this.building && this.tool) || this.placing) return this.clearPlotHover();
     const w = this.cameras.main.getWorldPoint(p.x, p.y);
     const plot = plotAt(this.plots, Math.floor(w.x / TILE), Math.floor(w.y / TILE));
-    if (!plot || !this.plotShades.has(plot.id)) return this.clearPlotHover();
+    if (!plot || !this.plotShades.has(plot.id) || !this.shownPlots.has(plot.id)) return this.clearPlotHover();
     const owned = new Set(this.town.plots);
     const reachable = plotReachable(plot, ...this.plotSize, owned);
     if (p.isDown && p.event.type !== 'pointermove' && p.event.type !== 'mousemove') {

@@ -3,7 +3,7 @@
 
 import type { RoofColor, TownBiome } from '@/lib/types';
 
-export const MINIMAP_TILE = { grass: 0, blocked: 1, road: 2, water: 3, plaza: 4 } as const;
+export const MINIMAP_TILE = { grass: 0, blocked: 1, road: 2, water: 3, plaza: 4, cloud: 5 } as const;
 
 export type MinimapHouse = { id: string; name: string; gx: number; gy: number; w: number; h: number; roof: RoofColor };
 

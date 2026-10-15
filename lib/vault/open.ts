@@ -3,7 +3,7 @@
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
 import type { InteriorLayout, NoteRef, Room, VaultHandle, WorldModel } from '@/lib/types';
 import { HOUSE_MARKER, isNotePath, makeLinkResolver, parseVault, ROOT_ID } from '@/lib/vault/parse';
-import { foldersOf, movedPath, newHousePath, newNotePath, newRoomPath } from '@/lib/vault/paths';
+import { foldersOf, movedPath, newHousePath, newNotePath, newRoomPath, renamedNotePath } from '@/lib/vault/paths';
 import { DEMO_FILES, DEMO_VAULT_NAME } from '@/lib/vault/demo';
 import { vaultFingerprint } from '@/lib/interiorStore';
 import { loadAppearance } from '@/lib/appearance';
@@ -454,6 +454,44 @@ async function openFolder(
       notesMoved(houseId, to);
       return { world: await reparse(), houseId: to };
     },
+    // A file can't be renamed in place: it's written under its new name, then the old one goes.
+    renameNote: async (id, title) => {
+      const from = resolve(id);
+      const old = from ? files.get(from) : undefined;
+      if (!from || !old) throw new Error(`No such file in vault: ${id}`);
+      const to = renamedNotePath(from, title, paths);
+      if (to === from) return { world: current, note: findNote(current, from) };
+      await ensureWritable(dir);
+      const target = await dirAt(parentOf(from));
+      const blob = await old.getFile();
+      const write = async (name: string) => {
+        const handle = await target.getFileHandle(name, { create: true });
+        await writeFile(handle, blob);
+        return handle;
+      };
+      let handle: FileSystemFileHandle;
+      if (to.toLowerCase() === from.toLowerCase()) {
+        // Only the case changes: most computers would call that the same file.
+        const temp = `${baseName(to)}.renaming`;
+        await write(temp);
+        await target.removeEntry(baseName(from));
+        handle = await write(baseName(to));
+        await target.removeEntry(temp);
+      } else {
+        handle = await write(baseName(to));
+        await target.removeEntry(baseName(from));
+      }
+      files.delete(from);
+      files.set(to, handle);
+      paths.splice(paths.indexOf(from), 1, to);
+      const head = heads.get(from);
+      heads.delete(from);
+      if (head !== undefined) heads.set(to, head);
+      resolve = makeLinkResolver(paths);
+      notesMoved(from, to);
+      const next = await reparse();
+      return { world: next, note: findNote(next, to) };
+    },
   };
 }
 
@@ -551,6 +589,18 @@ export async function openDemoVault(): Promise<VaultHandle | null> {
       resolve = makeLinkResolver(paths);
       notesMoved(houseId, to);
       return { world: await reparse(), houseId: to };
+    },
+    renameNote: async (id, title) => {
+      const from = getPath(id);
+      const to = renamedNotePath(from, title, paths);
+      if (to === from) return { world: current, note: findNote(current, from) };
+      files[to] = files[from];
+      delete files[from];
+      paths.splice(paths.indexOf(from), 1, to);
+      resolve = makeLinkResolver(paths);
+      notesMoved(from, to);
+      const next = await reparse();
+      return { world: next, note: findNote(next, to) };
     },
   };
 }

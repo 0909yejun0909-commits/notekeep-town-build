@@ -25,6 +25,20 @@ export function newNotePath(folder: string, title: string, paths: string[]): str
   return path;
 }
 
+// Vault path for note `id` retitled `title`, in the same folder. The note's own path is never
+// taken (a change of case only). Throws a message fit to show.
+export function renamedNotePath(id: string, title: string, paths: string[]): string {
+  const folder = id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : '';
+  const ext = /\.[^./]+$/.exec(id)?.[0] ?? '.md';
+  const clean = cleanName(title);
+  if (!clean || clean.startsWith('.')) throw new Error('Give the note a name.');
+  if (clean.length > 120) throw new Error('That name is too long.');
+  const path = folder ? `${folder}/${clean}${ext}` : `${clean}${ext}`;
+  const lower = path.toLowerCase();
+  if (paths.some((p) => p !== id && p.toLowerCase() === lower)) throw new Error(`There's already a note called "${clean}" here.`);
+  return path;
+}
+
 // Folder path for a new room in `houseId`. Any existing folder or file of that name is taken:
 // reusing an attachments folder would make a "room" the parser never shows.
 export function newRoomPath(houseId: string, name: string, paths: string[], folders: string[]): string {

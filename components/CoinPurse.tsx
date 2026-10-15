@@ -5,7 +5,6 @@ import { MORE_WORDS, MIN_WORDS, NOTE_REWARD } from '@/lib/wallet';
 import { useWallet, type Notice } from '@/lib/walletStore';
 import { sfx } from '@/game/audio/sfx';
 import Coin from './Coin';
-import ViewSwitch from './ViewSwitch';
 import styles from './CoinPurse.module.css';
 import { endTutorial } from '@/lib/tutorial';
 
@@ -62,7 +61,6 @@ export default function CoinPurse() {
           <span className={styles.flame}>🔥</span>
           <span>{wallet.streak}</span>
         </div>
-        <ViewSwitch />
       </div>
       {shown && (
         <div key={shown.id} className={styles.toast} onClick={() => setShown(null)}>

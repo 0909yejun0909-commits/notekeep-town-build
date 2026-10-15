@@ -76,6 +76,9 @@ export type VaultHandle = {
   // canRenameHouse() allows: in a folder from the player's own computer, the ones made in town.
   renameHouse?: (houseId: string, name: string) => Promise<{ world: WorldModel; houseId: string }>;
   canRenameHouse?: (houseId: string) => boolean;
+  // Optional: absent means notes can't be renamed. Renames the note's file to `title` in the
+  // same folder and returns the re-parsed world and the note under its new id.
+  renameNote?: (id: string, title: string) => Promise<{ world: WorldModel; note: NoteRef }>;
 };
 
 // Every piece's footprint in tiles: [cols, rows]. Both the track that PLACES

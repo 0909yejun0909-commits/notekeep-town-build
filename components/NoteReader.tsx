@@ -31,6 +31,8 @@ import { BOOK_SRC, paperBookUrl } from '@/lib/paperBook';
 import Coin from './Coin';
 import MarkTools from './MarkTools';
 import { onBeforeViewSwitch, setFocusNote } from '@/lib/displayPrefs';
+import { renameNote } from '@/lib/noteRename';
+import { makeTitleEditable } from './richNote/titleEdit';
 import { applyCommand, continueList, matchCommands, slashAt, SLASH_COMMANDS, type SlashCommand } from '@/lib/slashCommands';
 import { editVisible, layoutOf, rewriteVisible, runsOf, toRaw, toVisible } from '@/lib/noteEditorText';
 import { editTable, nextCell, nextRow, tableAt, type TableEdit, type TableOp } from '@/lib/markdownTable';
@@ -284,6 +286,13 @@ const READER_CSS = `
     font-family: ${PIXEL_FONT}; font-size: 28px; line-height: 36px; color: ${INK};
     margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid ${INK_LINE}; word-break: break-word;
   }
+  h2.note-title-edit { cursor: text; border-radius: 3px; }
+  h2.note-title-edit:hover { background: ${INK_WASH}; }
+  .note-title-box {
+    box-sizing: border-box; margin: 0; padding: 0 2px; border: 0; border-radius: 3px; outline: none;
+    background: #fffaf0; box-shadow: 0 0 0 2px #8a3b12;
+  }
+  .note-title-box:disabled { opacity: 0.6; }
 
   /* The note edited on the page (components/richNote): the reading view's look, with a caret. */
   .rn-root { outline: none; caret-color: #8a3b12; }
@@ -403,11 +412,28 @@ const READER_CSS = `
   .note-float.below { transform: translate(-50%, 8px); }
 `;
 
+// The title over the note, which renames it when it's typed over (when `rename` is given).
+function NoteTitle({ title, rename }: { title: string; rename?: (title: string) => Promise<boolean> }) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  const live = useRef(rename);
+  live.current = rename;
+  const editable = !!rename;
+  useEffect(() => {
+    const el = ref.current!;
+    if (!editable) {
+      el.textContent = title;
+      return;
+    }
+    return makeTitleEditable(el, title, (t) => live.current?.(t) ?? Promise.resolve(false));
+  }, [title, editable]);
+  return <h2 ref={ref} className="note-title" />;
+}
+
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type EditSnap = { raw: string; sel: [number, number] };
 
 export default function NoteReader({ note }: { note: NoteRef | null }) {
-  const { vault } = useVault();
+  const { vault, setVault } = useVault();
   const [raw, setRaw] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const contentMapRef = useRef<SourceMap | null>(null);
@@ -632,8 +658,17 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
         await display(text, () => cancelled);
         if (cancelled) return;
         setStatus('idle');
-        // A blank page (a note just added from the bookshelf) opens ready to write in.
-        if (text.trim() === '' && vault.writeNote) {
+        // Renamed while being edited: the edit carries on under the new name, as it was.
+        const resume = resumeEdit.current;
+        resumeEdit.current = null;
+        if (resume !== null && vault.writeNote) {
+          beginDraft(resume);
+          setEditorMode('page');
+          setRichKey((k) => k + 1);
+          setEditing(true);
+          editingRef.current = true;
+        } else if (text.trim() === '' && vault.writeNote) {
+          // A blank page (a note just added from the bookshelf) opens ready to write in.
           beginDraft(text);
           setEditorMode('page');
           setRichKey((k) => k + 1);
@@ -670,7 +705,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     const root = pagesRef.current;
     if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !root) return null;
     const range = sel.getRangeAt(0);
-    return root.contains(range.commonAncestorContainer) ? range : null;
+    const inTitle = !!root.querySelector('.note-title')?.contains(range.commonAncestorContainer);
+    return root.contains(range.commonAncestorContainer) && !inTitle ? range : null;
   }, []);
 
   const placeFloat = useCallback(() => {
@@ -843,6 +879,25 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
     }
   }, [note, vault, draft, display]);
 
+  // The title typed over: the note's file is renamed, and the book reopens it under its new
+  // name (an edit in progress carries on).
+  const resumeEdit = useRef<string | null>(null);
+  const renameTo = async (title: string): Promise<boolean> => {
+    if (!note || !vault?.renameNote) return false;
+    resumeEdit.current = editingRef.current ? draftRef.current : null;
+    try {
+      const renamed = await renameNote(vault, setVault, note, title);
+      if (renamed.id === note.id) resumeEdit.current = null;
+      else bus.emit('open-note', { note: renamed });
+      return true;
+    } catch (err) {
+      resumeEdit.current = null;
+      setSaveState('error');
+      setSaveError(err instanceof Error ? err.message : "Couldn't rename the note.");
+      return false;
+    }
+  };
+
   // Switching to the notebook view: an edit in progress is saved first, and the notebook opens
   // the same note.
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
@@ -862,6 +917,8 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
   useEffect(() => {
     if (!note) return;
     function onKey(e: KeyboardEvent) {
+      // Typing a new title: its keys are its own (components/richNote/titleEdit.ts).
+      if ((e.target as HTMLElement | null)?.closest?.('.note-title-edit')) return;
       if (e.key === 'Escape') {
         // With the "/" menu open, Escape just closes the menu (the editor handles it).
         if (editingRef.current && slashOpen.current) return;
@@ -1033,7 +1090,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
           <div className="note-frame" style={{ position: 'absolute', left: PAGES_LEFT, top: PAGES_TOP, width: PAGES_W, height: PAGES_H }}>
             {!editing && (
               <div ref={pagesRef} className="note-pages note-prose">
-                <h2 className="note-title">{note.title}</h2>
+                <NoteTitle title={note.title} rename={vault?.renameNote ? renameTo : undefined} />
                 {status === 'loading' && <p style={{ color: INK_SOFT }}>Opening…</p>}
                 {status === 'error' && <p style={{ color: INK_SOFT }}>{errorText ?? 'Could not read this note.'}</p>}
                 {content && (
@@ -1066,6 +1123,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 }}
                 pagesWidth={PAGES_W}
                 spineGap={SPINE_GAP}
+                onTitle={vault?.renameNote ? renameTo : undefined}
               />
             )}
 
@@ -1233,7 +1291,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                 )}
                 </div>
                 <div ref={previewRef} className="note-scroll note-prose">
-                  <h2 className="note-title">{note.title}</h2>
+                  <NoteTitle title={note.title} rename={vault?.renameNote ? renameTo : undefined} />
                   <ReactMarkdown remarkPlugins={[remarkGfm, remarkMarks]} urlTransform={safeUrl} components={components}>
                     {previewMap.text}
                   </ReactMarkdown>
@@ -1272,9 +1330,9 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
             </div>
           )}
 
-          {/* Tables, in the right page's top margin: a new one, or rows and columns of the one
-              the caret is in. */}
-          {editing && (
+          {/* Rows and columns of the table the caret is in (a table is made with /table), in the
+              right page's top margin. */}
+          {editing && (editorMode === 'page' ? richState.inTable : !!tableAt(editorLayout.visible, caretAt)) && (
             <div
               style={{
                 position: 'absolute',
@@ -1286,8 +1344,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
               }}
             >
               <div className="note-tools" data-tour="table-tools" onMouseDown={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()}>
-                {(editorMode === 'page' ? richState.inTable : !!tableAt(editorLayout.visible, caretAt)) ? (
-                  <>
+                <>
                     <span className="note-tools-label" title="Tab: next cell. Shift+Tab: back. Enter: next row (on an empty last row, out of the table).">
                       Table
                     </span>
@@ -1296,12 +1353,7 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     <span className="note-tools-sep" />
                     <button className="note-tool note-tool-text" title="Delete this row" onClick={() => (editorMode === 'page' ? richRef.current?.tableOp('del-row') : tableOp('del-row'))}>− Row</button>
                     <button className="note-tool note-tool-text" title="Delete this column" onClick={() => (editorMode === 'page' ? richRef.current?.tableOp('del-col') : tableOp('del-col'))}>− Col</button>
-                  </>
-                ) : (
-                  <button className="note-tool note-tool-text" title="Insert a table (or type /table)" onClick={() => (editorMode === 'page' ? richRef.current?.insertTable() : insertTable())}>
-                    ⊞ Table
-                  </button>
-                )}
+                </>
               </div>
             </div>
           )}
@@ -1401,6 +1453,13 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     Cancel
                   </button>
                   <button
+                    className="note-btn"
+                    disabled={editorMode === 'page' ? richState.page >= richState.pages - 1 : editPage >= editPageCount - 1}
+                    onClick={() => (editorMode === 'page' ? richRef.current?.turnPage(1) : turnEditPage(1))}
+                  >
+                    Next ›
+                  </button>
+                  <button
                     className="note-btn primary"
                     data-tour="note-save"
                     disabled={!canWrite || saveState === 'saving'}
@@ -1408,13 +1467,6 @@ export default function NoteReader({ note }: { note: NoteRef | null }) {
                     title="Save (Ctrl+S / ⌘S)"
                   >
                     Save
-                  </button>
-                  <button
-                    className="note-btn"
-                    disabled={editorMode === 'page' ? richState.page >= richState.pages - 1 : editPage >= editPageCount - 1}
-                    onClick={() => (editorMode === 'page' ? richRef.current?.turnPage(1) : turnEditPage(1))}
-                  >
-                    Next ›
                   </button>
                 </>
               )}

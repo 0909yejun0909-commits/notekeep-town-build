@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
-/* The game's text font: square, chunky pixel letters like the art, but with letters and digits
-   that can't be mistaken for each other (5 vs S, C vs O), so it reads at a glance. Tiny5, SIL
-   Open Font License (public/fonts). It draws a little small for its size, so it's scaled up
-   once here and every font-size in the UI stays as it was. */
+/* The "Pixel" setting's letters: square, chunky pixel letters like the art, but with letters
+   and digits that can't be mistaken for each other (5 vs S, C vs O). Tiny5, SIL Open Font
+   License (public/fonts). It draws a little small for its size, so it's scaled up once here
+   and every font-size in the UI stays as it was. */
 @font-face {
   font-family: 'Tiny5';
   src: url('/fonts/Tiny5.ttf') format('truetype');
@@ -16,30 +16,92 @@
   src: url('/assets/ui/cute-fantasy.ttf') format('truetype');
 }
 
-/* Smooth type for the "Smooth" font setting: whatever clean sans-serif the computer has, drawn a
-   little smaller so it fills the space the pixel letters were laid out for. */
+/* The town's everyday letters: pixel letters with softer, finer steps than Tiny5, so they read
+   like a game without being blocky. Pixelify Sans, SIL Open Font License (public/fonts). */
 @font-face {
-  font-family: 'SmoothUI';
-  src: local('Inter'), local('Segoe UI'), local('Roboto'), local('Helvetica Neue'), local('Helvetica'), local('Arial'),
-    local('Liberation Sans'), local('DejaVu Sans');
-  size-adjust: 88%;
+  font-family: 'PixelifySans';
+  src: url('/fonts/PixelifySans-400.woff2') format('woff2');
+  font-weight: 400;
+  size-adjust: 104%;
+  font-display: block;
+}
+@font-face {
+  font-family: 'PixelifySans';
+  src: url('/fonts/PixelifySans-600.woff2') format('woff2');
+  font-weight: 500 600;
+  size-adjust: 104%;
+  font-display: block;
+}
+@font-face {
+  font-family: 'PixelifySans';
+  src: url('/fonts/PixelifySans-700.woff2') format('woff2');
+  font-weight: 700 900;
+  size-adjust: 104%;
+  font-display: block;
+}
+
+/* The "Smooth" setting: Nunito, a rounded type with some warmth to it, SIL Open Font License
+   (public/fonts). As NunitoUI it's drawn a little smaller, to fill the space the pixel letters
+   were laid out for. */
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-400.woff2') format('woff2');
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-600.woff2') format('woff2');
+  font-weight: 500 600;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-700.woff2') format('woff2');
+  font-weight: 700 900;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-700-italic.woff2') format('woff2');
+  font-weight: 700 900;
+  font-style: italic;
+}
+@font-face {
+  font-family: 'NunitoUI';
+  src: url('/fonts/Nunito-600.woff2') format('woff2');
+  font-weight: 400 600;
+  size-adjust: 90%;
+}
+@font-face {
+  font-family: 'NunitoUI';
+  src: url('/fonts/Nunito-700.woff2') format('woff2');
+  font-weight: 700 900;
+  size-adjust: 90%;
 }
 
 :root {
-  --pixel-font: 'Tiny5', 'CuteFantasy', monospace;
+  --pixel-font: 'PixelifySans', 'Tiny5', monospace;
+  --label-font: 'PixelifySans', 'Tiny5', monospace;
   --background: #ffffff;
   --foreground: #171717;
 }
 
-/* The font setting (lib/displayPrefs.ts): Pixel puts the pixel letters in notes too; Smooth
-   takes them out everywhere; Mixed (no attribute change) is the town's own look. */
+/* The font setting (lib/displayPrefs.ts): Pixel is the chunky Tiny5 everywhere, notes too;
+   Smooth is Nunito everywhere; Mixed (no change here) is soft pixel letters with book type
+   for notes. */
 :root[data-font='pixel'] {
-  --note-font: 'Tiny5', 'CuteFantasy', monospace;
+  --pixel-font: 'Tiny5', 'PixelifySans', monospace;
+  --label-font: 'Tiny5', 'PixelifySans', monospace;
+  --note-font: 'Tiny5', 'PixelifySans', monospace;
 }
 :root[data-font='smooth'] {
-  --pixel-font: 'SmoothUI', system-ui, -apple-system, sans-serif;
-  --label-font: 'SmoothUI', system-ui, -apple-system, sans-serif;
-  --note-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --pixel-font: 'NunitoUI', 'Nunito', system-ui, sans-serif;
+  --label-font: 'NunitoUI', 'Nunito', system-ui, sans-serif;
+  --note-font: 'Nunito', system-ui, sans-serif;
 }
 
 @theme inline {

@@ -7,9 +7,9 @@ export type FontStyle = 'pixel' | 'mixed' | 'smooth';
 export type ViewMode = 'game' | 'notebook';
 
 export const FONT_STYLES: { id: FontStyle; label: string; hint: string }[] = [
-  { id: 'pixel', label: 'Pixel', hint: 'Pixel letters everywhere, notes too' },
-  { id: 'mixed', label: 'Mixed', hint: 'Pixel buttons, book type for notes' },
-  { id: 'smooth', label: 'Smooth', hint: 'Plain, smooth type everywhere' },
+  { id: 'pixel', label: 'Pixel', hint: 'Chunky pixel letters everywhere, notes too' },
+  { id: 'mixed', label: 'Soft pixel', hint: 'Finer pixel letters, book type for notes' },
+  { id: 'smooth', label: 'Smooth', hint: 'Rounded, smooth type everywhere' },
 ];
 
 const FONT_KEY = 'notekeep-town:font';

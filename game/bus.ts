@@ -75,6 +75,8 @@ type BusEvents = {
   'pin-houses': { houseId: string; gx: number; gy: number };
   // A house's folder was renamed (components/ExteriorEditor.tsx): the town keeps it where it stands.
   'house-renamed': { from: string; to: string };
+  // A note's file was renamed (lib/noteRename.ts): furniture holding it holds the new one.
+  'note-renamed': { from: string; to: string };
   'commit-exterior-variant': {
     houseId: string;
     variant: number;

@@ -62,7 +62,7 @@ function union(rs: Rect[]): Rect | null {
 // (smaller text, thin border) for the narrow margins around a big panel.
 const SIZES = [
   ...[380, 300, 240].map((w) => ({ w, compact: false })),
-  ...[300, 240, 200, 170, 140].map((w) => ({ w, compact: true })),
+  ...[380, 300, 240, 200, 170, 140].map((w) => ({ w, compact: true })),
 ];
 type Size = { w: number; compact: boolean; h: number };
 type Spot = Rect & { compact: boolean };

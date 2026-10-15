@@ -6,14 +6,14 @@ import { replaceWorld, useVault } from '@/lib/vault/open';
 import { ROOT_ID } from '@/lib/vault/parse';
 import { bus } from '@/game/bus';
 import { noteProgress, noteSaved, useWallet } from '@/lib/walletStore';
-import { onBeforeViewSwitch, setFocusNote, setViewMode, takeFocusNote } from '@/lib/displayPrefs';
+import { onBeforeViewSwitch, setFocusNote, takeFocusNote } from '@/lib/displayPrefs';
 import { moveHouseSaves } from '@/lib/houseRename';
+import { renameNote } from '@/lib/noteRename';
 import RichNoteEditor, { type RichNoteApi } from '../richNote/RichNoteEditor';
 import type { EditorState } from '../richNote/editor';
 import { resolveBinary } from '../NoteReader';
 import MarkTools from '../MarkTools';
 import Coin from '../Coin';
-import { FontMenu } from '../ViewSwitch';
 import styles from './Notebook.module.css';
 
 // The town's notes as a plain notes app: folders down the side, the note open beside them.
@@ -169,6 +169,24 @@ export default function Notebook() {
     const t = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(t);
   }, [wallet.notice]);
+
+  // The title typed over: saved first, so the renamed file has every word.
+  const renameOpen = async (title: string): Promise<boolean> => {
+    const p = pending.current;
+    const v = vaultRef.current;
+    if (!p || !v) return false;
+    try {
+      await flush();
+      const renamed = await renameNote(v, setVault, p.note, title);
+      p.note = renamed;
+      setOpen((o) => (o ? { ...o, note: renamed } : o));
+      return true;
+    } catch (err) {
+      setSave('error');
+      setSaveError(err instanceof Error ? err.message : "Couldn't rename the note.");
+      return false;
+    }
+  };
 
   const q = query.trim().toLowerCase();
   const results = useMemo(() => (world && q ? allNotes(world).filter((n) => matches(n, q)) : []), [world, q]);
@@ -416,10 +434,6 @@ export default function Notebook() {
               {wallet.balance}
             </span>
           )}
-          <FontMenu variant="plain" />
-          <button className={styles.townBtn} data-tour="view-town" title="Back to the town, where you left it" onClick={() => void setViewMode('game')}>
-            Town
-          </button>
         </div>
       </aside>
 
@@ -436,21 +450,16 @@ export default function Notebook() {
                   onClear={() => richRef.current?.clearFormatting()}
                 />
               )}
-              {canWrite && (
+              {canWrite && richState.inTable && (
                 <div className="note-tools" onMouseDown={(e) => e.preventDefault()}>
-                  {richState.inTable ? (
-                    <>
-                      <button className="note-tool note-tool-text" title="Add a row below" onClick={() => richRef.current?.tableOp('row-below')}>+ Row</button>
-                      <button className="note-tool note-tool-text" title="Add a column to the right" onClick={() => richRef.current?.tableOp('col-right')}>+ Col</button>
-                      <span className="note-tools-sep" />
-                      <button className="note-tool note-tool-text" title="Delete this row" onClick={() => richRef.current?.tableOp('del-row')}>− Row</button>
-                      <button className="note-tool note-tool-text" title="Delete this column" onClick={() => richRef.current?.tableOp('del-col')}>− Col</button>
-                    </>
-                  ) : (
-                    <button className="note-tool note-tool-text" title="Insert a table (or type /table)" onClick={() => richRef.current?.insertTable()}>
-                      Table
-                    </button>
-                  )}
+                  <span className="note-tools-label" title="Tab: next cell. Shift+Tab: back. Enter: next row (on an empty last row, out of the table).">
+                    Table
+                  </span>
+                  <button className="note-tool note-tool-text" title="Add a row below" onClick={() => richRef.current?.tableOp('row-below')}>+ Row</button>
+                  <button className="note-tool note-tool-text" title="Add a column to the right" onClick={() => richRef.current?.tableOp('col-right')}>+ Col</button>
+                  <span className="note-tools-sep" />
+                  <button className="note-tool note-tool-text" title="Delete this row" onClick={() => richRef.current?.tableOp('del-row')}>− Row</button>
+                  <button className="note-tool note-tool-text" title="Delete this column" onClick={() => richRef.current?.tableOp('del-col')}>− Col</button>
                 </div>
               )}
               <span className={`${styles.status} ${save === 'error' ? styles.bad : ''}`}>{statusText}</span>
@@ -461,6 +470,7 @@ export default function Notebook() {
                   key={open.key}
                   ref={richRef}
                   layout="scroll"
+                  onTitle={vault.renameNote ? renameOpen : undefined}
                   markdown={open.text}
                   title={open.note.title}
                   canWrite={canWrite}

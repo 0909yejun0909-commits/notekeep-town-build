@@ -33,6 +33,8 @@ type Props = {
   spineGap: number;
   // 'book': the book's two-page spreads. 'scroll': one long page in a [data-scroll] parent.
   layout?: 'book' | 'scroll';
+  // Renames the note from its title (lib/noteRename.ts); without it the title is fixed.
+  onTitle?: (title: string) => Promise<boolean>;
 };
 
 // The note on the book's pages, edited in place (components/richNote/editor.ts does the work).
@@ -91,6 +93,7 @@ const RichNoteEditor = forwardRef<RichNoteApi, Props>(function RichNoteEditor(pr
       onSave: () => live.current.onSave(),
       resolveImage: (t) => live.current.resolveImage(t),
       paged: live.current.layout !== 'scroll',
+      onTitle: live.current.onTitle ? (t) => live.current.onTitle!(t) : undefined,
       renderRaw: (el, src) => {
         const r = createRoot(el);
         r.render(

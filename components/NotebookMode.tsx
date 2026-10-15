@@ -12,12 +12,18 @@ import Notebook from './notebook/Notebook';
 // The town switched off: while the notebook view is up, the game is paused (no movement, no
 // sound, no keys) and the town is redrawn on the way back if the notes changed under it. Not in
 // the tutorial or as a study-session guest, whose towns aren't theirs to write in.
-export default function NotebookMode() {
+// Whether the notebook view can be switched on here (a town of your own is open), and is.
+export function useNotebook(): { available: boolean; on: boolean } {
   const mode = useViewMode();
   const { vault } = useVault();
   const step = useTutorialStep();
   const wallet = useWallet();
-  const on = mode === 'notebook' && !!vault && step === null && wallet.active;
+  const available = !!vault && step === null && wallet.active;
+  return { available, on: available && mode === 'notebook' };
+}
+
+export default function NotebookMode() {
+  const { on } = useNotebook();
 
   useEffect(() => applyFont(), []);
 
