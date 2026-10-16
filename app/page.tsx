@@ -1,5 +1,6 @@
 'use client';
 
+import '@/lib/testMode';
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { VaultProvider, useVault } from '@/lib/vault/open';

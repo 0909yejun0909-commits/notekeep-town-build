@@ -1,5 +1,6 @@
 'use client';
 
+import { testReset } from '@/lib/testMode';
 import { createContext, createElement, useContext, useState, type ReactNode } from 'react';
 import type { InteriorLayout, NoteRef, Room, VaultHandle, WorldModel } from '@/lib/types';
 import { HOUSE_MARKER, isNotePath, makeLinkResolver, parseVault, ROOT_ID } from '@/lib/vault/parse';
@@ -174,6 +175,7 @@ This is your first house. Every note you write here is a book on its shelf, and 
 `;
 
 export async function openTown(): Promise<VaultHandle | null> {
+  await testReset;
   const storage = navigator.storage as StorageManager & { getDirectory?: () => Promise<FileSystemDirectoryHandle> };
   if (!storage?.getDirectory) {
     throw new VaultError("This browser can't keep a town. Try Chrome, Edge or Firefox, or open a folder of notes.");

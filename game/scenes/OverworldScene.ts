@@ -315,6 +315,14 @@ export default class OverworldScene extends Phaser.Scene {
     this.plotClouds = new Map(
       this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawPlotCloud(this, p, cloudArea(p, plotCols, plotRows, worldW, worldH))]),
     );
+    // Land just bought: the town has been redrawn with it under its clouds, which now part.
+    const revealed = this.plots.find((p) => p.id === this.game.registry.get('revealPlot'));
+    this.game.registry.remove('revealPlot');
+    if (revealed) {
+      this.revealing = true;
+      const cloud = drawPlotCloud(this, revealed, cloudArea(revealed, plotCols, plotRows, worldW, worldH));
+      this.time.delayedCall(120, () => partClouds(this, cloud, () => (this.revealing = false)));
+    }
     this.plotHover = this.add.graphics().setDepth(1e6 - 1);
     // Rebuilt after buying land while building: carry on building.
     if (this.game.registry.get('resumeBuilding')) this.onOpenTownEditor();
@@ -723,14 +731,14 @@ export default class OverworldScene extends Phaser.Scene {
 
   // Bought land joins the town: rebuilt around the player, it gets the town's grass, tufts and
   // flowers, and the forest floor draws back to the land still for sale. Building carries on.
+  // The town is redrawn with the land in it while its clouds still cover it, so nothing
+  // changes on screen until they part over the land already there.
   private buyPlot(plot: Plot) {
     this.town.plots.push(plot.id);
     this.saveTown();
-    const cloud = this.plotClouds.get(plot.id);
-    this.plotClouds.delete(plot.id);
     this.revealing = true;
-    if (!cloud) return this.rebuildKeepingBuild();
-    partClouds(this, cloud, () => this.rebuildKeepingBuild());
+    this.game.registry.set('revealPlot', plot.id);
+    this.rebuildKeepingBuild();
   }
 
   private saveTown() {

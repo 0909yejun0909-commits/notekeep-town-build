@@ -1,5 +1,6 @@
 'use client';
 
+import { TEST_MODE } from '@/lib/testMode';
 import { useEffect, useState } from 'react';
 import styles from './TitleMenu.module.css';
 import pixel from './pixelUi.module.css';
@@ -29,6 +30,9 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
   const [cursor, setCursor] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // Known only in the browser, so set after the page has hydrated.
+  const [testMode, setTestMode] = useState(false);
+  useEffect(() => setTestMode(TEST_MODE), []);
   // The very first visit points at the Tutorial, with everything else shaded.
   const [firstVisit, setFirstVisit] = useState(false);
 
@@ -188,6 +192,11 @@ export default function TitleMenu({ onVault }: { onVault: (vault: VaultHandle) =
         >
           <p>New here? Start with the Tutorial: it shows you how to write notes, earn coins and spend them.</p>
         </Spotlight>
+      )}
+      {testMode && (
+        <div className={styles.testMode} title="Opened with ?test: the town in this browser is wiped every time the page opens.">
+          Test mode: starts fresh every time
+        </div>
       )}
     </TitleFrame>
   );

@@ -138,26 +138,31 @@ export function drawPlotCloud(scene: Phaser.Scene, p: Plot, area: ReturnType<typ
   return { base, puffs, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
 }
 
-// Bought: the plot's clouds drift apart from its middle and thin away, then `done`.
+// Bought: the plot's clouds drift apart from its middle and thin away, gently at first and
+// each a moment after the last, then `done`.
 export function partClouds(scene: Phaser.Scene, cloud: PlotCloud, done: () => void) {
-  scene.tweens.add({ targets: cloud.base, alpha: 0, duration: 450, ease: 'Sine.easeIn' });
+  scene.tweens.add({ targets: cloud.base, alpha: 0, duration: 700, ease: 'Sine.easeInOut' });
   cloud.puffs.forEach((img, i) => {
     let dx = img.x - cloud.cx;
     let dy = img.y - cloud.cy;
-    const len = Math.hypot(dx, dy) || 1;
-    if (len < 4) [dx, dy] = [Math.cos(i), Math.sin(i)];
-    const push = 120 + (i % 5) * 16;
-    img.setDepth(CLOUD_DEPTH + 2);
+    if (Math.hypot(dx, dy) < 4) [dx, dy] = [Math.cos(i), Math.sin(i)];
+    const len = Math.hypot(dx, dy);
+    const push = 110 + (i % 5) * 14;
+    img.setDepth(img.depth + 1);
     scene.tweens.add({
       targets: img,
       x: img.x + (dx / len) * push,
       y: img.y + (dy / len) * push,
       alpha: 0,
-      scale: 1.15,
-      duration: 1100,
-      delay: (i % 4) * 40,
-      ease: 'Cubic.easeIn',
+      scale: 1.12,
+      duration: 1500,
+      delay: (i % 6) * 45,
+      ease: 'Sine.easeInOut',
     });
   });
-  scene.time.delayedCall(1300, done);
+  scene.time.delayedCall(1800, () => {
+    cloud.base.destroy();
+    cloud.puffs.forEach((img) => img.destroy());
+    done();
+  });
 }

@@ -59,3 +59,19 @@
   justify-content: center;
   margin-top: 18px;
 }
+
+/* Opened with ?test (lib/testMode.ts): said in the corner, so a wiped town is never a surprise. */
+.testMode {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 70;
+  padding: 4px 10px;
+  background: #3f2832;
+  border: 3px solid #1f1418;
+  color: #f7c948;
+  font-family: var(--pixel-font);
+  font-size: 18px;
+  line-height: 22px;
+  pointer-events: auto;
+}
