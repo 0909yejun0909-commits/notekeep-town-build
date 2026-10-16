@@ -14,7 +14,7 @@ const SIZE = 260;
 const LABEL_FONTS: Record<string, [number, string]> = {
   pixel: [9, 'CuteFantasy, Tiny5, monospace'],
   mixed: [11, 'PixelifySans, CuteFantasy, monospace'],
-  smooth: [11, 'Nunito, system-ui, sans-serif'],
+  smooth: [11, 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'],
 };
 const LABEL_MAX = 72;
 const STORE_KEY = 'notekeep.minimapOpen';

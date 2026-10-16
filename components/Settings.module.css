@@ -181,9 +181,9 @@
   font-size: 17px;
 }
 .sample_smooth {
-  font-family: 'Nunito', sans-serif;
-  font-size: 16px;
-  font-weight: 700;
+  font-family: var(--smooth-font);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 /* Over the notebook view: the same controls, drawn like the notebook. */
