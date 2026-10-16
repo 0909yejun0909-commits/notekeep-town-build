@@ -48,64 +48,116 @@ export function openPlot(g: WorldGrid, p: Plot, keep: Set<string> = new Set()) {
   }
 }
 
-// A plot for sale: the forest floor under a shade, with a faint fence line round it.
-export function drawLockedPlot(scene: Phaser.Scene, p: Plot): Phaser.GameObjects.Graphics {
-  const px = p.x * TILE, py = p.y * TILE, size = PLOT * TILE;
-  return scene.add
-    .graphics()
-    .setDepth(-500)
-    .fillStyle(0x0b1a12, 0.32)
-    .fillRect(px, py, size, size)
-    .lineStyle(1, 0x0b1a12, 0.45)
-    .strokeRect(px + 0.5, py + 0.5, size - 1, size - 1);
+// ---- Clouds over the land for sale ----
+
+// Under the town's day and night tint (game/daylight.ts), over everything in town.
+export const CLOUD_DEPTH = 99000;
+const CLOUD_KINDS = 6;
+const OUTLINE = 0x93a5c0;
+const SHADE = 0xcdd8e8;
+const BODY = 0xf6f9fd;
+const GAP = 0xc4d1e3;
+
+// A seeded 0..1 sequence, so a plot's clouds sit the same way every time the town is drawn.
+function seeded(seed: number) {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s = (Math.imul(s ^ (s >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0;
+    return s / 0x100000000;
+  };
 }
 
-// Land further out than the plots for sale next to the town lies under cloud until the land
-// before it is bought. `hidden(x, y)` says which tiles. The cloud is drawn above everything in
-// town, as one bank: flat cloud over the hidden tiles, puffing out over their edge, with a
-// shadow under the puffs and a few lighter billows inside.
-export function drawClouds(scene: Phaser.Scene, w: number, h: number, hidden: (x: number, y: number) => boolean): Phaser.GameObjects.Graphics {
-  const g = scene.add.graphics().setDepth(1e6 - 2);
-  const noise = (x: number, y: number, n: number) => (((x * 73856093) ^ (y * 19349663) ^ (n * 83492791)) >>> 0) % 1000 / 1000;
-  const edge: [number, number][] = [];
-  const inner: [number, number][] = [];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!hidden(x, y)) continue;
-      const open = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
-        const nx = x + dx, ny = y + dy;
-        return nx >= 0 && ny >= 0 && nx < w && ny < h && !hidden(nx, ny);
-      });
-      (open ? edge : inner).push([x, y]);
+// A handful of cloud sprites, each a heap of round puffs on a flat-ish base: a dark outline
+// round the whole heap, a soft shade along its underside and a white body.
+function ensureCloudTextures(scene: Phaser.Scene) {
+  if (scene.textures.exists('cloud-0')) return;
+  for (let k = 0; k < CLOUD_KINDS; k++) {
+    const rnd = seeded(9157 * (k + 1));
+    const puffs: [number, number, number][] = [];
+    const base = 3 + Math.floor(rnd() * 2);
+    const rb = 11 + Math.floor(rnd() * 4);
+    for (let i = 0; i < base; i++) puffs.push([rb + 3 + i * (rb + 2), 0, rb]);
+    const width = puffs[puffs.length - 1][0] + rb + 3;
+    const tops = 1 + Math.floor(rnd() * 2);
+    for (let i = 0; i < tops; i++) {
+      const r = rb + 4 + Math.floor(rnd() * 5);
+      const x = width * ((i + 1) / (tops + 1)) + (rnd() - 0.5) * 6;
+      puffs.push([Math.round(x), -Math.round(r * 0.75), r]);
+    }
+    const top = Math.min(...puffs.map(([, y, r]) => y - r)) - 3;
+    const h = rb + 3 - top;
+    const at = puffs.map(([x, y, r]) => [x, y - top, r] as const);
+    const g = scene.make.graphics({}, false);
+    g.fillStyle(OUTLINE, 1);
+    for (const [x, y, r] of at) g.fillCircle(x, y, r + 2);
+    g.fillStyle(SHADE, 1);
+    for (const [x, y, r] of at) g.fillCircle(x, y, r);
+    g.fillStyle(BODY, 1);
+    for (const [x, y, r] of at) g.fillCircle(x - 1, y - 3, r - 2);
+    g.generateTexture(`cloud-${k}`, width + 1, h + 1);
+    g.destroy();
+  }
+}
+
+export type PlotCloud = { base: Phaser.GameObjects.Rectangle; puffs: Phaser.GameObjects.Image[]; cx: number; cy: number };
+
+// The tiles a plot's cloud covers: the plot, and on the outer ring the forest behind it too,
+// out to the edge of the world.
+export function cloudArea(p: Plot, cols: number, rows: number, w: number, h: number) {
+  const outer = PLOT_RINGS;
+  return {
+    x0: p.i === -outer ? 0 : p.x,
+    y0: p.j === -outer ? 0 : p.y,
+    x1: p.i === cols + outer - 1 ? w : p.x + PLOT,
+    y1: p.j === rows + outer - 1 ? h : p.y + PLOT,
+  };
+}
+
+// A bank of cloud over one plot: a shaded floor so nothing shows between the clouds, and the
+// clouds themselves, overlapping, the nearer ones over the farther, the edge ones puffing out
+// over the land next to it.
+export function drawPlotCloud(scene: Phaser.Scene, p: Plot, area: ReturnType<typeof cloudArea>): PlotCloud {
+  ensureCloudTextures(scene);
+  const [x0, y0, x1, y1] = [area.x0 * TILE, area.y0 * TILE, area.x1 * TILE, area.y1 * TILE];
+  const base = scene.add.rectangle(x0, y0, x1 - x0, y1 - y0, GAP).setOrigin(0, 0).setDepth(CLOUD_DEPTH);
+  const rnd = seeded(((p.i + 97) * 7919) ^ ((p.j + 97) * 104729));
+  const puffs: Phaser.GameObjects.Image[] = [];
+  const stepX = 58;
+  const stepY = 36;
+  for (let y = y0 + 8, row = 0; y < y1 + 12; y += stepY, row++) {
+    for (let x = x0 + (row % 2 ? stepX / 2 : 4); x < x1 + 12; x += stepX) {
+      const img = scene.add
+        .image(Math.round(x + (rnd() - 0.5) * 22), Math.round(y + (rnd() - 0.5) * 14), `cloud-${Math.floor(rnd() * CLOUD_KINDS)}`)
+        .setFlipX(rnd() < 0.5)
+        .setDepth(CLOUD_DEPTH + 1);
+      puffs.push(img);
     }
   }
-  const puff = (x: number, y: number, n: number) => 9 + Math.floor(noise(x, y, n) * 5);
-  g.fillStyle(0xb8c7d9, 1);
-  for (const [x, y] of edge) g.fillCircle((x + 0.5) * TILE, (y + 0.5) * TILE + 3, puff(x, y, 1));
-  g.fillStyle(0xe8eef6, 1);
-  for (let y = 0; y < h; y++) {
-    let start = -1;
-    for (let x = 0; x <= w; x++) {
-      const on = x < w && hidden(x, y);
-      if (on && start < 0) start = x;
-      if (!on && start >= 0) {
-        g.fillRect(start * TILE, y * TILE, (x - start) * TILE, TILE);
-        start = -1;
-      }
-    }
-  }
-  for (const [x, y] of edge) g.fillCircle((x + 0.5) * TILE, (y + 0.5) * TILE, puff(x, y, 1));
-  for (const [x, y] of inner) {
-    const r = noise(x, y, 2);
-    if (r < 0.1) {
-      g.fillStyle(0xd3deeb, 1).fillCircle((x + 0.5) * TILE, (y + 0.5) * TILE + 4, 10);
-      g.fillStyle(0xe8eef6, 1).fillCircle((x + 0.5) * TILE, (y + 0.5) * TILE, 10);
-    } else if (r < 0.2) {
-      g.fillStyle(0xffffff, 1).fillCircle((x + 0.5) * TILE, (y + 0.5) * TILE - 2, 5 + Math.floor(noise(x, y, 3) * 4));
-    }
-  }
-  for (const [x, y] of edge) {
-    if (noise(x, y, 4) < 0.35) g.fillStyle(0xffffff, 1).fillCircle((x + 0.5) * TILE - 2, (y + 0.5) * TILE - 3, 4 + Math.floor(noise(x, y, 5) * 3));
-  }
-  return g;
+  // Nearer (lower) clouds over farther ones.
+  puffs.sort((a, b) => a.y - b.y).forEach((img, i) => img.setDepth(CLOUD_DEPTH + 1 + i * 0.001));
+  return { base, puffs, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+
+// Bought: the plot's clouds drift apart from its middle and thin away, then `done`.
+export function partClouds(scene: Phaser.Scene, cloud: PlotCloud, done: () => void) {
+  scene.tweens.add({ targets: cloud.base, alpha: 0, duration: 450, ease: 'Sine.easeIn' });
+  cloud.puffs.forEach((img, i) => {
+    let dx = img.x - cloud.cx;
+    let dy = img.y - cloud.cy;
+    const len = Math.hypot(dx, dy) || 1;
+    if (len < 4) [dx, dy] = [Math.cos(i), Math.sin(i)];
+    const push = 120 + (i % 5) * 16;
+    img.setDepth(CLOUD_DEPTH + 2);
+    scene.tweens.add({
+      targets: img,
+      x: img.x + (dx / len) * push,
+      y: img.y + (dy / len) * push,
+      alpha: 0,
+      scale: 1.15,
+      duration: 1100,
+      delay: (i % 4) * 40,
+      ease: 'Cubic.easeIn',
+    });
+  });
+  scene.time.delayedCall(1300, done);
 }

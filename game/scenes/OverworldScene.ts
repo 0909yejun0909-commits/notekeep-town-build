@@ -42,7 +42,7 @@ import {
   releaseProp, renderTallGrass,
 } from '@/game/townEdits';
 import { spend, walletNow } from '@/lib/walletStore';
-import { drawClouds, drawLockedPlot, openPlot, plotAt, plotReachable, plotsAround, type Plot } from '@/game/plots';
+import { cloudArea, drawPlotCloud, openPlot, partClouds, plotAt, plotReachable, plotsAround, type Plot, type PlotCloud } from '@/game/plots';
 
 const REGION_PAD = 8;
 // Solid forest around the whole town, so the map ends in trees instead of flat grass.
@@ -71,12 +71,14 @@ export default class OverworldScene extends Phaser.Scene {
   // Land for sale around the town (game/plots.ts), the shade over each locked one, and the
   // town's size in plots.
   private plots: Plot[] = [];
-  private plotShades = new Map<string, Phaser.GameObjects.Graphics>();
+  private plotClouds = new Map<string, PlotCloud>();
   private plotSize: [number, number] = [0, 0];
-  // The plots for sale that can be seen: those touching the town or land already bought. The
-  // rest, and the forest beyond them, are under cloud.
-  private shownPlots = new Set<string>();
+  // Every plot not bought is under cloud, and the forest beyond it. The ones touching the town
+  // or land already bought can be bought next. Set while a bought plot's clouds part.
+  private forSale = new Set<string>();
   private clouded: (x: number, y: number) => boolean = () => false;
+  private plotAtTile: (x: number, y: number) => string = () => '';
+  private revealing = false;
   private plotHover: Phaser.GameObjects.Graphics | null = null;
   private ground: GroundTiles | null = null;
 
@@ -273,15 +275,20 @@ export default class OverworldScene extends Phaser.Scene {
     this.plotSize = [plotCols, plotRows];
     const owned = new Set(this.town.plots);
     for (const p of this.plots) if (owned.has(p.id)) openPlot(grid, p, houseCells);
-    this.shownPlots = new Set(this.plots.filter((p) => owned.has(p.id) || plotReachable(p, plotCols, plotRows, owned)).map((p) => p.id));
+    this.forSale = new Set(this.plots.filter((p) => !owned.has(p.id) && plotReachable(p, plotCols, plotRows, owned)).map((p) => p.id));
+    this.revealing = false;
     const townRight = inset + plotCols * PLOT;
     const townBottom = inset + plotRows * PLOT;
-    this.clouded = (x, y) => {
-      if (x >= inset && y >= inset && x < townRight && y < townBottom) return false;
-      // Forest goes with the plot it borders.
+    // The plot a tile's cloud belongs to: forest goes with the plot it borders.
+    this.plotAtTile = (x, y) => {
+      if (x >= inset && y >= inset && x < townRight && y < townBottom) return '';
       const cx = Math.min(Math.max(x, BORDER), worldW - BORDER - 1);
       const cy = Math.min(Math.max(y, BORDER), worldH - BORDER - 1);
-      return !this.shownPlots.has(`${Math.floor((cx - inset) / PLOT)},${Math.floor((cy - inset) / PLOT)}`);
+      return `${Math.floor((cx - inset) / PLOT)},${Math.floor((cy - inset) / PLOT)}`;
+    };
+    this.clouded = (x, y) => {
+      const id = this.plotAtTile(x, y);
+      return id !== '' && !owned.has(id);
     };
     const { plazas, anchors, wells } = placePlazas(grid);
     placePonds(grid);
@@ -305,9 +312,10 @@ export default class OverworldScene extends Phaser.Scene {
     buildGroundCover(this, grid);
     cutTrees(grid, cut, false);
     for (const k of houseGaps) if (!grid.used.has(k)) blocked.delete(k);
-    this.plotShades = new Map(this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawLockedPlot(this, p)]));
+    this.plotClouds = new Map(
+      this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawPlotCloud(this, p, cloudArea(p, plotCols, plotRows, worldW, worldH))]),
+    );
     this.plotHover = this.add.graphics().setDepth(1e6 - 1);
-    drawClouds(this, worldW, worldH, this.clouded);
     // Rebuilt after buying land while building: carry on building.
     if (this.game.registry.get('resumeBuilding')) this.onOpenTownEditor();
     this.game.registry.remove('resumeBuilding');
@@ -440,13 +448,13 @@ export default class OverworldScene extends Phaser.Scene {
       }));
   };
 
-  // The map shows the town, the land for sale next to it, and one plot's width of the cloud
-  // beyond: cropped to that, so it's drawn as large as it can be.
+  // The map shows the town, the land for sale next to it (under its cloud, a lighter white), and
+  // one plot's width of the cloud beyond: cropped to that, so it's drawn as large as it can be.
   private minimapSource(world: WorldModel, grid: WorldGrid, player: Phaser.GameObjects.Sprite): MinimapSource {
     let [x0, y0, x1, y1] = [grid.w, grid.h, 0, 0];
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
-        if (this.clouded(x, y)) continue;
+        if (this.clouded(x, y) && !this.forSale.has(this.plotAtTile(x, y))) continue;
         x0 = Math.min(x0, x);
         y0 = Math.min(y0, y);
         x1 = Math.max(x1, x + 1);
@@ -466,7 +474,7 @@ export default class OverworldScene extends Phaser.Scene {
         const gy = y + y0;
         const k = key(gx, gy);
         tiles[y * w + x] = this.clouded(gx, gy)
-          ? MINIMAP_TILE.cloud
+          ? this.forSale.has(this.plotAtTile(gx, gy)) ? MINIMAP_TILE.forSale : MINIMAP_TILE.cloud
           : grid.water.has(k)
             ? MINIMAP_TILE.water
             : grid.road.has(k)
@@ -688,7 +696,7 @@ export default class OverworldScene extends Phaser.Scene {
     if (!this.grid || !this.plotHover || guest || !this.fingerprint || (this.building && this.tool) || this.placing) return this.clearPlotHover();
     const w = this.cameras.main.getWorldPoint(p.x, p.y);
     const plot = plotAt(this.plots, Math.floor(w.x / TILE), Math.floor(w.y / TILE));
-    if (!plot || !this.plotShades.has(plot.id) || !this.shownPlots.has(plot.id)) return this.clearPlotHover();
+    if (!plot || !this.plotClouds.has(plot.id) || this.revealing) return this.clearPlotHover();
     const owned = new Set(this.town.plots);
     const reachable = plotReachable(plot, ...this.plotSize, owned);
     if (p.isDown && p.event.type !== 'pointermove' && p.event.type !== 'mousemove') {
@@ -718,7 +726,11 @@ export default class OverworldScene extends Phaser.Scene {
   private buyPlot(plot: Plot) {
     this.town.plots.push(plot.id);
     this.saveTown();
-    this.rebuildKeepingBuild();
+    const cloud = this.plotClouds.get(plot.id);
+    this.plotClouds.delete(plot.id);
+    this.revealing = true;
+    if (!cloud) return this.rebuildKeepingBuild();
+    partClouds(this, cloud, () => this.rebuildKeepingBuild());
   }
 
   private saveTown() {

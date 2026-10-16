@@ -67,7 +67,7 @@ function nearestLand(): Rect | null {
   let best: any = null;
   let bestD = Infinity;
   for (const p of s.plots) {
-    if (!s.plotShades?.has(p.id)) continue;
+    if (!s.forSale?.has(p.id)) continue;
     const d = Math.hypot((p.x + PLOT / 2) * TILE - player.x, (p.y + PLOT / 2) * TILE - player.y);
     if (d < bestD) [best, bestD] = [p, d];
   }
@@ -410,8 +410,8 @@ const STEPS: Step[] = [
     id: 'land',
     text: (
       <p>
-        The dark grass around your town is land for sale, {PLOT_PRICE} coins a square plot. Point at it to see the lock,
-        and click to buy it: then it&apos;s part of your town, to walk and build on.
+        The clouds around your town hide land for sale, {PLOT_PRICE} coins a square plot. Point at the clouds next to
+        town to see the lock, and click to buy: the clouds part, and it&apos;s yours to walk and build on.
       </p>
     ),
     target: nearestLand,

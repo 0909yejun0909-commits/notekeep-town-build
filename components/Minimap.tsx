@@ -26,7 +26,8 @@ const GROUND: Record<TownBiome, Record<number, string>> = {
     [MINIMAP_TILE.road]: '#d2ab6e',
     [MINIMAP_TILE.water]: '#4a8fd0',
     [MINIMAP_TILE.plaza]: '#bdb39e',
-    [MINIMAP_TILE.cloud]: '#e8eef6',
+    [MINIMAP_TILE.cloud]: '#c9d4e3',
+    [MINIMAP_TILE.forSale]: '#f4f7fb',
   },
   snow: {
     [MINIMAP_TILE.grass]: '#e3ecf4',
@@ -34,7 +35,8 @@ const GROUND: Record<TownBiome, Record<number, string>> = {
     [MINIMAP_TILE.road]: '#b9a48a',
     [MINIMAP_TILE.water]: '#a6d4ef',
     [MINIMAP_TILE.plaza]: '#c6cad3',
-    [MINIMAP_TILE.cloud]: '#c9d6e4',
+    [MINIMAP_TILE.cloud]: '#aebfd3',
+    [MINIMAP_TILE.forSale]: '#d6e1ee',
   },
   desert: {
     [MINIMAP_TILE.grass]: '#e4c08a',
@@ -42,7 +44,8 @@ const GROUND: Record<TownBiome, Record<number, string>> = {
     [MINIMAP_TILE.road]: '#bf8650',
     [MINIMAP_TILE.water]: '#4aa3c8',
     [MINIMAP_TILE.plaza]: '#d6c4a0',
-    [MINIMAP_TILE.cloud]: '#e8eef6',
+    [MINIMAP_TILE.cloud]: '#c9d4e3',
+    [MINIMAP_TILE.forSale]: '#f4f7fb',
   },
 };
 
@@ -76,7 +79,7 @@ function drawLayout(layout: MinimapLayout, k: number, dpr: number, w: number, h:
   const palette = GROUND[layout.biome];
   ctx.fillStyle = palette[MINIMAP_TILE.grass];
   ctx.fillRect(0, 0, w, h);
-  for (const kind of [MINIMAP_TILE.blocked, MINIMAP_TILE.plaza, MINIMAP_TILE.road, MINIMAP_TILE.water, MINIMAP_TILE.cloud]) {
+  for (const kind of [MINIMAP_TILE.blocked, MINIMAP_TILE.plaza, MINIMAP_TILE.road, MINIMAP_TILE.water, MINIMAP_TILE.cloud, MINIMAP_TILE.forSale]) {
     ctx.fillStyle = palette[kind];
     for (let i = 0; i < layout.tiles.length; i++) {
       if (layout.tiles[i] === kind) cell(i % layout.w, Math.floor(i / layout.w), 1, 1);
