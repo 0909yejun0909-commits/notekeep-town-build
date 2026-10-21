@@ -52,10 +52,11 @@ export function openPlot(g: WorldGrid, p: Plot, keep: Set<string> = new Set()) {
 
 // Under the town's day and night tint (game/daylight.ts), over everything in town.
 export const CLOUD_DEPTH = 99000;
-const CLOUD_KINDS = 6;
-const OUTLINE = 0x93a5c0;
-const SHADE = 0xcdd8e8;
-const BODY = 0xf6f9fd;
+const CLOUD_KINDS = 10;
+const OUTLINE = 0x8fa1bd;
+const SHADE = 0xc9d5e6;
+const BODY = 0xeef3fa;
+const LIGHT = 0xffffff;
 const GAP = 0xc4d1e3;
 
 // A seeded 0..1 sequence, so a plot's clouds sit the same way every time the town is drawn.
@@ -67,34 +68,54 @@ function seeded(seed: number) {
   };
 }
 
-// A handful of cloud sprites, each a heap of round puffs on a flat-ish base: a dark outline
-// round the whole heap, a soft shade along its underside and a white body.
+// A set of small cloud sprites, each a heap of little round puffs: a row along the bottom, a
+// tier or two of bigger ones above. One thin outline goes round the whole heap; inside it the
+// puffs are drawn back to front, each with a shaded underside that shows as a soft crease over
+// the puff behind, a pale body and, up top, a white glint where the light catches it.
 function ensureCloudTextures(scene: Phaser.Scene) {
   if (scene.textures.exists('cloud-0')) return;
   for (let k = 0; k < CLOUD_KINDS; k++) {
     const rnd = seeded(9157 * (k + 1));
-    const puffs: [number, number, number][] = [];
-    const base = 3 + Math.floor(rnd() * 2);
-    const rb = 11 + Math.floor(rnd() * 4);
-    for (let i = 0; i < base; i++) puffs.push([rb + 3 + i * (rb + 2), 0, rb]);
-    const width = puffs[puffs.length - 1][0] + rb + 3;
-    const tops = 1 + Math.floor(rnd() * 2);
-    for (let i = 0; i < tops; i++) {
-      const r = rb + 4 + Math.floor(rnd() * 5);
-      const x = width * ((i + 1) / (tops + 1)) + (rnd() - 0.5) * 6;
-      puffs.push([Math.round(x), -Math.round(r * 0.75), r]);
+    const front: [number, number, number][] = [];
+    const big = k % 3 === 0;
+    const n = (big ? 5 : 3) + Math.floor(rnd() * 3);
+    let x = 0;
+    for (let i = 0; i < n; i++) {
+      const r = (big ? 5 : 4) + Math.floor(rnd() * 3);
+      x += i === 0 ? r : r + 2 + Math.floor(rnd() * 2);
+      front.push([x, Math.round((rnd() - 0.5) * 2), r]);
     }
-    const top = Math.min(...puffs.map(([, y, r]) => y - r)) - 3;
-    const h = rb + 3 - top;
-    const at = puffs.map(([x, y, r]) => [x, y - top, r] as const);
+    const width = x + front[front.length - 1][2];
+    const middle: [number, number, number][] = [];
+    const m = 2 + Math.floor(rnd() * 2);
+    for (let i = 0; i < m; i++) {
+      const r = (big ? 7 : 6) + Math.floor(rnd() * 3);
+      middle.push([Math.round(width * ((i + 0.5) / m) + (rnd() - 0.5) * 4), -Math.round(r * 0.7 + rnd() * 2), r]);
+    }
+    const back: [number, number, number][] = [];
+    if (rnd() < 0.6) {
+      const r = 5 + Math.floor(rnd() * 2);
+      const [mx, my] = middle[Math.floor(rnd() * middle.length)];
+      back.push([mx + Math.round((rnd() - 0.5) * 6), my - r - 1, r]);
+    }
+    // Glints only on the upper puffs, which face the light.
+    const puffs = [...back.map((q) => [...q, true] as const), ...middle.map((q) => [...q, true] as const), ...front.map((q) => [...q, false] as const)];
+    const pad = 2;
+    const left = Math.min(...puffs.map(([px, , r]) => px - r)) - pad;
+    const top = Math.min(...puffs.map(([, py, r]) => py - r)) - pad;
+    const right = Math.max(...puffs.map(([px, , r]) => px + r)) + pad;
+    const bottom = Math.max(...puffs.map(([, py, r]) => py + r)) + pad;
     const g = scene.make.graphics({}, false);
     g.fillStyle(OUTLINE, 1);
-    for (const [x, y, r] of at) g.fillCircle(x, y, r + 2);
-    g.fillStyle(SHADE, 1);
-    for (const [x, y, r] of at) g.fillCircle(x, y, r);
-    g.fillStyle(BODY, 1);
-    for (const [x, y, r] of at) g.fillCircle(x - 1, y - 3, r - 2);
-    g.generateTexture(`cloud-${k}`, width + 1, h + 1);
+    for (const [px, py, r] of puffs) g.fillCircle(px - left, py - top, r + 1);
+    for (const [px, py, r, glint] of puffs) {
+      const cx = px - left;
+      const cy = py - top;
+      g.fillStyle(SHADE, 1).fillCircle(cx, cy, r);
+      g.fillStyle(BODY, 1).fillCircle(cx, cy - 1.5, r - 1);
+      if (glint) g.fillStyle(LIGHT, 1).fillCircle(cx - r * 0.35, cy - r * 0.4, Math.max(1.5, r * 0.4));
+    }
+    g.generateTexture(`cloud-${k}`, right - left, bottom - top);
     g.destroy();
   }
 }
@@ -116,18 +137,27 @@ export function cloudArea(p: Plot, cols: number, rows: number, w: number, h: num
 // A bank of cloud over one plot: a shaded floor so nothing shows between the clouds, and the
 // clouds themselves, overlapping, the nearer ones over the farther, the edge ones puffing out
 // over the land next to it.
-export function drawPlotCloud(scene: Phaser.Scene, p: Plot, area: ReturnType<typeof cloudArea>): PlotCloud {
+// `clear` says which sides face land that isn't under cloud: there the floor stops short, so the
+// bank's edge is clouds, not a straight line.
+export type ClearSides = { left: boolean; right: boolean; top: boolean; bottom: boolean };
+const EDGE_INSET = 6;
+
+export function drawPlotCloud(scene: Phaser.Scene, p: Plot, area: ReturnType<typeof cloudArea>, clear: ClearSides): PlotCloud {
   ensureCloudTextures(scene);
   const [x0, y0, x1, y1] = [area.x0 * TILE, area.y0 * TILE, area.x1 * TILE, area.y1 * TILE];
-  const base = scene.add.rectangle(x0, y0, x1 - x0, y1 - y0, GAP).setOrigin(0, 0).setDepth(CLOUD_DEPTH);
+  const fx0 = x0 + (clear.left ? EDGE_INSET : 0);
+  const fy0 = y0 + (clear.top ? EDGE_INSET : 0);
+  const fx1 = x1 - (clear.right ? EDGE_INSET : 0);
+  const fy1 = y1 - (clear.bottom ? EDGE_INSET : 0);
+  const base = scene.add.rectangle(fx0, fy0, fx1 - fx0, fy1 - fy0, GAP).setOrigin(0, 0).setDepth(CLOUD_DEPTH);
   const rnd = seeded(((p.i + 97) * 7919) ^ ((p.j + 97) * 104729));
   const puffs: Phaser.GameObjects.Image[] = [];
-  const stepX = 58;
-  const stepY = 36;
+  const stepX = 42;
+  const stepY = 24;
   for (let y = y0 + 8, row = 0; y < y1 + 12; y += stepY, row++) {
     for (let x = x0 + (row % 2 ? stepX / 2 : 4); x < x1 + 12; x += stepX) {
       const img = scene.add
-        .image(Math.round(x + (rnd() - 0.5) * 22), Math.round(y + (rnd() - 0.5) * 14), `cloud-${Math.floor(rnd() * CLOUD_KINDS)}`)
+        .image(Math.round(x + (rnd() - 0.5) * 20), Math.round(y + (rnd() - 0.5) * 10), `cloud-${Math.floor(rnd() * CLOUD_KINDS)}`)
         .setFlipX(rnd() < 0.5)
         .setDepth(CLOUD_DEPTH + 1);
       puffs.push(img);
@@ -147,7 +177,7 @@ export function partClouds(scene: Phaser.Scene, cloud: PlotCloud, done: () => vo
     let dy = img.y - cloud.cy;
     if (Math.hypot(dx, dy) < 4) [dx, dy] = [Math.cos(i), Math.sin(i)];
     const len = Math.hypot(dx, dy);
-    const push = 110 + (i % 5) * 14;
+    const push = 90 + (i % 5) * 12;
     img.setDepth(img.depth + 1);
     scene.tweens.add({
       targets: img,

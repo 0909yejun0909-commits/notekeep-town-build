@@ -312,15 +312,29 @@ export default class OverworldScene extends Phaser.Scene {
     buildGroundCover(this, grid);
     cutTrees(grid, cut, false);
     for (const k of houseGaps) if (!grid.used.has(k)) blocked.delete(k);
+    // A side of a plot's cloud faces clear land when the plot (or town) there isn't clouded.
+    const allPlots = new Set(this.plots.map((p) => p.id));
+    const cloudy = (i: number, j: number) => {
+      const id = `${i},${j}`;
+      return allPlots.has(id) ? !owned.has(id) : !(i >= 0 && j >= 0 && i < plotCols && j < plotRows);
+    };
+    const clearSides = (p: Plot) => ({
+      left: !cloudy(p.i - 1, p.j),
+      right: !cloudy(p.i + 1, p.j),
+      top: !cloudy(p.i, p.j - 1),
+      bottom: !cloudy(p.i, p.j + 1),
+    });
     this.plotClouds = new Map(
-      this.plots.filter((p) => !owned.has(p.id)).map((p) => [p.id, drawPlotCloud(this, p, cloudArea(p, plotCols, plotRows, worldW, worldH))]),
+      this.plots
+        .filter((p) => !owned.has(p.id))
+        .map((p) => [p.id, drawPlotCloud(this, p, cloudArea(p, plotCols, plotRows, worldW, worldH), clearSides(p))]),
     );
     // Land just bought: the town has been redrawn with it under its clouds, which now part.
     const revealed = this.plots.find((p) => p.id === this.game.registry.get('revealPlot'));
     this.game.registry.remove('revealPlot');
     if (revealed) {
       this.revealing = true;
-      const cloud = drawPlotCloud(this, revealed, cloudArea(revealed, plotCols, plotRows, worldW, worldH));
+      const cloud = drawPlotCloud(this, revealed, cloudArea(revealed, plotCols, plotRows, worldW, worldH), clearSides(revealed));
       this.time.delayedCall(120, () => partClouds(this, cloud, () => (this.revealing = false)));
     }
     this.plotHover = this.add.graphics().setDepth(1e6 - 1);
